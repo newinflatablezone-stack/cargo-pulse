@@ -133,3 +133,10 @@ create policy "followers manage order images" on storage.objects for update to a
 create index if not exists orders_deadline_idx on public.orders(step_deadline) where archived_at is null;
 create index if not exists orders_business_idx on public.orders(business_user_id);
 create index if not exists events_order_idx on public.order_events(order_id,created_at);
+
+-- Backfill legacy order steps so early confirmation cannot finish an order accidentally.
+update public.orders set
+ current_step=case when inventory_mode='stock' then 'ready_to_ship' when needs_rendering then 'rendering' else 'production' end,
+ step_started_at=coalesce(step_started_at,created_at),
+ step_deadline=case when inventory_mode='stock' then null when needs_rendering then coalesce(step_started_at,created_at)+interval '3 days' else coalesce(step_started_at,created_at)+interval '10 days' end
+where current_step='order_created';

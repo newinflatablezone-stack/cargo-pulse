@@ -6,10 +6,13 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.app_settings (key text primary key,value text not null);
+insert into public.app_settings(key,value) values('follower_invite',gen_random_uuid()::text) on conflict(key) do nothing;
+
 create or replace function public.handle_new_user() returns trigger language plpgsql security definer set search_path=public as $$
 begin
   insert into public.profiles(id,email,role)
-  values(new.id,new.email,case when not exists(select 1 from public.profiles) then 'follower' else 'business' end);
+  values(new.id,new.email,case when not exists(select 1 from public.profiles) then 'follower' when new.raw_user_meta_data->>'follower_invite'=(select value from public.app_settings where key='follower_invite') then 'follower' else 'business' end);
   return new;
 end; $$;
 drop trigger if exists on_auth_user_created on auth.users;
@@ -89,10 +92,13 @@ create table if not exists public.order_images (
 );
 
 alter table public.profiles enable row level security;
+alter table public.app_settings enable row level security;
 alter table public.partners enable row level security;
 alter table public.orders enable row level security;
 alter table public.order_events enable row level security;
 alter table public.order_images enable row level security;
+drop policy if exists "followers read settings" on public.app_settings;
+create policy "followers read settings" on public.app_settings for select to authenticated using(public.is_follower());
 drop policy if exists "profiles read" on public.profiles;
 create policy "profiles read" on public.profiles for select to authenticated using(true);
 drop policy if exists "followers update roles" on public.profiles;

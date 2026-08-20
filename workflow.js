@@ -7,6 +7,7 @@ export function nextShipping(order){
  return {key:'domestic_customs',days:order.sea_region==='europe'?14:10};
 }
 export function nextStep(order,current){
+ if(current==='order_created')return firstStep(order);
  if(current==='rendering')return {key:'production',days:11};
  if(current==='production')return {key:'ready_to_ship',days:null};
  if(current==='ready_to_ship'||current==='shipping_selection')return nextShipping(order);
@@ -17,7 +18,7 @@ export function nextStep(order,current){
  if(current==='overseas_customs')return {key:'warehouse_appointment',days:7};
  if(current==='warehouse_appointment')return {key:'last_mile',days:7};
  if(current==='last_mile')return {key:'completed',days:null};
- return {key:'completed',days:null};
+ return firstStep(order);
 }
 export function deadline(days,from=new Date()){if(days==null)return null;const d=new Date(from);d.setDate(d.getDate()+days);return d.toISOString()}
 export function alertLevel(value){if(!value)return 'normal';const overdue=Math.floor((Date.now()-new Date(value).getTime())/86400000);if(overdue<0)return 'normal';if(overdue<1)return 'yellow';if(overdue<3)return 'orange';return 'red'}

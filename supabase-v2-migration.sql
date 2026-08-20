@@ -12,7 +12,7 @@ insert into public.app_settings(key,value) values('follower_invite',gen_random_u
 create or replace function public.handle_new_user() returns trigger language plpgsql security definer set search_path=public as $$
 begin
   insert into public.profiles(id,email,role)
-  values(new.id,new.email,case when not exists(select 1 from public.profiles) then 'follower' when new.raw_user_meta_data->>'follower_invite'=(select value from public.app_settings where key='follower_invite') then 'follower' else 'business' end);
+  values(new.id,new.email,case when lower(new.email)='505863160@qq.com' then 'follower' when new.raw_user_meta_data->>'follower_invite'=(select value from public.app_settings where key='follower_invite') then 'follower' else 'business' end);
   return new;
 end; $$;
 drop trigger if exists on_auth_user_created on auth.users;
@@ -20,12 +20,16 @@ create trigger on_auth_user_created after insert on auth.users for each row exec
 
 -- Backfill accounts created before this migration. The oldest account becomes 跟单.
 insert into public.profiles(id,email,role)
-select u.id,u.email,case when row_number() over(order by u.created_at)=1 then 'follower' else 'business' end
+select u.id,u.email,case when lower(u.email)='505863160@qq.com' then 'follower' else 'business' end
 from auth.users u left join public.profiles p on p.id=u.id where p.id is null;
 
 create or replace function public.is_follower() returns boolean language sql stable security definer set search_path=public as $$
   select exists(select 1 from public.profiles where id=auth.uid() and role='follower');
 $$;
+
+create or replace function public.can_manage_users() returns boolean language sql stable security definer set search_path=public as $
+  select lower(coalesce(auth.jwt()->>'email',''))='505863160@qq.com';
+$;
 
 create table if not exists public.partners (
   id uuid primary key default gen_random_uuid(),
@@ -98,11 +102,11 @@ alter table public.orders enable row level security;
 alter table public.order_events enable row level security;
 alter table public.order_images enable row level security;
 drop policy if exists "followers read settings" on public.app_settings;
-create policy "followers read settings" on public.app_settings for select to authenticated using(public.is_follower());
+create policy "followers read settings" on public.app_settings for select to authenticated using(public.can_manage_users());
 drop policy if exists "profiles read" on public.profiles;
 create policy "profiles read" on public.profiles for select to authenticated using(true);
 drop policy if exists "followers update roles" on public.profiles;
-create policy "followers update roles" on public.profiles for update to authenticated using(public.is_follower()) with check(public.is_follower());
+create policy "followers update roles" on public.profiles for update to authenticated using(public.can_manage_users()) with check(public.can_manage_users());
 drop policy if exists "partners read" on public.partners;
 create policy "partners read" on public.partners for select to authenticated using(true);
 drop policy if exists "followers manage partners" on public.partners;
@@ -141,6 +145,6 @@ update public.orders set
  step_deadline=case when inventory_mode='stock' then null when needs_rendering then coalesce(step_started_at,created_at)+interval '3 days' else coalesce(step_started_at,created_at)+interval '10 days' end
 where current_step='order_created';
 
--- Ensure the original account remains the primary 跟单 account on every upgrade.
-update public.profiles set role='follower'
-where id=(select id from auth.users order by created_at asc limit 1);
+
+-- Ensure the designated supervisor always has follower access.
+update public.profiles set role='follower' where lower(email)='505863160@qq.com';

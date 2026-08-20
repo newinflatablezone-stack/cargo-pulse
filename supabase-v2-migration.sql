@@ -15,6 +15,11 @@ end; $$;
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users for each row execute procedure public.handle_new_user();
 
+-- Backfill accounts created before this migration. The oldest account becomes 跟单.
+insert into public.profiles(id,email,role)
+select u.id,u.email,case when row_number() over(order by u.created_at)=1 then 'follower' else 'business' end
+from auth.users u left join public.profiles p on p.id=u.id where p.id is null;
+
 create or replace function public.is_follower() returns boolean language sql stable security definer set search_path=public as $$
   select exists(select 1 from public.profiles where id=auth.uid() and role='follower');
 $$;
@@ -71,10 +76,20 @@ create table if not exists public.order_events (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.order_images (
+  id uuid primary key default gen_random_uuid(),
+  order_id uuid not null references public.orders(id) on delete cascade,
+  object_path text not null,
+  file_name text not null,
+  uploaded_by uuid not null default auth.uid() references public.profiles(id),
+  created_at timestamptz not null default now()
+);
+
 alter table public.profiles enable row level security;
 alter table public.partners enable row level security;
 alter table public.orders enable row level security;
 alter table public.order_events enable row level security;
+alter table public.order_images enable row level security;
 drop policy if exists "profiles read" on public.profiles;
 create policy "profiles read" on public.profiles for select to authenticated using(true);
 drop policy if exists "followers update roles" on public.profiles;
@@ -93,6 +108,10 @@ drop policy if exists "all users read events" on public.order_events;
 create policy "all users read events" on public.order_events for select to authenticated using(true);
 drop policy if exists "followers manage events" on public.order_events;
 create policy "followers manage events" on public.order_events for all to authenticated using(public.is_follower()) with check(public.is_follower());
+drop policy if exists "all users read image records" on public.order_images;
+create policy "all users read image records" on public.order_images for select to authenticated using(true);
+drop policy if exists "followers manage image records" on public.order_images;
+create policy "followers manage image records" on public.order_images for all to authenticated using(public.is_follower()) with check(public.is_follower());
 
 insert into storage.buckets(id,name,public) values('order-images','order-images',false) on conflict(id) do nothing;
 drop policy if exists "authenticated view order images" on storage.objects;
@@ -105,4 +124,3 @@ create policy "followers manage order images" on storage.objects for update to a
 create index if not exists orders_deadline_idx on public.orders(step_deadline) where archived_at is null;
 create index if not exists orders_business_idx on public.orders(business_user_id);
 create index if not exists events_order_idx on public.order_events(order_id,created_at);
-

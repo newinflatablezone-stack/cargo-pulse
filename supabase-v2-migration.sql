@@ -65,6 +65,7 @@ create table if not exists public.orders (
 );
 
 alter table public.orders add column if not exists business_name text;
+alter table public.orders add column if not exists order_date date not null default current_date;
 
 create table if not exists public.order_events (
   id uuid primary key default gen_random_uuid(),

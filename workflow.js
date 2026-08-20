@@ -1,5 +1,5 @@
-export const STEP_LABELS={rendering:"效果图",production:"生产",shipping_selection:"选择发货方式",tracking:"填写物流单号",delivery:"等待送达",domestic_customs:"国内清关开船",ocean_transit:"海上运输",overseas_customs:"海外清关提柜",warehouse_appointment:"海外仓约车",last_mile:"目的地派送",completed:"订单完成"};
-export function firstStep(order){if(order.inventory_mode==='stock')return nextShipping(order);if(order.needs_rendering)return {key:'rendering',days:3};return {key:'production',days:10}}
+export const STEP_LABELS={rendering:"效果图",production:"生产",ready_to_ship:"待发货",shipping_selection:"选择发货方式",tracking:"填写物流单号",delivery:"等待送达",domestic_customs:"国内清关开船",ocean_transit:"海上运输",overseas_customs:"海外清关提柜",warehouse_appointment:"海外仓约车",last_mile:"目的地派送",completed:"订单完成"};
+export function firstStep(order){if(order.inventory_mode==='stock')return {key:'ready_to_ship',days:null};if(order.needs_rendering)return {key:'rendering',days:3};return {key:'production',days:10}}
 export function nextShipping(order){
  if(!order.shipping_mode)return {key:'shipping_selection',days:null};
  if(order.shipping_mode==='domestic_express')return {key:'tracking',days:2};
@@ -8,7 +8,8 @@ export function nextShipping(order){
 }
 export function nextStep(order,current){
  if(current==='rendering')return {key:'production',days:11};
- if(current==='production'||current==='shipping_selection')return nextShipping(order);
+ if(current==='production')return {key:'ready_to_ship',days:null};
+ if(current==='ready_to_ship'||current==='shipping_selection')return nextShipping(order);
  if(current==='tracking')return {key:'delivery',days:order.shipping_mode==='domestic_express'?10:7};
  if(current==='delivery')return {key:'completed',days:null};
  if(current==='domestic_customs')return {key:'ocean_transit',days:order.sea_region==='europe'?40:16};

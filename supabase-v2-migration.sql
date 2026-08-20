@@ -64,6 +64,8 @@ create table if not exists public.orders (
   updated_at timestamptz not null default now()
 );
 
+alter table public.orders add column if not exists business_name text;
+
 create table if not exists public.order_events (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references public.orders(id) on delete cascade,

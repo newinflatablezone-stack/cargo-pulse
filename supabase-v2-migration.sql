@@ -140,3 +140,7 @@ update public.orders set
  step_started_at=coalesce(step_started_at,created_at),
  step_deadline=case when inventory_mode='stock' then null when needs_rendering then coalesce(step_started_at,created_at)+interval '3 days' else coalesce(step_started_at,created_at)+interval '10 days' end
 where current_step='order_created';
+
+-- Ensure the original account remains the primary 跟单 account on every upgrade.
+update public.profiles set role='follower'
+where id=(select id from auth.users order by created_at asc limit 1);

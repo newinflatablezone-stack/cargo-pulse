@@ -73,6 +73,7 @@ create table if not exists public.orders (
 
 alter table public.orders add column if not exists business_name text;
 alter table public.orders add column if not exists order_date date not null default current_date;
+alter table public.orders add column if not exists rollback_used boolean not null default false;
 
 create table if not exists public.order_events (
   id uuid primary key default gen_random_uuid(),
@@ -148,3 +149,6 @@ where current_step='order_created';
 
 -- Ensure the designated supervisor always has follower access.
 update public.profiles set role='follower' where lower(email)='505863160@qq.com';
+
+-- Archiving was removed from the product; restore any archived orders.
+update public.orders set archived_at=null where archived_at is not null;

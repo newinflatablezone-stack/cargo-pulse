@@ -7,10 +7,18 @@ const demoShipments = [
   { id: "4", tracking_no: "SIN-105782", route: "新加坡 → 香港", customer: "Aster Studio", status: "已签收", eta: "2026-08-19", carrier: "FedEx", updated_at: "2026-08-19T10:00:00Z" }
 ];
 
-const cfg = {
-  url: import.meta.env.VITE_SUPABASE_URL,
-  key: import.meta.env.VITE_SUPABASE_ANON_KEY
+let cfg = {
+  url: import.meta.env.VITE_SUPABASE_URL || "",
+  key: import.meta.env.VITE_SUPABASE_ANON_KEY || ""
 };
+
+async function loadRuntimeConfig() {
+  if (cfg.url && cfg.key) return;
+  const response = await fetch("/api/config", { cache: "no-store" });
+  if (!response.ok) return;
+  const runtime = await response.json();
+  cfg = { url: runtime.url || "", key: runtime.key || "" };
+}
 
 let shipments = [];
 let filter = "全部";
@@ -79,4 +87,7 @@ function render() {
   document.querySelector("#addBtn").addEventListener("click", () => document.querySelector("#newShipment").showModal());
 }
 
-loadShipments().then((data) => { shipments = data; render(); }).catch(() => { shipments = demoShipments; render(); });
+loadRuntimeConfig()
+  .then(loadShipments)
+  .then((data) => { shipments = data; render(); })
+  .catch(() => { shipments = demoShipments; render(); });

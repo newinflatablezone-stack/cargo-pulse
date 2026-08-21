@@ -9,7 +9,7 @@ export function nextShipping(order){
 export function nextStep(order,current){
  if(current==='order_created')return firstStep(order);
  if(current==='rendering')return {key:'production',days:11};
- if(current==='production')return {key:'ready_to_ship',days:1};
+ if(current==='production')return nextShipping(order);
  if(current==='ready_to_ship'||current==='shipping_selection')return nextShipping(order);
  if(current==='tracking')return {key:'delivery',days:order.shipping_mode==='domestic_express'?10:7};
  if(current==='delivery')return {key:'completed',days:null};
@@ -24,4 +24,4 @@ export function deadline(days,from=new Date()){if(days==null)return null;const d
 export function alertLevel(value){if(!value)return 'normal';const today=new Date(),due=new Date(value);today.setHours(0,0,0,0);due.setHours(0,0,0,0);const overdue=Math.round((today-due)/86400000);if(overdue===-1)return 'yellow';if(overdue<=0)return 'normal';if(overdue<=2)return 'orange';return 'red'}
 
 
-export function flowFor(order){const start=order.inventory_mode==='stock'?['ready_to_ship']:order.needs_rendering?['rendering','production','ready_to_ship']:['production','ready_to_ship'];if(order.shipping_mode==='domestic_express')return [...start,'tracking','delivery','completed'];if(order.shipping_mode==='overseas_warehouse')return [...start,'tracking','delivery','completed'];return [...start,'domestic_customs','ocean_transit','overseas_customs','warehouse_appointment','last_mile','completed']}
+export function flowFor(order){const start=order.inventory_mode==='stock'?['ready_to_ship']:order.needs_rendering?['rendering','production']:['production'];if(order.shipping_mode==='domestic_express')return [...start,'tracking','delivery','completed'];if(order.shipping_mode==='overseas_warehouse')return [...start,'tracking','delivery','completed'];return [...start,'domestic_customs','ocean_transit','overseas_customs','warehouse_appointment','last_mile','completed']}

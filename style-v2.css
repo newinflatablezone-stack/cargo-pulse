@@ -189,3 +189,41 @@ button:disabled{cursor:not-allowed;opacity:.48;transform:none!important}
   .order-card h3{font-size:16px}
   .order-card p,.order-card footer{font-size:13px}
 }
+
+
+/* Compact, equal-weight order list */
+.order-card{padding:11px 22px;border-bottom:1px solid #dbe3de}
+.order-card:nth-child(even){background:#fbfcfb}
+.order-card:hover{background:#f6faf7}
+.order-card:before{top:10px;bottom:10px;width:3px}
+.order-card.yellow:before,.order-card.orange:before,.order-card.red:before,.order-card.proof-blue:before{width:4px}
+.order-no{font-size:14px;line-height:1.4;font-weight:650}
+.card-main{margin:4px 0 8px;gap:14px}
+.order-card h3{font-size:13px;line-height:1.45;font-weight:600;margin:0 0 2px}
+.order-card h3 small{font-size:12px}
+.order-card p{font-size:12.5px;line-height:1.45}
+.step-name{font-size:12px;padding:5px 9px}
+.order-card footer{padding-top:8px;gap:14px;font-size:12.5px}
+.order-card footer span small{font-size:10.5px;margin-bottom:2px}
+.order-card footer i{font-size:12px}
+.pagination{display:flex;align-items:center;justify-content:center;gap:16px;padding:16px 20px;border-top:1px solid #e1e7e3;background:#fafcfa}
+.pagination button{border:1px solid #d6e0da;background:#fff;color:#285649;padding:7px 12px;border-radius:8px;font-size:12px}
+.pagination button:not(:disabled):hover{background:#edf5f1}
+.pagination span{font-size:12px;color:#75827b}
+@media(min-width:801px){
+  .order-card{display:grid;grid-template-columns:120px minmax(260px,1fr) minmax(430px,520px);align-items:center;gap:18px;min-height:76px}
+  .card-top{align-items:flex-start;flex-direction:column;gap:5px}
+  .card-main{margin:0;min-width:0}
+  .card-main>div{min-width:0}
+  .order-card footer{grid-template-columns:105px 120px 1fr auto;align-items:center;padding-top:0;border-top:0}
+}
+@media(max-width:800px){
+  .order-card{padding:13px 18px}
+  .card-main{margin:5px 0 9px}
+}
+@media(max-width:500px){
+  .order-no{font-size:14px}
+  .order-card h3,.order-card p,.order-card footer{font-size:12.5px}
+  .pagination{gap:9px;padding:14px 10px}
+  .pagination span{font-size:11px;text-align:center}
+}

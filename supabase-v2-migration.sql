@@ -202,3 +202,38 @@ create policy "supervisor delete order images" on storage.objects for delete to 
 using(bucket_id='order-images' and public.can_manage_users());
 
 create index if not exists orders_deleted_idx on public.orders(deleted_at);
+
+
+-- Imported/backdated orders: the first stage starts from order_date, not import time.
+with initial_stage as (
+  select id,current_step,order_date::timestamptz as started_at,
+    case
+      when current_step='rendering' then order_date::timestamptz+interval '3 days'
+      when current_step='production' then order_date::timestamptz+interval '10 days'
+      else null
+    end as deadline_at
+  from public.orders
+  where deleted_at is null and (
+    (current_step='rendering' and needs_rendering=true) or
+    (current_step='production' and needs_rendering=false and inventory_mode='production') or
+    (current_step='ready_to_ship' and inventory_mode='stock')
+  )
+)
+update public.order_events e
+set started_at=i.started_at,deadline_at=i.deadline_at
+from initial_stage i
+where e.order_id=i.id and e.step_key=i.current_step and e.completed_at is null;
+
+update public.orders
+set step_started_at=order_date::timestamptz,
+    step_deadline=case
+      when current_step='rendering' then order_date::timestamptz+interval '3 days'
+      when current_step='production' then order_date::timestamptz+interval '10 days'
+      else null
+    end,
+    updated_at=now()
+where deleted_at is null and (
+  (current_step='rendering' and needs_rendering=true) or
+  (current_step='production' and needs_rendering=false and inventory_mode='production') or
+  (current_step='ready_to_ship' and inventory_mode='stock')
+);

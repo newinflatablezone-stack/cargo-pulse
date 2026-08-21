@@ -34,7 +34,7 @@ export function overallDeadline(order){
  if(order.current_step==='production')return deadline(base,start);
  if(order.current_step==='ready_to_ship'||order.current_step==='shipping_selection')return deadline(base+1,start);
  if(order.current_step==='tracking'){const trackingDays=order.shipping_mode==='overseas_warehouse'&&order.overseas_method==='truck'?5:2;return deadline(base+trackingDays,start)}
- if(order.current_step==='delivery'){const total=order.shipping_mode==='overseas_warehouse'?7:12;return deadline(base+total,start)}
+ if(order.current_step==='delivery'){const trackingDays=order.shipping_mode==='overseas_warehouse'&&order.overseas_method==='truck'?5:2;const deliveryDays=order.shipping_mode==='domestic_express'?10:7;return deadline(base+trackingDays+deliveryDays,start)}
  const europe=order.sea_region==='europe',customs=europe?14:10,ocean=europe?40:16;
  const seaTotals={domestic_customs:customs,ocean_transit:customs+ocean,overseas_customs:customs+ocean+7,warehouse_appointment:customs+ocean+14,last_mile:customs+ocean+21};
  return deadline(base+(seaTotals[order.current_step]??0),start);

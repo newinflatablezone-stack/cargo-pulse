@@ -21,7 +21,7 @@ export function nextStep(order,current){
  return firstStep(order);
 }
 export function deadline(days,from=new Date()){if(days==null)return null;const d=new Date(from);d.setDate(d.getDate()+days);return d.toISOString()}
-export function alertLevel(value){if(!value)return 'normal';const overdue=Math.floor((Date.now()-new Date(value).getTime())/86400000);if(overdue<0)return 'normal';if(overdue<1)return 'yellow';if(overdue<3)return 'orange';return 'red'}
+export function alertLevel(value){if(!value)return 'normal';const today=new Date(),due=new Date(value);today.setHours(0,0,0,0);due.setHours(0,0,0,0);const overdue=Math.round((today-due)/86400000);if(overdue<0)return 'normal';if(overdue===0)return 'yellow';if(overdue<=2)return 'orange';return 'red'}
 
 
 export function flowFor(order){const start=order.inventory_mode==='stock'?['ready_to_ship']:order.needs_rendering?['rendering','production','ready_to_ship']:['production','ready_to_ship'];if(order.shipping_mode==='domestic_express')return [...start,'tracking','delivery','completed'];if(order.shipping_mode==='overseas_warehouse')return [...start,'tracking','delivery','completed'];return [...start,'domestic_customs','ocean_transit','overseas_customs','warehouse_appointment','last_mile','completed']}

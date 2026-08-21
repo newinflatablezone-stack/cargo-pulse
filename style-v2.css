@@ -287,3 +287,23 @@ main{max-width:1560px;padding:24px max(22px,3vw) 56px}
  .card-main{margin-top:7px}
  .order-thumb{width:42px;height:42px;flex-basis:42px}
 }
+
+
+/* Internal-tool header removal and refined search interaction */
+.order-control-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex:1;min-width:0}
+.order-control-actions .searchbar{flex:1;max-width:460px}
+.compact-new-order{flex:0 0 auto;padding:9px 14px!important;border-radius:8px!important;font-size:12px!important;box-shadow:none!important}
+.searchbar{transition:border-color .16s ease,background-color .16s ease,box-shadow .16s ease}
+.searchbar:hover{border-color:#bdcbc4;background:#f9fbf9}
+.searchbar:focus-within{background:#fff;border-color:#8da99d;box-shadow:0 0 0 2px rgba(47,111,91,.10)}
+.searchbar input,.searchbar input:hover,.searchbar input:focus,.searchbar input:focus-visible{appearance:none!important;-webkit-appearance:none!important;border:0!important;outline:none!important;box-shadow:none!important;background:transparent!important;border-radius:0!important}
+.searchbar input::selection{background:#dbeae4;color:#173f34}
+@media(max-width:800px){
+ .order-control-actions{width:100%;align-items:stretch}
+ .order-control-actions .searchbar{max-width:none}
+ .compact-new-order{white-space:nowrap}
+}
+@media(max-width:520px){
+ .order-control-actions{flex-direction:column}
+ .compact-new-order{width:100%}
+}

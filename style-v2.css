@@ -370,3 +370,12 @@ header nav{margin-left:auto}
 .brand-home img{width:38px;height:38px;flex:0 0 38px}
 .brand-home span{height:38px;display:inline-flex;align-items:center;line-height:1;font-size:14px}
 @media(max-width:620px){.brand-home{height:40px}.brand-home img{width:36px;height:36px;flex-basis:36px}.brand-home span{height:36px}}
+
+
+/* Per-stage tracking numbers */
+.tracking-preview{margin-top:2px!important;color:#2f6c5b!important;font-size:10.5px!important;font-weight:600}
+.tracking-detail{grid-column:1/-1}
+.tracking-detail dd{display:flex;flex-wrap:wrap;gap:7px}
+.tracking-detail dd span{display:inline-flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid #dce6e1;border-radius:7px;background:#f5f8f6;color:#294e43}
+.tracking-detail dd b{font-size:10px;color:#718078;font-weight:600}
+.timeline-tracking{color:#24644f!important;font-weight:600}

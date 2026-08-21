@@ -307,3 +307,12 @@ main{max-width:1560px;padding:24px max(22px,3vw) 56px}
  .order-control-actions{flex-direction:column}
  .compact-new-order{width:100%}
 }
+
+
+/* Clickable Inflatable Zone home logo */
+.brand-home{display:flex;align-items:center;flex:0 0 auto;text-decoration:none;line-height:0;padding:3px 0}
+.brand-home img{display:block;width:170px;height:40px;object-fit:contain}
+.brand-home:hover{opacity:.9}
+.brand-home:focus-visible{outline:2px solid #78a99a;outline-offset:4px;border-radius:5px}
+@media(max-width:720px){.brand-home img{width:132px;height:34px}}
+@media(max-width:500px){.brand-home img{width:108px;height:30px}}

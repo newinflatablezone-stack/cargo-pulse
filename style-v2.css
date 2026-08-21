@@ -363,3 +363,10 @@ header nav{margin-left:auto}
  .brand-home img{width:29px;height:29px}
  .brand-home span{font-size:13px}
 }
+
+
+/* Larger mark with optically centered product name */
+.brand-home{height:42px;display:inline-flex;align-items:center;gap:9px}
+.brand-home img{width:38px;height:38px;flex:0 0 38px}
+.brand-home span{height:38px;display:inline-flex;align-items:center;line-height:1;font-size:14px}
+@media(max-width:620px){.brand-home{height:40px}.brand-home img{width:36px;height:36px;flex-basis:36px}.brand-home span{height:36px}}

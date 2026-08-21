@@ -324,3 +324,11 @@ main{max-width:1560px;padding:24px max(22px,3vw) 56px}
 .brand-home span{display:inline-block;font-size:15px;font-weight:700;line-height:1;white-space:nowrap}
 @media(max-width:900px){.brand-home img{width:128px;height:32px}.brand-home span{font-size:13px}}
 @media(max-width:620px){.brand-home img{width:108px;height:29px}.brand-home span{display:none}}
+
+
+/* Compact three-color brand mark */
+.brand-home img{width:42px;height:42px;object-fit:contain;border-radius:7px}
+.brand-home span{font-size:15px}
+@media(max-width:900px){.brand-home img{width:38px;height:38px}}
+@media(max-width:620px){.brand-home img{width:36px;height:36px}.brand-home span{display:inline-block;font-size:13px}}
+@media(max-width:430px){.brand-home span{display:none}}

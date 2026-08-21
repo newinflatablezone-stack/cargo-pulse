@@ -286,3 +286,91 @@ begin
     alter publication supabase_realtime add table public.partners;
   end if;
 end; $$;
+
+
+-- Every workflow transition is atomic. No active order may enter an untimed vacuum.
+create or replace function public.transition_order_stage(
+  target_order_id uuid,
+  target_next_step text,
+  target_deadline timestamptz,
+  target_shipping jsonb default null,
+  target_tracking_no text default null
+) returns void
+language plpgsql security definer set search_path=public as $$
+declare
+  current_order public.orders%rowtype;
+  transition_time timestamptz:=now();
+begin
+  if not public.is_follower() then raise exception 'Only followers can advance orders'; end if;
+  select * into current_order from public.orders where id=target_order_id and deleted_at is null for update;
+  if not found then raise exception 'Order not found'; end if;
+  if current_order.current_step='completed' then raise exception 'Completed orders cannot advance'; end if;
+  if target_next_step<>'completed' and target_deadline is null then raise exception 'Every active stage requires a deadline'; end if;
+  if current_order.current_step in ('production','ready_to_ship','shipping_selection') and target_shipping is null then
+    raise exception 'Shipping must be confirmed together with production completion';
+  end if;
+  if current_order.current_step='tracking' and nullif(trim(target_tracking_no),'') is null then
+    raise exception 'Tracking number is required before delivery timing starts';
+  end if;
+
+  update public.order_events
+  set completed_at=transition_time,completed_by=auth.uid()
+  where order_id=target_order_id and completed_at is null;
+
+  insert into public.order_events(order_id,step_key,started_at,deadline_at)
+  values(target_order_id,target_next_step,transition_time,target_deadline);
+
+  update public.orders set
+    shipping_mode=case when target_shipping is null then shipping_mode else target_shipping->>'shipping_mode' end,
+    forwarder_name=case when target_shipping is null then forwarder_name else target_shipping->>'forwarder_name' end,
+    sea_region=case when target_shipping is null then sea_region else nullif(target_shipping->>'sea_region','') end,
+    overseas_method=case when target_shipping is null then overseas_method else nullif(target_shipping->>'overseas_method','') end,
+    tracking_no=coalesce(nullif(trim(target_tracking_no),''),tracking_no),
+    current_step=target_next_step,
+    step_started_at=transition_time,
+    step_deadline=target_deadline,
+    rollback_used=false,
+    updated_at=transition_time
+  where id=target_order_id;
+end; $$;
+revoke all on function public.transition_order_stage(uuid,text,timestamptz,jsonb,text) from public;
+grant execute on function public.transition_order_stage(uuid,text,timestamptz,jsonb,text) to authenticated;
+
+create or replace function public.rollback_order_one_step(target_order_id uuid) returns void
+language plpgsql security definer set search_path=public as $$
+declare
+  current_order public.orders%rowtype;
+  current_event public.order_events%rowtype;
+  previous_event public.order_events%rowtype;
+begin
+  if not public.is_follower() then raise exception 'Only followers can roll back orders'; end if;
+  select * into current_order from public.orders where id=target_order_id and deleted_at is null for update;
+  if not found then raise exception 'Order not found'; end if;
+  if current_order.rollback_used then raise exception 'Only one rollback is allowed until the order advances again'; end if;
+
+  select * into current_event from public.order_events where order_id=target_order_id order by created_at desc,id desc limit 1;
+  select * into previous_event from public.order_events where order_id=target_order_id order by created_at desc,id desc offset 1 limit 1;
+  if current_event.id is null or previous_event.id is null then raise exception 'No previous stage is available'; end if;
+
+  delete from public.order_events where id=current_event.id;
+  update public.order_events set completed_at=null,completed_by=null where id=previous_event.id;
+  update public.orders set
+    current_step=previous_event.step_key,
+    step_started_at=previous_event.started_at,
+    step_deadline=previous_event.deadline_at,
+    rollback_used=true,
+    updated_at=now()
+  where id=target_order_id;
+end; $$;
+revoke all on function public.rollback_order_one_step(uuid) from public;
+grant execute on function public.rollback_order_one_step(uuid) to authenticated;
+
+-- Repair any legacy active order that was left without a deadline.
+update public.orders
+set step_deadline=coalesce(step_started_at,updated_at,created_at)+interval '1 day',updated_at=now()
+where deleted_at is null and current_step<>'completed' and step_deadline is null;
+
+update public.order_events e
+set deadline_at=o.step_deadline
+from public.orders o
+where e.order_id=o.id and e.completed_at is null and o.current_step<>'completed' and e.deadline_at is null;

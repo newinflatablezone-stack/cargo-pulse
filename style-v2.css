@@ -87,3 +87,83 @@ dialog{border:0;padding:0;width:min(820px,calc(100% - 30px));max-height:90vh;ove
 .delivery-proof.missing{border-color:#3a95ef;background:#eaf4ff}
 .proof-pending{border-color:#3a95ef!important;background:#eaf4ff!important}
 .proof-pending i{background:#1684ff!important;box-shadow:0 0 0 4px #d9ecff!important}
+
+
+/* Refined summary cards: retain status colors with a calmer visual hierarchy */
+.stats{gap:16px;margin-bottom:28px}
+.stats article{
+  min-height:146px;
+  padding:23px 24px 21px 26px;
+  border-radius:18px;
+  border:1px solid #dfe7e2;
+  background:linear-gradient(145deg,#ffffff 0%,#f8fbf9 100%);
+  box-shadow:0 8px 24px rgba(31,55,45,.065);
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease;
+}
+.stats article:before{
+  left:12px;
+  top:22px;
+  bottom:22px;
+  width:4px;
+  border-radius:999px;
+  background:#7f988c;
+}
+.stats article:hover{
+  transform:translateY(-3px);
+  box-shadow:0 14px 32px rgba(31,55,45,.10);
+}
+.stats article.selected{
+  transform:translateY(-2px);
+  border-color:#9bb5a8;
+  box-shadow:0 0 0 3px rgba(51,104,82,.10),0 14px 32px rgba(31,55,45,.09);
+}
+.stats small{
+  font-size:14px;
+  line-height:1.35;
+  letter-spacing:.01em;
+  color:#52675d;
+  font-weight:650;
+}
+.stats b{
+  margin:10px 0 5px;
+  font-size:40px;
+  line-height:1;
+  font-weight:650;
+  letter-spacing:-.035em;
+  color:#183028;
+}
+.stats span{
+  font-size:13px;
+  line-height:1.45;
+  color:#89958f;
+}
+.stats article.yellow{
+  background:linear-gradient(145deg,#fffefa 0%,#fff8d9 100%);
+  border-color:#f0d77c;
+}
+.stats article.orange{
+  background:linear-gradient(145deg,#fffdfb 0%,#fff0e2 100%);
+  border-color:#f3b17b;
+}
+.stats article.red{
+  background:linear-gradient(145deg,#fffdfd 0%,#ffe8e6 100%);
+  border-color:#ef928a;
+}
+.stats article.blue,.stats article.proof-stat{
+  background:linear-gradient(145deg,#fcfeff 0%,#e8f3ff 100%);
+  border-color:#8dc3f7;
+}
+.stats article.yellow:before,.stats article.orange:before,.stats article.red:before,
+.stats article.blue:before,.stats article.proof-stat:before{width:4px}
+.stats article.yellow.selected{box-shadow:0 0 0 3px rgba(240,180,0,.13),0 14px 32px rgba(143,101,0,.10)}
+.stats article.orange.selected{box-shadow:0 0 0 3px rgba(255,114,0,.13),0 14px 32px rgba(184,71,0,.10)}
+.stats article.red.selected{box-shadow:0 0 0 3px rgba(227,49,37,.13),0 14px 32px rgba(169,29,22,.10)}
+.stats article.blue.selected,.stats article.proof-stat.selected{box-shadow:0 0 0 3px rgba(22,132,255,.13),0 14px 32px rgba(7,94,182,.10)}
+@media(max-width:650px){
+  .stats article{min-height:126px;padding:19px 20px 18px 24px;border-radius:15px}
+  .stats article:before{left:10px;top:18px;bottom:18px}
+  .stats b{font-size:34px}
+}

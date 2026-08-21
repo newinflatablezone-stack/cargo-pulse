@@ -37,3 +37,9 @@ dialog{border:0;padding:0;width:min(820px,calc(100% - 30px));max-height:90vh;ove
 .timeline-item .timeline-due{color:#9a6d16;font-weight:600}
 .timeline-empty{grid-column:1/-1;margin:0;color:#88938e;font-size:12px}
 @media(max-width:650px){.stage-history{padding:15px}.stage-history-head{align-items:flex-start;flex-direction:column}.timeline-list{grid-template-columns:1fr}}
+
+.alert-pair{display:inline-flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.alert-pair .alert{white-space:nowrap}
+.timeline-alert-summary{margin-left:auto}
+.stage-history-head>div:first-child span{display:block;margin-top:3px}
+@media(max-width:650px){.timeline-alert-summary{margin-left:0}.alert-pair{justify-content:flex-start}}

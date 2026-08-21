@@ -173,3 +173,19 @@ dialog{border:0;padding:0;width:min(820px,calc(100% - 30px));max-height:90vh;ove
 .flow-repair b{font-size:14px}.flow-repair span{font-size:12px;color:#9b625a}.flow-repair button{margin-left:auto;white-space:nowrap}
 button:disabled{cursor:not-allowed;opacity:.48;transform:none!important}
 @media(max-width:650px){.flow-repair{align-items:flex-start;flex-direction:column}.flow-repair button{margin-left:0}}
+
+
+/* Balanced order-card hierarchy: order number leads, all other fields stay peers */
+.order-no{font-size:17px;line-height:1.35;font-weight:700;letter-spacing:.01em;color:#1f5a49}
+.order-card h3{font-size:16px;line-height:1.45;font-weight:600;letter-spacing:0;margin:0 0 4px;color:#17251f}
+.order-card h3 small{font-size:13px;font-weight:500;color:#7f8b85}
+.order-card p{font-size:14px;line-height:1.5;color:#728078}
+.step-name{font-size:13px;font-weight:600}
+.order-card footer{font-size:14px;line-height:1.35}
+.order-card footer span small{font-size:11px;font-weight:500;margin-bottom:4px}
+.order-card footer i{font-size:13px}
+@media(max-width:500px){
+  .order-no{font-size:17px}
+  .order-card h3{font-size:16px}
+  .order-card p,.order-card footer{font-size:13px}
+}

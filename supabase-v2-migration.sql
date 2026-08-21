@@ -237,3 +237,37 @@ where deleted_at is null and (
   (current_step='production' and needs_rendering=false and inventory_mode='production') or
   (current_step='ready_to_ship' and inventory_mode='stock')
 );
+
+
+-- Stable authenticated access: every signed-in user sees every live order.
+create or replace function public.list_visible_orders() returns setof public.orders
+language sql stable security definer set search_path=public as $$
+  select o.* from public.orders o
+  where auth.uid() is not null and (o.deleted_at is null or public.can_manage_users())
+  order by o.order_date desc,o.created_at desc;
+$$;
+revoke all on function public.list_visible_orders() from public;
+grant execute on function public.list_visible_orders() to authenticated;
+
+-- Role assignment is only available through this supervisor-checked operation.
+create or replace function public.set_user_role(target_user_id uuid,target_role text) returns void
+language plpgsql security definer set search_path=public as $$
+declare target_email text;
+begin
+  if not public.can_manage_users() then raise exception 'Only the supervisor can assign roles'; end if;
+  if target_role not in ('business','follower') then raise exception 'Invalid role'; end if;
+  select lower(email) into target_email from public.profiles where id=target_user_id;
+  if target_email='505863160@qq.com' and target_role<>'follower' then
+    raise exception 'The supervisor account cannot be demoted';
+  end if;
+  update public.profiles set role=target_role where id=target_user_id;
+  if not found then raise exception 'User not found'; end if;
+end; $$;
+revoke all on function public.set_user_role(uuid,text) from public;
+grant execute on function public.set_user_role(uuid,text) to authenticated;
+
+-- Repair visibility and make the designated supervisor immutable.
+drop policy if exists "all users read orders" on public.orders;
+create policy "all users read orders" on public.orders for select to authenticated
+using(deleted_at is null or public.can_manage_users());
+update public.profiles set role='follower' where lower(email)='505863160@qq.com';

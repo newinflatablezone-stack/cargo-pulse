@@ -56,3 +56,34 @@ dialog{border:0;padding:0;width:min(820px,calc(100% - 30px));max-height:90vh;ove
 .proof-pending{border-color:#e2c776!important;background:#fffaf0!important}
 @media(max-width:1100px){.stats{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:650px){.delivery-proof{align-items:stretch;flex-direction:column}.delivery-proof form{justify-content:flex-start}.stats{grid-template-columns:1fr}}
+
+
+/* High-contrast alert palette: yellow, orange, red, blue. */
+.stats article.yellow{background:#fff7cc;border-color:#f0bf1a}
+.stats article.yellow:before{width:7px;background:#f0b400}
+.stats article.yellow small,.stats article.yellow b{color:#8f6500}
+.stats article.orange{background:#fff0df;border-color:#ff8a20}
+.stats article.orange:before{width:7px;background:#ff7200}
+.stats article.orange small,.stats article.orange b{color:#b84700}
+.stats article.red{background:#ffe7e4;border-color:#ef4b3e}
+.stats article.red:before{width:7px;background:#e33125}
+.stats article.red small,.stats article.red b{color:#a91d16}
+.stats article.blue,.stats article.proof-stat{background:#e6f2ff;border-color:#3a95ef}
+.stats article.blue:before,.stats article.proof-stat:before{width:7px;background:#1684ff}
+.stats article.blue small,.stats article.blue b,.stats article.proof-stat small,.stats article.proof-stat b{color:#075eb6}
+.stats article.yellow.selected{box-shadow:0 0 0 3px #f0b40055,0 10px 25px #8f650022}
+.stats article.orange.selected{box-shadow:0 0 0 3px #ff720055,0 10px 25px #b8470022}
+.stats article.red.selected{box-shadow:0 0 0 3px #e3312555,0 10px 25px #a91d1622}
+.stats article.blue.selected,.stats article.proof-stat.selected{box-shadow:0 0 0 3px #1684ff55,0 10px 25px #075eb622}
+.alert.yellow{background:#ffe893;color:#765300;border:1px solid #efbc00}
+.alert.orange{background:#ffd2ac;color:#9d3e00;border:1px solid #ff7200}
+.alert.red{background:#ffc0ba;color:#941c14;border:1px solid #e33125}
+.alert.blue{background:#cce6ff;color:#075aa9;border:1px solid #1684ff}
+.order-card.yellow:before{width:6px;background:#f0b400}
+.order-card.orange:before{width:6px;background:#ff7200}
+.order-card.red:before{width:6px;background:#e33125}
+.order-card.proof-blue:before{width:6px;background:#1684ff}
+.order-card.proof-blue{background:#f3f8ff}
+.delivery-proof.missing{border-color:#3a95ef;background:#eaf4ff}
+.proof-pending{border-color:#3a95ef!important;background:#eaf4ff!important}
+.proof-pending i{background:#1684ff!important;box-shadow:0 0 0 4px #d9ecff!important}

@@ -155,7 +155,7 @@ update public.profiles set role='follower' where lower(email)='505863160@qq.com'
 update public.orders set archived_at=null where archived_at is not null;
 
 
--- Supervisor-only recycle bin. Normal followers can update live orders but cannot delete them.
+-- Followers may soft-delete live orders. Only the supervisor can view, restore, or permanently delete recycle-bin records.
 drop policy if exists "all users read orders" on public.orders;
 create policy "all users read orders" on public.orders for select to authenticated
 using(deleted_at is null or public.can_manage_users());
@@ -172,7 +172,7 @@ with check(public.is_follower() and deleted_at is null);
 create or replace function public.soft_delete_order(target_order_id uuid) returns void
 language plpgsql security definer set search_path=public as $$
 begin
-  if not public.can_manage_users() then raise exception 'Only the supervisor can delete orders'; end if;
+  if not public.is_follower() then raise exception 'Only followers can delete orders'; end if;
   update public.orders set deleted_at=now(),updated_at=now() where id=target_order_id and deleted_at is null;
 end; $$;
 

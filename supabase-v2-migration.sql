@@ -27,9 +27,9 @@ create or replace function public.is_follower() returns boolean language sql sta
   select exists(select 1 from public.profiles where id=auth.uid() and role='follower');
 $$;
 
-create or replace function public.can_manage_users() returns boolean language sql stable security definer set search_path=public as $
+create or replace function public.can_manage_users() returns boolean language sql stable security definer set search_path=public as $$
   select lower(coalesce(auth.jwt()->>'email',''))='505863160@qq.com';
-$;
+$$;
 
 create table if not exists public.partners (
   id uuid primary key default gen_random_uuid(),
@@ -74,6 +74,7 @@ create table if not exists public.orders (
 alter table public.orders add column if not exists business_name text;
 alter table public.orders add column if not exists order_date date not null default current_date;
 alter table public.orders add column if not exists rollback_used boolean not null default false;
+alter table public.orders add column if not exists deleted_at timestamptz;
 
 create table if not exists public.order_events (
   id uuid primary key default gen_random_uuid(),
@@ -152,3 +153,52 @@ update public.profiles set role='follower' where lower(email)='505863160@qq.com'
 
 -- Archiving was removed from the product; restore any archived orders.
 update public.orders set archived_at=null where archived_at is not null;
+
+
+-- Supervisor-only recycle bin. Normal followers can update live orders but cannot delete them.
+drop policy if exists "all users read orders" on public.orders;
+create policy "all users read orders" on public.orders for select to authenticated
+using(deleted_at is null or public.can_manage_users());
+
+drop policy if exists "followers create orders" on public.orders;
+create policy "followers create orders" on public.orders for insert to authenticated
+with check(public.is_follower() and deleted_at is null);
+
+drop policy if exists "followers update orders" on public.orders;
+create policy "followers update orders" on public.orders for update to authenticated
+using(public.is_follower() and deleted_at is null)
+with check(public.is_follower() and deleted_at is null);
+
+create or replace function public.soft_delete_order(target_order_id uuid) returns void
+language plpgsql security definer set search_path=public as $$
+begin
+  if not public.can_manage_users() then raise exception 'Only the supervisor can delete orders'; end if;
+  update public.orders set deleted_at=now(),updated_at=now() where id=target_order_id and deleted_at is null;
+end; $$;
+
+create or replace function public.restore_deleted_order(target_order_id uuid) returns void
+language plpgsql security definer set search_path=public as $$
+begin
+  if not public.can_manage_users() then raise exception 'Only the supervisor can restore orders'; end if;
+  update public.orders set deleted_at=null,updated_at=now() where id=target_order_id and deleted_at is not null;
+end; $$;
+
+create or replace function public.permanently_delete_order(target_order_id uuid) returns void
+language plpgsql security definer set search_path=public as $$
+begin
+  if not public.can_manage_users() then raise exception 'Only the supervisor can permanently delete orders'; end if;
+  delete from public.orders where id=target_order_id and deleted_at is not null;
+end; $$;
+
+revoke all on function public.soft_delete_order(uuid) from public;
+revoke all on function public.restore_deleted_order(uuid) from public;
+revoke all on function public.permanently_delete_order(uuid) from public;
+grant execute on function public.soft_delete_order(uuid) to authenticated;
+grant execute on function public.restore_deleted_order(uuid) to authenticated;
+grant execute on function public.permanently_delete_order(uuid) to authenticated;
+
+drop policy if exists "supervisor delete order images" on storage.objects;
+create policy "supervisor delete order images" on storage.objects for delete to authenticated
+using(bucket_id='order-images' and public.can_manage_users());
+
+create index if not exists orders_deleted_idx on public.orders(deleted_at);

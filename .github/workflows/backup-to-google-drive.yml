@@ -1,4 +1,4 @@
-name: Backup Cargo Pulse to Google Drive
+name: Backup Cargo Pulse
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: cargo-pulse-google-drive-backup
+  group: cargo-pulse-backup
   cancel-in-progress: false
 
 jobs:
@@ -24,8 +24,6 @@ jobs:
     env:
       SUPABASE_URL: https://xymhvwgszprybuhrjihm.supabase.co
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-      GOOGLE_DRIVE_FOLDER_ID: 1oFt8m2hagyJ-hqiv4KnLJBTvsromt6HO
 
     steps:
       - name: Download repository
@@ -42,6 +40,11 @@ jobs:
       - name: Create compressed backup
         run: cd backup-output && zip -r "$RUNNER_TEMP/cargo-pulse-backup.zip" .
 
-      - name: Upload to Google Drive and retain latest 12 backups
-        run: node scripts/backup-to-google-drive.mjs upload "$RUNNER_TEMP/cargo-pulse-backup.zip"
+      - name: Save backup in GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-pulse-backup-${{ github.run_id }}
+          path: ${{ runner.temp }}/cargo-pulse-backup.zip
+          retention-days: 90
+          if-no-files-found: error
 

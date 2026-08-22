@@ -379,3 +379,10 @@ header nav{margin-left:auto}
 .tracking-detail dd span{display:inline-flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid #dce6e1;border-radius:7px;background:#f5f8f6;color:#294e43}
 .tracking-detail dd b{font-size:10px;color:#718078;font-weight:600}
 .timeline-tracking{color:#24644f!important;font-weight:600}
+
+
+/* Returning-customer recognition */
+.returning-customer{display:inline-flex;align-items:center;width:max-content;max-width:100%;margin-top:5px;padding:3px 8px;border:1px solid #78a99a;border-radius:999px;background:#edf7f3;color:#145444;font-size:12px;font-weight:700;line-height:1.35}
+.customer-match{display:block;margin-top:8px;padding:10px 12px;border:1px solid #78a99a;border-radius:9px;background:#edf7f3;color:#145444;font-size:13px;line-height:1.5}
+.customer-match[hidden]{display:none}
+.detail-title .returning-customer{margin-top:8px}

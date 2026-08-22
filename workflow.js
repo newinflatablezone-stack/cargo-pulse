@@ -21,7 +21,7 @@ export function nextStep(order,current){
  return firstStep(order);
 }
 export function deadline(days,from=new Date()){if(days==null)return null;const d=new Date(from);d.setDate(d.getDate()+days);return d.toISOString()}
-export function alertLevel(value){if(!value)return 'normal';const today=new Date(),due=new Date(value);today.setHours(0,0,0,0);due.setHours(0,0,0,0);const overdue=Math.round((today-due)/86400000);if(overdue===-1)return 'yellow';if(overdue<=0)return 'normal';if(overdue<=2)return 'orange';return 'red'}
+export function alertLevel(value){if(!value)return 'normal';const today=new Date(),due=new Date(value);today.setHours(0,0,0,0);due.setHours(0,0,0,0);const overdue=Math.round((today-due)/86400000);if(overdue===-1)return 'yellow';if(overdue<=0)return 'normal';if(overdue<=2)return 'yellow';return 'red'}
 
 
 export function flowFor(order){const start=order.inventory_mode==='stock'?['shipping_selection']:order.needs_rendering?['rendering','production','production_shipping']:['production','production_shipping'];if(order.shipping_mode==='domestic_express')return [...start,'tracking','delivery','completed'];if(order.shipping_mode==='overseas_warehouse')return [...start,'tracking','delivery','completed'];return [...start,'domestic_customs','ocean_transit','overseas_customs','warehouse_appointment','last_mile','completed']}
@@ -39,4 +39,4 @@ export function overallDeadline(order){
  const seaTotals={domestic_customs:customs,ocean_transit:customs+ocean,overseas_customs:customs+ocean+7,warehouse_appointment:customs+ocean+14,last_mile:customs+ocean+21};
  return deadline(base+(seaTotals[order.current_step]??0),start);
 }
-export function orderAlertLevel(order){const rank={normal:0,yellow:1,orange:2,red:3},stage=alertLevel(order?.step_deadline),overall=alertLevel(overallDeadline(order));return rank[stage]>=rank[overall]?stage:overall}
+export function orderAlertLevel(order){const rank={normal:0,yellow:1,red:2},stage=alertLevel(order?.step_deadline),overall=alertLevel(overallDeadline(order));return rank[stage]>=rank[overall]?stage:overall}

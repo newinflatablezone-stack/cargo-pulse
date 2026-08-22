@@ -1,0 +1,47 @@
+name: Backup Cargo Pulse to Google Drive
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 18 * * 0"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/backup-to-google-drive.yml"
+      - "scripts/backup-to-google-drive.mjs"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cargo-pulse-google-drive-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: https://xymhvwgszprybuhrjihm.supabase.co
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      GOOGLE_DRIVE_FOLDER_ID: 1oFt8m2hagyJ-hqiv4KnLJBTvsromt6HO
+
+    steps:
+      - name: Download repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Export database and order images
+        run: node scripts/backup-to-google-drive.mjs export
+
+      - name: Create compressed backup
+        run: cd backup-output && zip -r "$RUNNER_TEMP/cargo-pulse-backup.zip" .
+
+      - name: Upload to Google Drive and retain latest 12 backups
+        run: node scripts/backup-to-google-drive.mjs upload "$RUNNER_TEMP/cargo-pulse-backup.zip"
+

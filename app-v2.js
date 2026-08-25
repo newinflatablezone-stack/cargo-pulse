@@ -45,13 +45,14 @@ async function hydrateDelayStats(activeOrders){
   const since=new Date();since.setMonth(since.getMonth()-3);since.setHours(0,0,0,0);
   const recent=activeOrders.filter(o=>{const d=new Date(String(o.order_date||'')+'T00:00:00');return !Number.isNaN(d.getTime())&&d>=since});
   if(!recent.length)return;
-  const ids=new Set(recent.map(o=>o.id));
+  const ids=new Set(recent.map(o=>o.id)),supplierEligible=new Set(),logisticsEligible=new Set(),supplierRed=new Set(),logisticsRed=new Set();
+  const logisticsSteps=new Set(['tracking','air_pickup','delivery','domestic_customs','ocean_transit','overseas_customs','warehouse_appointment','last_mile']);
   const history=await api('/rest/v1/order_events?select=*');
-  const redIds=new Set(recent.filter(o=>orderAlertLevel(o)==='red').map(o=>o.id));
-  history.forEach(e=>{if(!ids.has(e.order_id)||!e.deadline_at)return;const due=new Date(e.deadline_at),end=new Date(e.completed_at||Date.now());if(Number.isNaN(due.getTime())||Number.isNaN(end.getTime()))return;due.setHours(0,0,0,0);end.setHours(0,0,0,0);if(Math.round((end-due)/86400000)>=3)redIds.add(e.order_id)});
-  const group=field=>{const map=new Map();recent.forEach(o=>{const name=String(o[field]||'').trim();if(!name)return;const row=map.get(name)||{name,total:0,red:0};row.total++;if(redIds.has(o.id))row.red++;map.set(name,row)});return [...map.values()].filter(x=>x.red>0).map(x=>({...x,rate:x.red/x.total*100})).sort((x,y)=>y.rate-x.rate||y.red-x.red||x.name.localeCompare(y.name))};
-  const section=(title,items)=>`<section class="delay-rate-group"><div class="delay-rate-title"><strong>${title}</strong><small>红色延误 / 总订单</small></div><div class="delay-rate-list">${items.map(x=>`<div class="delay-rate-row"><div class="delay-rate-name"><span>${esc(x.name)}</span><small>${x.red} / ${x.total} 单</small></div><div class="delay-rate-value"><b>${x.rate.toFixed(1)}%</b><i><em style="width:${Math.min(100,x.rate)}%"></em></i></div></div>`).join('')}</div></section>`;
-  const logistics=group('forwarder_name'),suppliers=group('factory_name');
+  const isRed=e=>{if(!e.deadline_at)return false;const due=new Date(e.deadline_at),end=new Date(e.completed_at||Date.now());if(Number.isNaN(due.getTime())||Number.isNaN(end.getTime()))return false;due.setHours(0,0,0,0);end.setHours(0,0,0,0);return Math.round((end-due)/86400000)>=3};
+  history.forEach(e=>{if(!ids.has(e.order_id))return;if(e.step_key==='production'){supplierEligible.add(e.order_id);if(isRed(e))supplierRed.add(e.order_id)}else if(logisticsSteps.has(e.step_key)){logisticsEligible.add(e.order_id);if(isRed(e))logisticsRed.add(e.order_id)}});
+  const group=(field,eligible,redIds)=>{const map=new Map();recent.forEach(o=>{if(!eligible.has(o.id))return;const name=String(o[field]||'').trim();if(!name)return;const row=map.get(name)||{name,total:0,red:0};row.total++;if(redIds.has(o.id))row.red++;map.set(name,row)});return [...map.values()].filter(x=>x.red>0).map(x=>({...x,rate:x.red/x.total*100})).sort((x,y)=>y.rate-x.rate||y.red-x.red||x.name.localeCompare(y.name))};
+  const section=(title,items)=>`<section class="delay-rate-group"><div class="delay-rate-title"><strong>${title}</strong><small>责任阶段红色延误 / 相关订单</small></div><div class="delay-rate-list">${items.map(x=>`<div class="delay-rate-row"><div class="delay-rate-name"><span>${esc(x.name)}</span><small>${x.red} / ${x.total} 单</small></div><div class="delay-rate-value"><b>${x.rate.toFixed(1)}%</b><i><em style="width:${Math.min(100,x.rate)}%"></em></i></div></div>`).join('')}</div></section>`;
+  const logistics=group('forwarder_name',logisticsEligible,logisticsRed),suppliers=group('factory_name',supplierEligible,supplierRed);
   if(!logistics.length&&!suppliers.length)return;
   panel.querySelector('.delay-rate-grid').innerHTML=(logistics.length?section('物流商',logistics):'')+(suppliers.length?section('供应商 / 工厂',suppliers):'');
   panel.hidden=false

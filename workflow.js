@@ -1,4 +1,4 @@
-export const STEP_LABELS={rendering:"效果图",production:"生产",production_shipping:"完成生产并发货",ready_to_ship:"选择发货方式",shipping_selection:"选择发货方式",tracking:"填写物流单号",air_pickup:"等待提取",delivery:"等待签收",domestic_customs:"国内清关开船",ocean_transit:"海上运输",overseas_customs:"海外清关提柜",warehouse_appointment:"海外仓约车",last_mile:"目的地派送",completed:"订单完成"};
+export const STEP_LABELS={rendering:"效果图",production:"生产",production_shipping:"完成生产并发货",ready_to_ship:"选择发货方式",shipping_selection:"选择发货方式",tracking:"填写物流单号",air_pickup:"等待提取",delivery:"等待签收",domestic_customs:"国内清关开船",ocean_transit:"海上运输",overseas_customs:"海外清关提柜",warehouse_appointment:"海外仓约车",last_mile:"目的地派送",batch_shipping:"分批物流",completed:"订单完成"};
 export function firstStep(order){if(order.inventory_mode==='stock')return {key:'shipping_selection',days:1};if(order.needs_rendering)return {key:'rendering',days:3};return {key:'production',days:10}}
 export function nextShipping(order){
  if(!order.shipping_mode)return {key:'shipping_selection',days:1};
@@ -26,10 +26,10 @@ export function deadline(days,from=new Date()){if(days==null)return null;const d
 export function alertLevel(value){if(!value)return 'normal';const today=new Date(),due=new Date(value);today.setHours(0,0,0,0);due.setHours(0,0,0,0);const overdue=Math.round((today-due)/86400000);if(overdue===-1)return 'yellow';if(overdue<=0)return 'normal';if(overdue<=2)return 'yellow';return 'red'}
 
 
-export function flowFor(order){const start=order.inventory_mode==='stock'?['shipping_selection']:order.needs_rendering?['rendering','production','production_shipping']:['production','production_shipping'];if(order.shipping_mode==='air_freight')return [...start,'air_pickup','delivery','completed'];if(order.shipping_mode==='domestic_express')return [...start,'tracking','delivery','completed'];if(order.shipping_mode==='overseas_warehouse')return [...start,'tracking','delivery','completed'];return [...start,'domestic_customs','ocean_transit','overseas_customs','warehouse_appointment','last_mile','completed']}
+export function flowFor(order){if(order.current_step==='batch_shipping')return ['batch_shipping','completed'];const start=order.inventory_mode==='stock'?['shipping_selection']:order.needs_rendering?['rendering','production','production_shipping']:['production','production_shipping'];if(order.shipping_mode==='air_freight')return [...start,'air_pickup','delivery','completed'];if(order.shipping_mode==='domestic_express')return [...start,'tracking','delivery','completed'];if(order.shipping_mode==='overseas_warehouse')return [...start,'tracking','delivery','completed'];return [...start,'domestic_customs','ocean_transit','overseas_customs','warehouse_appointment','last_mile','completed']}
 
 export function overallDeadline(order){
- if(!order?.order_date||order.current_step==='completed')return null;
+ if(!order?.order_date||order.current_step==='completed')return null;if(order.current_step==='batch_shipping')return order.step_deadline||null;
  const start=new Date(order.order_date+'T00:00:00');
  if(order.current_step==='rendering')return deadline(3,start);
  const base=order.inventory_mode==='stock'?0:(order.needs_rendering?11:10);

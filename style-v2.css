@@ -536,3 +536,74 @@ header nav{margin-left:auto}
  .product-copy h3{font-size:11px!important}
  .step-name{max-width:66px!important;font-size:8px!important}
 }
+
+
+/* Compact top information hierarchy */
+.stats{gap:7px!important;margin-bottom:9px!important}
+.stats article{min-height:72px!important;padding:9px 11px 9px 18px!important;border-radius:10px!important}
+.stats article:before{left:8px!important;top:10px!important;bottom:10px!important;width:3px!important}
+.stats small{font-size:10px!important;line-height:1.15!important}
+.stats b{font-size:22px!important;line-height:1!important;margin:5px 0 2px!important}
+.stats span{font-size:9.5px!important;line-height:1.2!important}
+.delay-rate-panel{margin-bottom:9px!important;padding:10px 12px 11px!important;border-radius:10px!important}
+.delay-rate-heading{align-items:center!important;margin-bottom:7px!important}
+.delay-rate-heading .kicker{font-size:8px!important;line-height:1!important}
+.delay-rate-heading h2{font-size:15px!important;margin-top:2px!important}
+.delay-rate-heading>small{font-size:9px!important}
+.delay-rate-grid{gap:7px!important}
+.delay-rate-group{padding:7px 9px!important;border-radius:8px!important;min-width:0!important}
+.delay-rate-title{padding-bottom:4px!important}
+.delay-rate-title strong{font-size:10.5px!important}
+.delay-rate-title small{font-size:8px!important}
+.delay-rate-list{gap:0!important;margin-top:2px!important;max-height:145px;overflow-y:auto}
+.delay-rate-row{grid-template-columns:minmax(0,1fr) 92px!important;gap:7px!important;padding:3px 0!important;min-height:22px}
+.delay-rate-name{gap:5px!important}
+.delay-rate-name span{font-size:9.5px!important}
+.delay-rate-name small{font-size:7.5px!important}
+.delay-rate-value{grid-template-columns:38px 1fr!important;gap:5px!important}
+.delay-rate-value b{font-size:9px!important}
+.delay-rate-value i{height:3px!important}
+.order-controls{padding:10px 14px!important;gap:12px!important}
+.order-controls h2{font-size:16px!important;margin:0 0 1px!important}
+.order-controls small{font-size:9px!important}
+.order-controls .kicker{font-size:8px!important}
+.order-control-actions .searchbar{padding:7px 10px!important;font-size:11px!important}
+.compact-new-order{padding:7px 11px!important;font-size:10px!important}
+.index-filters{padding:0 14px 8px!important}
+.index-filters label{font-size:9.5px!important}
+.index-filters select{padding:6px 8px!important;font-size:10.5px!important}
+.toolbar{min-height:40px!important;padding-left:14px!important;padding-right:14px!important}
+.tabs button,.tool-actions button{font-size:10.5px!important}
+
+@media(max-width:650px){
+ main{padding-top:10px!important}
+ .stats{display:flex!important;grid-template-columns:none!important;overflow-x:auto!important;gap:6px!important;margin-bottom:8px!important;padding:1px 0 3px!important;scroll-snap-type:x proximity;scrollbar-width:none}
+ .stats::-webkit-scrollbar{display:none}
+ .stats article{flex:0 0 112px!important;min-height:60px!important;padding:7px 7px 7px 14px!important;scroll-snap-align:start}
+ .stats article:before{left:6px!important;top:8px!important;bottom:8px!important;width:2px!important}
+ .stats small{font-size:8.5px!important}
+ .stats b{font-size:18px!important;margin:4px 0 1px!important}
+ .stats span{font-size:7.5px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+ .delay-rate-panel{padding:8px!important;margin-bottom:8px!important}
+ .delay-rate-heading{margin-bottom:5px!important}
+ .delay-rate-heading .kicker{display:none!important}
+ .delay-rate-heading h2{font-size:12px!important;margin:0!important}
+ .delay-rate-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:5px!important}
+ .delay-rate-group{padding:6px!important}
+ .delay-rate-title strong{font-size:9px!important}
+ .delay-rate-title small{display:none!important}
+ .delay-rate-list{max-height:112px!important}
+ .delay-rate-row{grid-template-columns:minmax(0,1fr) auto!important;gap:4px!important;padding:3px 0!important}
+ .delay-rate-name{display:block!important;min-width:0!important}
+ .delay-rate-name span{display:block!important;font-size:8.5px!important}
+ .delay-rate-name small{display:block!important;font-size:6.8px!important}
+ .delay-rate-value{display:block!important}
+ .delay-rate-value b{font-size:8px!important}
+ .delay-rate-value i{display:none!important}
+ .order-controls{padding:8px 10px!important}
+ .order-controls>div:first-child{display:none!important}
+ .order-control-actions{display:flex!important;flex-direction:row!important;align-items:center!important;gap:6px!important}
+ .order-control-actions .searchbar{min-width:0!important;padding:6px 8px!important;font-size:10px!important}
+ .compact-new-order{width:auto!important;padding:6px 8px!important;font-size:9px!important;white-space:nowrap!important}
+ .index-filters{padding:6px 10px 7px!important}
+}

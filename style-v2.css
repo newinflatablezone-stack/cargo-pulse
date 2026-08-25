@@ -624,3 +624,21 @@ header nav{margin-left:auto}
  .stats small{font-size:7px!important}
  .stats b{font-size:16px!important}
 }
+
+
+/* Stable submit-based order search */
+.searchbox{margin:0}
+.searchbox .search-icon{flex:0 0 auto}
+.searchbox input{flex:1;min-width:0}
+.searchbox .search-clear,.searchbox .search-submit{font:inherit;cursor:pointer;white-space:nowrap}
+.searchbox .search-clear{width:24px;height:24px;padding:0;border:0;border-radius:50%;background:#e8eeea;color:#52635c;line-height:24px}
+.searchbox .search-clear:hover{background:#dce6e0;color:#173f34}
+.searchbox .search-clear[hidden]{display:none}
+.searchbox .search-submit{align-self:stretch;margin:-7px -10px -7px 0;padding:0 16px;border:0;border-radius:0 8px 8px 0;background:#174f40;color:#fff;font-weight:700}
+.searchbox .search-submit:hover{background:#0f4034}
+@media(max-width:650px){
+ .order-control-actions .searchbox{padding:6px 6px 6px 9px!important}
+ .searchbox .search-icon{font-size:14px!important}
+ .searchbox .search-submit{margin:-6px -6px -6px 0;padding:0 12px;font-size:11px}
+ .searchbox .search-clear{width:22px;height:22px;line-height:22px}
+}

@@ -656,3 +656,29 @@ header nav{margin-left:auto}
  .delay-rate-name small{font-size:7.5px!important}
  .delay-rate-value b{font-size:9px!important}
 }
+
+
+/* Multiple factories */
+.extra-factories{border:1px solid #d9e2de;border-radius:12px;padding:14px 16px;background:#f8fbf9}
+.extra-factories legend{font-weight:700;color:#173f36;padding:0 6px}
+.extra-factories>p{margin:0 0 10px;color:#74847f;font-size:.88rem}
+.extra-factories>div{display:flex;flex-wrap:wrap;gap:8px}
+.extra-factories>div label{display:inline-flex;align-items:center;gap:7px;margin:0;padding:8px 11px;border:1px solid #dbe5e1;border-radius:9px;background:#fff;cursor:pointer}
+.extra-factories input{width:16px;height:16px;margin:0;accent-color:#176554}
+.factory-production{margin:20px 0;border:1px solid #d8e4df;border-radius:14px;padding:16px;background:#f8fbf9}
+.factory-production-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}
+.factory-production-head h3{margin:2px 0 0}.factory-production-head>span{font-size:.88rem;color:#657772}
+.factory-production-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+.factory-production-list article{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:62px;padding:11px 12px;border:1px solid #d9e3df;border-left:4px solid #96aaa3;border-radius:10px;background:#fff}
+.factory-production-list article.yellow{border-left-color:#eab308;background:#fffbea}
+.factory-production-list article.red{border-left-color:#dc3d2a;background:#fff3f1}
+.factory-production-list article.done{border-left-color:#278d72;background:#f2faf7}
+.factory-production-list article>div{display:flex;min-width:0;flex-direction:column;gap:4px}
+.factory-production-list article b{color:#173f36}.factory-production-list article span{font-size:.82rem;color:#73827e}
+.factory-production-list button{flex:none;border:1px solid #b8d0c8;border-radius:8px;padding:7px 10px;background:#fff;color:#145647;font-weight:700;cursor:pointer}
+#advance:disabled{opacity:.58;cursor:not-allowed}
+@media(max-width:680px){
+ .extra-factories{padding:11px}.extra-factories>div{display:grid;grid-template-columns:1fr 1fr}
+ .factory-production{margin:14px 0;padding:12px}.factory-production-list{grid-template-columns:1fr}
+ .factory-production-list article{min-height:54px}
+}

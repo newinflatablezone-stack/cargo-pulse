@@ -703,3 +703,28 @@ header nav{margin-left:auto}
  .batch-shipping-list article{grid-template-columns:1fr auto;gap:8px}.batch-state{grid-column:1}.batch-shipping-list button{grid-column:2;grid-row:1/3}
  .batch-config-row{grid-template-columns:1fr 1fr;padding:14px 10px 10px}.batch-config-row label{font-size:.78rem}
 }
+
+
+/* Compact delay responsibility layout: label left, metric right */
+.delay-rate-panel{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important;padding:10px 14px!important}
+.delay-rate-group{min-width:0!important;padding:7px 10px!important;border-radius:8px!important}
+.delay-rate-group+.delay-rate-group{margin-top:0!important}
+.delay-rate-title{padding-bottom:4px!important}
+.delay-rate-list{margin-top:2px!important;max-height:none!important;overflow:visible!important}
+.delay-rate-row{display:grid!important;grid-template-columns:minmax(0,1fr) 126px!important;align-items:center!important;gap:10px!important;min-height:25px!important;padding:3px 0!important}
+.delay-rate-name{display:flex!important;align-items:baseline!important;gap:6px!important;min-width:0!important}
+.delay-rate-name span{display:block!important;min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.delay-rate-name small{display:block!important;flex:0 0 auto!important}
+.delay-rate-value{display:grid!important;grid-template-columns:48px minmax(38px,1fr)!important;align-items:center!important;gap:6px!important}
+.delay-rate-value i{display:block!important}
+@media(max-width:650px){
+ .delay-rate-panel{grid-template-columns:minmax(0,1fr)!important;padding:6px!important;gap:0!important}
+ .delay-rate-group{padding:6px 7px!important}
+ .delay-rate-row{grid-template-columns:minmax(0,1fr) 94px!important;gap:5px!important;min-height:23px!important;padding:3px 0!important}
+ .delay-rate-name{display:flex!important;gap:4px!important}
+ .delay-rate-name span{font-size:9.5px!important}
+ .delay-rate-name small{font-size:7.5px!important}
+ .delay-rate-value{display:grid!important;grid-template-columns:38px minmax(28px,1fr)!important;gap:4px!important}
+ .delay-rate-value b{font-size:9px!important}
+ .delay-rate-value i{display:block!important;height:3px!important}
+}

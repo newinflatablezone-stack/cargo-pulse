@@ -728,3 +728,13 @@ header nav{margin-left:auto}
  .delay-rate-value b{font-size:9px!important}
  .delay-rate-value i{display:block!important;height:3px!important}
 }
+
+
+/* Desktop responsibility statistics: logistics left, suppliers right */
+@media(min-width:651px){
+ .delay-rate-panel{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;align-items:start!important}
+ .delay-rate-group+.delay-rate-group{margin-top:0!important}
+}
+@media(max-width:650px){
+ .delay-rate-panel{grid-template-columns:minmax(0,1fr)!important}
+}

@@ -458,3 +458,35 @@ header nav{margin-left:auto}
  .order-card footer i{display:none}
  .delay-rate-heading>small{display:none}
 }
+
+
+/* Extra-compact mobile order list */
+@media(max-width:650px){
+ .order-card{display:grid;grid-template-columns:52px minmax(0,1fr);grid-template-rows:auto auto;column-gap:7px;row-gap:3px;padding:7px 9px 7px 11px}
+ .order-card:before{top:6px;bottom:6px;width:2px}
+ .card-top{grid-column:1;grid-row:1/3;align-self:start;display:block;min-height:0;padding:1px 0 0!important}
+ .order-no{font-size:10.5px!important;line-height:1.2;letter-spacing:.01em}
+ .card-main{grid-column:2;grid-row:1;display:flex;align-items:flex-start;min-width:0;margin:0!important;padding-right:78px;gap:5px}
+ .product-summary{min-width:0;flex:1;gap:5px}
+ .order-thumb{width:27px!important;height:27px!important;flex:0 0 27px!important;border-radius:4px}
+ .product-copy{min-width:0}
+ .product-copy h3{font-size:10.5px!important;line-height:1.2!important;margin:0 0 1px!important;font-weight:600}
+ .product-copy p{font-size:9.5px!important;line-height:1.2!important;margin:0!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .tracking-preview{font-size:8.5px!important;line-height:1.15!important}
+ .returning-customer{font-size:8px!important;padding:1px 4px!important;margin-top:1px!important}
+ .step-name{flex:0 0 auto;max-width:72px;padding:2px 5px!important;border-radius:5px;font-size:8.5px!important;line-height:1.25;text-align:center}
+ .order-card footer{grid-column:2;grid-row:2;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;margin:0;padding:3px 0 0!important;border-top:1px dashed #edf1ee;font-size:8.8px!important;line-height:1.15}
+ .order-card footer span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .order-card footer span small{display:block;font-size:7.5px!important;line-height:1.1;margin:0 0 1px!important;color:#98a39d}
+ .order-card footer i{display:none!important}
+ .card-status{right:7px!important;top:6px!important;max-width:74px!important}
+ .card-status .alert{padding:2px 4px!important;font-size:7.5px!important;line-height:1.15}
+ .card-status .alert-pair{gap:1px!important}
+}
+@media(max-width:390px){
+ .order-card{grid-template-columns:46px minmax(0,1fr);padding-left:9px;padding-right:7px}
+ .order-no{font-size:9.5px!important}
+ .card-main{padding-right:68px}
+ .step-name{max-width:62px;font-size:8px!important}
+ .card-status{max-width:64px!important}
+}

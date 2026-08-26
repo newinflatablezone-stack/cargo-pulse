@@ -72,7 +72,7 @@ sudo -u "$APP_USER" bash -lc "cd '$APP_SOURCE' && npm run build"
 
 install -d "$APP_SOURCE/dist/api"
 install -m 644 "$APP_CONFIG" "$APP_SOURCE/dist/api/config"
-VERSION="$(git -C "$APP_SOURCE" rev-parse HEAD)"
+VERSION="$(sudo -u "$APP_USER" git -C "$APP_SOURCE" rev-parse HEAD)"
 printf '{"version":"%s"}\n' "$VERSION" > "$APP_SOURCE/dist/api/version"
 chown -R "$APP_USER:$APP_USER" "$APP_SOURCE/dist"
 

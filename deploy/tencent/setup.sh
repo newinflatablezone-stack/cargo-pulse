@@ -26,12 +26,15 @@ if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'Number(process.versions.no
   fi
 fi
 
-install -d -o "$APP_USER" -g "$APP_USER" "$APP_SOURCE" "$APP_ROOT"
+install -d "$APP_SOURCE" "$APP_ROOT"
+chown -R "$APP_USER:$APP_USER" "$APP_SOURCE" "$APP_ROOT"
 install -d -m 700 "$APP_CONFIG_DIR"
 
 if [ ! -d "$APP_SOURCE/.git" ]; then
-  install -d -o "$APP_USER" -g "$APP_USER" "$APP_SOURCE"
+  install -d "$APP_SOURCE"
+  chown -R "$APP_USER:$APP_USER" "$APP_SOURCE"
   find "$APP_SOURCE" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  chown "$APP_USER:$APP_USER" "$APP_SOURCE"
   sudo -u "$APP_USER" git clone --branch main --single-branch "$APP_REPO" "$APP_SOURCE"
 fi
 

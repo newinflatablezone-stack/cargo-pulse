@@ -708,7 +708,7 @@ header nav{margin-left:auto}
 /* Compact delay responsibility layout: label left, metric right */
 .delay-rate-panel{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important;padding:10px 14px!important}
 .delay-rate-group{min-width:0!important;padding:7px 10px!important;border-radius:8px!important}
-.delay-rate-group+.delay-rate-group{margin-top:0!important}
+.delay-rate-group+.delay-rate-group{margin-top:10px!important}
 .delay-rate-title{padding-bottom:4px!important}
 .delay-rate-list{margin-top:2px!important;max-height:none!important;overflow:visible!important}
 .delay-rate-row{display:grid!important;grid-template-columns:minmax(0,1fr) 126px!important;align-items:center!important;gap:10px!important;min-height:25px!important;padding:3px 0!important}

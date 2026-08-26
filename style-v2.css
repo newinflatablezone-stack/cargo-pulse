@@ -588,7 +588,7 @@ header nav{margin-left:auto}
  .delay-rate-heading{margin-bottom:5px!important}
  .delay-rate-heading .kicker{display:none!important}
  .delay-rate-heading h2{font-size:12px!important;margin:0!important}
- .delay-rate-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:5px!important}
+ .delay-rate-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
  .delay-rate-group{padding:6px!important}
  .delay-rate-title strong{font-size:9px!important}
  .delay-rate-title small{display:none!important}

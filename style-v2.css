@@ -790,10 +790,11 @@ header nav{margin-left:auto}
 @media(max-width:650px){
  .delay-rate-panel{padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important}
  .delay-rate-heading{display:none!important}
- .delay-rate-grid{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:10px!important}
+ .delay-rate-grid{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important}
  .delay-rate-group,
  .delay-rate-group:first-child,
  .delay-rate-group+.delay-rate-group{margin:0!important;padding:8px 9px!important;border:1px solid #dfe6e1!important;border-radius:10px!important;background:#fff!important;box-shadow:0 4px 14px rgba(19,45,36,.035)!important}
+ .delay-rate-group+.delay-rate-group{margin-top:16px!important}
 }
 
 

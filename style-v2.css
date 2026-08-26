@@ -783,3 +783,12 @@ header nav{margin-left:auto}
  .toolbar .tool-actions button{padding:5px 8px!important;font-size:9px!important;border-radius:6px!important}
  .result-count{display:none!important}
 }
+
+
+/* Mobile delay statistics: join logistics and supplier sections */
+@media(max-width:650px){
+ .delay-rate-panel{gap:0!important}
+ .delay-rate-group{margin:0!important}
+ .delay-rate-group:first-child{border-radius:9px 9px 0 0!important}
+ .delay-rate-group+.delay-rate-group{margin-top:-1px!important;border-radius:0 0 9px 9px!important}
+}

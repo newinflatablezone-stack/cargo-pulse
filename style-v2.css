@@ -743,3 +743,13 @@ header nav{margin-left:auto}
 /* Keep long order numbers inside their own grid cell */
 .card-top{min-width:0!important;max-width:100%!important}
 .order-no{display:block!important;min-width:0!important;max-width:100%!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-all!important}
+
+
+/* Mobile status cards: two rows, complete readable text, no horizontal scroll */
+@media(max-width:650px){
+ .stats{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important;overflow:visible!important;padding:0!important}
+ .stats article{width:auto!important;min-width:0!important;min-height:64px!important;padding:8px 8px 7px 14px!important}
+ .stats small{display:block!important;font-size:9px!important;line-height:1.2!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important}
+ .stats b{font-size:19px!important;line-height:1!important;margin:4px 0 2px!important}
+ .stats span{display:block!important;font-size:8px!important;line-height:1.25!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important}
+}

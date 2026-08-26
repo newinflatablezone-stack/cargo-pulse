@@ -9,7 +9,8 @@ export function nextShipping(order){
 }
 export function oceanTransitDays(order){
  const standard=order.sea_region==='europe'?40:16;
- return standard+(String(order.forwarder_name||'').trim()==='众一'?4:0);
+ const zhongyiNonEurope=String(order.forwarder_name||'').trim()==='众一'&&order.sea_region!=='europe';
+ return standard+(zhongyiNonEurope?4:0);
 }
 export function nextStep(order,current){
  if(current==='order_created')return firstStep(order);

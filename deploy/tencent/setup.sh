@@ -30,7 +30,8 @@ install -d -o "$APP_USER" -g "$APP_USER" "$APP_SOURCE" "$APP_ROOT"
 install -d -m 700 "$APP_CONFIG_DIR"
 
 if [ ! -d "$APP_SOURCE/.git" ]; then
-  rm -rf "$APP_SOURCE"
+  install -d -o "$APP_USER" -g "$APP_USER" "$APP_SOURCE"
+  find "$APP_SOURCE" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
   sudo -u "$APP_USER" git clone --branch main --single-branch "$APP_REPO" "$APP_SOURCE"
 fi
 

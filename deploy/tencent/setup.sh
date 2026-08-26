@@ -63,7 +63,12 @@ APP_CONFIG="/etc/cargo-pulse/config.json"
 sudo -u "$APP_USER" git -C "$APP_SOURCE" fetch origin main
 sudo -u "$APP_USER" git -C "$APP_SOURCE" checkout main
 sudo -u "$APP_USER" git -C "$APP_SOURCE" pull --ff-only origin main
-sudo -u "$APP_USER" bash -lc "cd '$APP_SOURCE' && npm ci && npm run build"
+if [ -f "$APP_SOURCE/package-lock.json" ] || [ -f "$APP_SOURCE/npm-shrinkwrap.json" ]; then
+  sudo -u "$APP_USER" bash -lc "cd '$APP_SOURCE' && npm ci"
+else
+  sudo -u "$APP_USER" bash -lc "cd '$APP_SOURCE' && npm install --no-audit --no-fund"
+fi
+sudo -u "$APP_USER" bash -lc "cd '$APP_SOURCE' && npm run build"
 
 install -d "$APP_SOURCE/dist/api"
 install -m 644 "$APP_CONFIG" "$APP_SOURCE/dist/api/config"

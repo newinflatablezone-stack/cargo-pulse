@@ -952,4 +952,6 @@ header nav{margin-left:auto}
   .orders .order-card .product-copy>p{font-size:10px!important}
   .orders .order-card .step-name{max-width:78px!important;font-size:9px!important}
 }
+#rollback{font-size:0!important}
+.actions #rollback::after{content:'回退上一步';font-size:13px}
 

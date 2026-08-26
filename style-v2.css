@@ -753,3 +753,13 @@ header nav{margin-left:auto}
  .stats b{font-size:19px!important;line-height:1!important;margin:4px 0 2px!important}
  .stats span{display:block!important;font-size:8px!important;line-height:1.25!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important}
 }
+
+
+/* Search and create actions share one visual height */
+.order-control-actions .searchbar,
+.order-control-actions .compact-new-order{height:38px!important;min-height:38px!important;box-sizing:border-box!important}
+.order-control-actions .compact-new-order{display:inline-flex!important;align-items:center!important;justify-content:center!important}
+@media(max-width:650px){
+ .order-control-actions .searchbar,
+ .order-control-actions .compact-new-order{height:34px!important;min-height:34px!important}
+}

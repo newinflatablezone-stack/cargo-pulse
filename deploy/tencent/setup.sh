@@ -110,6 +110,9 @@ server {
     }
 
     location / {
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
         try_files $uri $uri/ /index.html;
     }
 }
@@ -128,12 +131,12 @@ SERVICE
 
 cat > /etc/systemd/system/cargo-pulse-deploy.timer <<'TIMER'
 [Unit]
-Description=Check GitHub for Cargo Pulse updates every minute
+Description=Check GitHub for Cargo Pulse updates every 15 seconds
 
 [Timer]
-OnBootSec=30s
-OnUnitActiveSec=60s
-AccuracySec=5s
+OnBootSec=10s
+OnUnitActiveSec=15s
+AccuracySec=1s
 Persistent=true
 
 [Install]
@@ -147,4 +150,4 @@ systemctl restart nginx
 
 echo
 echo "Cargo Pulse 腾讯云部署完成"
-echo "GitHub 自动同步已开启（每分钟检查一次）"
+echo "GitHub 自动同步已开启（每 15 秒检查一次）"

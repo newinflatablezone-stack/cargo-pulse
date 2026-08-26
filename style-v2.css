@@ -785,12 +785,14 @@ header nav{margin-left:auto}
 }
 
 
-/* Mobile delay statistics: join logistics and supplier sections */
+/* Mobile delay statistics: keep logistics and suppliers as separate cards */
 @media(max-width:650px){
- .delay-rate-panel{gap:0!important}
- .delay-rate-group{margin:0!important}
- .delay-rate-group:first-child{border-radius:9px 9px 0 0!important}
- .delay-rate-group+.delay-rate-group{margin-top:-1px!important;border-radius:0 0 9px 9px!important}
+ .delay-rate-panel{padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important}
+ .delay-rate-heading{display:none!important}
+ .delay-rate-grid{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:10px!important}
+ .delay-rate-group,
+ .delay-rate-group:first-child,
+ .delay-rate-group+.delay-rate-group{margin:0!important;padding:8px 9px!important;border:1px solid #dfe6e1!important;border-radius:10px!important;background:#fff!important;box-shadow:0 4px 14px rgba(19,45,36,.035)!important}
 }
 
 
@@ -950,3 +952,4 @@ header nav{margin-left:auto}
   .orders .order-card .product-copy>p{font-size:10px!important}
   .orders .order-card .step-name{max-width:78px!important;font-size:9px!important}
 }
+

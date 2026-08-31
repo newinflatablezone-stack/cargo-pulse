@@ -11,6 +11,7 @@
 .customer-address { grid-column: 1 / -1; border-top: 1px solid #e1e9e6; border-right: 0; }
 .customer-label { display: block; margin-bottom: 5px; color: #7b8e88; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .customer-value { display: block; color: #173a32; font-size: 14px; font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; }
+.lookup.email-only { grid-template-columns: minmax(0, 1fr) auto; }
 @media (max-width: 700px) {
   .customer-grid { grid-template-columns: 1fr; }
   .customer-field, .customer-field:nth-child(3) { padding: 12px 14px; border-right: 0; border-bottom: 1px solid #e1e9e6; }

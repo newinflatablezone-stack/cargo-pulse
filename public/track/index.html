@@ -22,13 +22,9 @@
     <section class="hero">
       <p class="eyebrow">SHIPMENT TRACKING</p>
       <h1>Track Your Shipment</h1>
-      <p>Enter your order number and email address to view the latest shipment updates and estimated delivery date.</p>
+      <p>Enter your email address to view the latest shipment updates and estimated delivery date.</p>
 
-      <form id="track-form" class="lookup" novalidate>
-        <label>
-          <span>Order Number</span>
-          <input id="order-no" name="order_no" value="#" autocomplete="off" spellcheck="false" required />
-        </label>
+      <form id="track-form" class="lookup email-only" novalidate>
         <label>
           <span>Email Address</span>
           <input id="email" name="email" type="email" autocomplete="email" placeholder="name@example.com" required />

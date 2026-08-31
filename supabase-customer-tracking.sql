@@ -1,19 +1,19 @@
 -- Cargo Pulse customer tracking portal (run once in Supabase SQL Editor)
 -- The browser receives only this function's whitelisted response. RLS remains enabled.
-create or replace function public.lookup_customer_tracking(p_order_no text, p_email text)
+drop function if exists public.lookup_customer_tracking(text, text);
+
+create or replace function public.lookup_customer_tracking(p_email text)
 returns jsonb
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  v_order_no text := lower(regexp_replace(trim(coalesce(p_order_no, '')), '^#+[[:space:]]*', ''));
   v_email text := lower(trim(coalesce(p_email, '')));
   v_order public.orders%rowtype;
   v_result jsonb;
 begin
-  if length(v_order_no) < 1 or length(v_order_no) > 120
-     or length(v_email) < 5 or length(v_email) > 254
+  if length(v_email) < 5 or length(v_email) > 254
      or position('@' in v_email) <= 1 then
     return jsonb_build_object('found', false);
   end if;
@@ -21,7 +21,6 @@ begin
   select o.* into v_order
   from public.orders o
   where o.deleted_at is null
-    and lower(regexp_replace(trim(o.order_no), '^#+[[:space:]]*', '')) = v_order_no
     and exists (
       select 1
       from regexp_matches(
@@ -31,6 +30,7 @@ begin
       ) as matched(value)
       where value[1] = v_email
     )
+  order by o.order_date desc nulls last, o.created_at desc
   limit 1;
 
   if v_order.id is null then
@@ -104,5 +104,5 @@ begin
 end;
 $$;
 
-revoke all on function public.lookup_customer_tracking(text, text) from public;
-grant execute on function public.lookup_customer_tracking(text, text) to anon, authenticated;
+revoke all on function public.lookup_customer_tracking(text) from public;
+grant execute on function public.lookup_customer_tracking(text) to anon, authenticated;

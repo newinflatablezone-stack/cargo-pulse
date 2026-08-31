@@ -57,7 +57,7 @@ create table if not exists public.orders (
   inventory_mode text not null check(inventory_mode in ('stock','production')),
   factory_name text,
   needs_rendering boolean not null default false,
-  shipping_mode text check(shipping_mode in ('domestic_express','domestic_sea','overseas_warehouse')),
+  shipping_mode text check(shipping_mode in ('domestic_express','air_freight','domestic_sea','overseas_warehouse')),
   sea_region text check(sea_region in ('europe','non_europe')),
   overseas_method text check(overseas_method in ('express','truck')),
   forwarder_name text,

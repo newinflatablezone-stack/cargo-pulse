@@ -110,14 +110,29 @@ function customerField(label,value,className=""){
   return field;
 }
 
+function renderCustomerProfile(customerInfo){
+  const profile=el("div","customer-profile"),identity=el("div","customer-identity"),details=el("div","customer-details");
+  const name=englishText(customerInfo.name,"Customer");
+  const avatar=el("span","customer-avatar",name.slice(0,1).toUpperCase());
+  const identityText=el("div","customer-identity-text");
+  identityText.append(el("span","customer-label","Customer"),el("strong","customer-name",name));
+  identity.append(avatar,identityText);
+  const contacts=[customerField("Telephone",customerInfo.phone),customerField("Email",customerInfo.email)].filter(Boolean);
+  if(contacts.length)details.append(...contacts);
+  else details.append(customerField("Contact","Available from your sales representative."));
+  profile.append(identity,details);
+  if(customerInfo.address){
+    const address=customerField("Delivery Address",customerInfo.address,"customer-address");
+    profile.append(address);
+  }
+  return profile;
+}
+
 function renderResult(data){
   const order=data.order,shipments=Array.isArray(data.shipments)?data.shipments:[],events=normalizeEvents(data.events,order);
-  const customer=el("article","customer"),customerTitle=el("div","section-title"),customerGrid=el("div","customer-grid"),customerInfo=parseCustomerInformation(order.customer_info);
-  customerTitle.append(el("h3","","Customer Information"),el("span","","Details for this order only"));
-  const fields=[customerField("Customer",customerInfo.name),customerField("Telephone",customerInfo.phone),customerField("Email",customerInfo.email),customerField("Delivery Address",customerInfo.address,"customer-address")].filter(Boolean);
-  if(fields.length)customerGrid.append(...fields);
-  else customerGrid.append(customerField("Customer Details","Customer details are available from your sales representative.","customer-address"));
-  customer.append(customerTitle,customerGrid);result.append(customer);
+  const customer=el("article","customer"),customerTitle=el("div","section-title"),customerInfo=parseCustomerInformation(order.customer_info);
+  customerTitle.append(el("h3","","Customer Information"));
+  customer.append(customerTitle,renderCustomerProfile(customerInfo));result.append(customer);
   const representative=renderRepresentative(order.business_name);if(representative)result.append(representative);
   if(shipments.length){const card=el("article","track-card"),title=el("div","section-title"),batches=el("div","batches");title.append(el("h3","","Shipment Journey"),el("span","",`${shipments.length} ${shipments.length===1?"shipment":"shipments"}`));card.append(title);shipments.forEach((item,index)=>batches.append(renderBatch(item,index)));card.append(batches);result.append(card)}
   else result.append(renderTimelineCard(events,"Shipment Journey",order));

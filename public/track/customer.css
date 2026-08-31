@@ -1,0 +1,20 @@
+.customer-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, .8fr) minmax(180px, .9fr) minmax(220px, 1.3fr);
+  overflow: hidden;
+  border: 1px solid #dce6e2;
+  border-radius: 12px;
+  background: #fbfcfc;
+}
+.customer-field { min-width: 0; padding: 14px 16px; border-right: 1px solid #e1e9e6; }
+.customer-field:nth-child(3) { border-right: 0; }
+.customer-address { grid-column: 1 / -1; border-top: 1px solid #e1e9e6; border-right: 0; }
+.customer-label { display: block; margin-bottom: 5px; color: #7b8e88; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.customer-value { display: block; color: #173a32; font-size: 14px; font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .customer-grid { grid-template-columns: 1fr; }
+  .customer-field, .customer-field:nth-child(3) { padding: 12px 14px; border-right: 0; border-bottom: 1px solid #e1e9e6; }
+  .customer-field:last-child { border-bottom: 0; }
+  .customer-address { grid-column: auto; border-top: 0; }
+  .customer-value { font-size: 13px; }
+}

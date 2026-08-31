@@ -91,9 +91,36 @@ function renderRepresentative(name){
   card.append(title,identity,contacts);return card;
 }
 
+function parseCustomerInformation(value){
+  const original=String(value||"").replace(/\s+/g," ").trim();
+  if(!original)return {};
+  const emailMatch=original.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  const email=emailMatch?.[0]||"";
+  let remaining=email?original.replace(email," "):original;
+  const phoneMatches=[...remaining.matchAll(/\+\d[\d\s().-]{6,}\d/g)];
+  const phone=phoneMatches.at(-1)?.[0]?.trim()||"";
+  if(phone)remaining=remaining.replace(phone," ");
+  remaining=remaining.replace(/\s+/g," ").trim();
+  const addressStart=remaining.search(/\b\d+[A-Za-z]?(?:[-/]\d+)?\b/);
+  const name=addressStart>0?remaining.slice(0,addressStart).trim():"";
+  const address=addressStart>0?remaining.slice(addressStart).trim():remaining;
+  return {name,address,phone,email};
+}
+function customerField(label,value,className=""){
+  if(!value)return null;
+  const field=el("div",`customer-field ${className}`.trim());
+  field.append(el("span","customer-label",label),el("strong","customer-value",englishText(value)));
+  return field;
+}
+
 function renderResult(data){
   const order=data.order,shipments=Array.isArray(data.shipments)?data.shipments:[],events=normalizeEvents(data.events,order);
-  const customer=el("article","customer"),customerTitle=el("div","section-title");customerTitle.append(el("h3","","Customer Information"),el("span","","Details for this order only"));customer.append(customerTitle,el("p","",englishText(order.customer_info,"Customer details are available from your sales representative.")));result.append(customer);
+  const customer=el("article","customer"),customerTitle=el("div","section-title"),customerGrid=el("div","customer-grid"),customerInfo=parseCustomerInformation(order.customer_info);
+  customerTitle.append(el("h3","","Customer Information"),el("span","","Details for this order only"));
+  const fields=[customerField("Customer",customerInfo.name),customerField("Telephone",customerInfo.phone),customerField("Email",customerInfo.email),customerField("Delivery Address",customerInfo.address,"customer-address")].filter(Boolean);
+  if(fields.length)customerGrid.append(...fields);
+  else customerGrid.append(customerField("Customer Details","Customer details are available from your sales representative.","customer-address"));
+  customer.append(customerTitle,customerGrid);result.append(customer);
   const representative=renderRepresentative(order.business_name);if(representative)result.append(representative);
   if(shipments.length){const card=el("article","track-card"),title=el("div","section-title"),batches=el("div","batches");title.append(el("h3","","Shipment Journey"),el("span","",`${shipments.length} ${shipments.length===1?"shipment":"shipments"}`));card.append(title);shipments.forEach((item,index)=>batches.append(renderBatch(item,index)));card.append(batches);result.append(card)}
   else result.append(renderTimelineCard(events,"Shipment Journey",order));

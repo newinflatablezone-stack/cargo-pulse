@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex,nofollow" />
+  <meta name="theme-color" content="#0c4337" />
+  <title>Cargo Pulse | 物流查询</title>
+  <link rel="icon" href="/favicon.svg" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="brand" aria-label="Cargo Pulse">
+      <a href="./" class="brand-link">
+        <svg class="brand-mark" viewBox="0 0 82 74" aria-hidden="true">
+          <path fill="#0755a7" d="M29 3C13 3 3 13 3 28c0 18 26 43 26 43s26-25 26-43C55 13 45 3 29 3Z"/>
+          <path fill="#00ae67" d="M48 30c-13 0-21 8-21 20 0 14 21 31 21 31s21-17 21-31c0-12-8-20-21-20Z"/>
+          <path fill="#7bc900" d="M61 4c-11 0-18 7-18 17 0 12 18 27 18 27s18-15 18-27C79 11 72 4 61 4Z"/>
+        </svg>
+        <span>Cargo Pulse</span>
+      </a>
+      <span class="secure-pill">物流查询</span>
+    </header>
+
+    <section class="hero">
+      <p class="eyebrow">SHIPMENT TRACKING</p>
+      <h1>查询您的订单进度</h1>
+      <p>输入订单号和下单邮箱，查看最新物流轨迹与预计送达时间。</p>
+
+      <form id="track-form" class="lookup" novalidate>
+        <label>
+          <span>订单号</span>
+          <input id="order-no" name="order_no" value="#" autocomplete="off" spellcheck="false" required />
+        </label>
+        <label>
+          <span>邮箱</span>
+          <input id="email" name="email" type="email" autocomplete="email" placeholder="name@example.com" required />
+        </label>
+        <button id="submit-button" type="submit">查询物流</button>
+      </form>
+      <p id="form-message" class="form-message" role="alert" aria-live="polite"></p>
+    </section>
+
+    <section id="result" class="result" hidden aria-live="polite"></section>
+  </main>
+
+  <footer>查询信息由 Cargo Pulse 安全提供</footer>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

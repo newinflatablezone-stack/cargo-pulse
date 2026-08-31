@@ -64,6 +64,9 @@ chown -R "$APP_USER:$APP_USER" "$APP_SOURCE"
 git config --system --add safe.directory "$APP_SOURCE" 2>/dev/null || true
 sudo -u "$APP_USER" git config --global --add safe.directory "$APP_SOURCE" 2>/dev/null || true
 sudo -u "$APP_USER" git -C "$APP_SOURCE" fetch origin main
+if [ -f "$APP_SOURCE/package-lock.json" ] && ! sudo -u "$APP_USER" git -C "$APP_SOURCE" ls-files --error-unmatch package-lock.json >/dev/null 2>&1; then
+  rm -f "$APP_SOURCE/package-lock.json"
+fi
 sudo -u "$APP_USER" git -C "$APP_SOURCE" checkout main
 sudo -u "$APP_USER" git -C "$APP_SOURCE" pull --ff-only origin main
 if [ -f "$APP_SOURCE/package-lock.json" ] || [ -f "$APP_SOURCE/npm-shrinkwrap.json" ]; then

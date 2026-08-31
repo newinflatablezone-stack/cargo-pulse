@@ -93,14 +93,6 @@ function renderRepresentative(name){
 
 function renderResult(data){
   const order=data.order,shipments=Array.isArray(data.shipments)?data.shipments:[],events=normalizeEvents(data.events,order);
-  const etaItems=shipments.length?shipments:[order];
-  const etaDates=etaItems.map(expectedDate).filter(date=>date&&!Number.isNaN(date.getTime()));
-  const overallEta=etaDates.length?new Date(Math.max(...etaDates.map(d=>d.getTime()))):null;
-  const complete=etaItems.length>0&&etaItems.every(item=>item.current_step==="completed"||item.completed_at);
-  const summary=el("div","summary"),left=el("div"),right=el("div","eta");
-  left.append(el("small","",`ORDER ${englishText(order.order_no,"—")}`),el("h2","",complete?"Shipment Delivered":stepLabel(order.current_step)));
-  right.append(el("span","",complete?"Delivered On":"Estimated Delivery"),el("strong","",fmt(overallEta)));
-  summary.append(left,right);result.append(summary);
   const customer=el("article","customer"),customerTitle=el("div","section-title");customerTitle.append(el("h3","","Customer Information"),el("span","","Details for this order only"));customer.append(customerTitle,el("p","",englishText(order.customer_info,"Customer details are available from your sales representative.")));result.append(customer);
   const representative=renderRepresentative(order.business_name);if(representative)result.append(representative);
   if(shipments.length){const card=el("article","track-card"),title=el("div","section-title"),batches=el("div","batches");title.append(el("h3","","Shipment Journey"),el("span","",`${shipments.length} ${shipments.length===1?"shipment":"shipments"}`));card.append(title);shipments.forEach((item,index)=>batches.append(renderBatch(item,index)));card.append(batches);result.append(card)}

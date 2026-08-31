@@ -61,3 +61,39 @@
   .order-overview .representative-contact:first-child{padding-left:0!important}
   .order-overview .representative-contact:nth-child(3){grid-column:1/-1;padding:10px 0 0!important;border-left:0;border-top:1px solid #d7e3df}
 }
+
+/* Centered lookup and simple vertical customer information. */
+.hero{
+  display:block;
+  max-width:860px;
+  margin:0 auto;
+  padding:62px 0 46px;
+  text-align:center;
+}
+.hero-copy{max-width:680px;margin:0 auto 28px}
+.hero-copy>p{max-width:620px;margin:0 auto;color:#647772}
+.hero-search{max-width:760px;margin:0 auto;text-align:left}
+.lookup{margin:0}
+.customer-profile-vertical{display:block!important;border:0!important;background:transparent!important}
+.customer-profile-vertical .customer-contact-block,
+.customer-profile-vertical .customer-shipping-block{padding:13px 0}
+.customer-profile-vertical .customer-contact-block{padding-top:2px;border-bottom:1px solid #dce5e2}
+.customer-profile-vertical .customer-block-title{margin:0 0 8px;font-size:13px;font-weight:700;color:#354b45}
+.customer-profile-vertical .customer-contact-value{display:block;width:max-content;max-width:100%;color:#1264c0;text-decoration:none;font-size:15px;line-height:1.5;overflow-wrap:anywhere}
+.customer-profile-vertical .customer-shipping-name,
+.customer-profile-vertical .customer-shipping-address,
+.customer-profile-vertical .customer-shipping-phone{display:block;color:#263a35;font-size:15px;line-height:1.55;text-decoration:none;overflow-wrap:anywhere}
+.customer-profile-vertical .customer-shipping-name{font-weight:500}
+.customer-profile-vertical .customer-shipping-address{white-space:pre-line}
+
+@media(max-width:850px){
+  .hero{max-width:680px;padding:42px 0 32px}
+}
+@media(max-width:700px){
+  .hero{padding:34px 0 26px;text-align:center}
+  .hero-copy{margin-bottom:20px}
+  .hero-copy>p{font-size:14px}
+  .hero-search{width:100%}
+  .customer-profile-vertical .customer-contact-block,
+  .customer-profile-vertical .customer-shipping-block{padding:12px 0}
+}

@@ -111,28 +111,30 @@ function customerField(label,value,className=""){
 }
 
 function renderCustomerProfile(customerInfo){
-  const profile=el("div","customer-profile"),identity=el("div","customer-identity"),details=el("div","customer-details");
-  const name=englishText(customerInfo.name,"Customer");
-  const avatar=el("span","customer-avatar",name.slice(0,1).toUpperCase());
-  const identityText=el("div","customer-identity-text");
-  identityText.append(el("span","customer-label","Customer"),el("strong","customer-name",name));
-  identity.append(avatar,identityText);
-  const contacts=[customerField("Telephone",customerInfo.phone),customerField("Email",customerInfo.email)].filter(Boolean);
-  if(contacts.length)details.append(...contacts);
-  else details.append(customerField("Contact","Available from your sales representative."));
-  profile.append(identity,details);
-  if(customerInfo.address){
-    const address=customerField("Delivery Address",customerInfo.address,"customer-address");
-    profile.append(address);
-  }
+  const profile=el("div","customer-profile customer-profile-vertical");
+  const contact=el("div","customer-contact-block");
+  contact.append(
+    el("h4","customer-block-title","Contact information"),
+    el("a","customer-contact-value",englishText(customerInfo.email,"Not provided"))
+  );
+  if(customerInfo.email)contact.lastChild.href=`mailto:${customerInfo.email}`;
+
+  const shipping=el("div","customer-shipping-block");
+  shipping.append(
+    el("h4","customer-block-title","Shipping address"),
+    el("strong","customer-shipping-name",englishText(customerInfo.name,"Customer")),
+    el("span","customer-shipping-address",englishText(customerInfo.address,"Not provided"))
+  );
+  if(customerInfo.phone)shipping.append(el("a","customer-shipping-phone",englishText(customerInfo.phone)));
+  if(customerInfo.phone)shipping.lastChild.href=`tel:${customerInfo.phone.replace(/[^+\d]/g,"")}`;
+  profile.append(contact,shipping);
   return profile;
 }
 
 function renderResult(data){
   const order=data.order,shipments=Array.isArray(data.shipments)?data.shipments:[],events=normalizeEvents(data.events,order);
-  const overview=el("section","order-overview"),customer=el("article","customer overview-panel"),customerTitle=el("div","section-title"),customerInfo=parseCustomerInformation(order.customer_info);
-  customerTitle.append(el("h3","","Customer Information"));
-  customer.append(customerTitle,renderCustomerProfile(customerInfo));overview.append(customer);
+  const overview=el("section","order-overview"),customer=el("article","customer overview-panel"),customerInfo=parseCustomerInformation(order.customer_info);
+  customer.append(renderCustomerProfile(customerInfo));overview.append(customer);
   const representative=renderRepresentative(order.business_name);if(representative){representative.classList.add("overview-panel");overview.append(representative)}
   result.append(overview);
   if(shipments.length){const card=el("article","track-card"),title=el("div","section-title"),batches=el("div","batches");title.append(el("h3","","Shipment Journey"),el("span","",`${shipments.length} ${shipments.length===1?"shipment":"shipments"}`));card.append(title);shipments.forEach((item,index)=>batches.append(renderBatch(item,index)));card.append(batches);result.append(card)}

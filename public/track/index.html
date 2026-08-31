@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex,nofollow" />
   <meta name="theme-color" content="#0c4337" />
-  <title>Cargo Pulse | 物流查询</title>
+  <title>Cargo Pulse | Shipment Tracking</title>
   <link rel="icon" href="/favicon.svg" />
   <link rel="stylesheet" href="./style.css" />
 </head>
@@ -20,24 +20,24 @@
         </svg>
         <span>Cargo Pulse</span>
       </a>
-      <span class="secure-pill">物流查询</span>
+      <span class="secure-pill">Shipment Tracking</span>
     </header>
 
     <section class="hero">
       <p class="eyebrow">SHIPMENT TRACKING</p>
-      <h1>查询您的订单进度</h1>
-      <p>输入订单号和下单邮箱，查看最新物流轨迹与预计送达时间。</p>
+      <h1>Track Your Shipment</h1>
+      <p>Enter your order number and email address to view the latest shipment updates and estimated delivery date.</p>
 
       <form id="track-form" class="lookup" novalidate>
         <label>
-          <span>订单号</span>
+          <span>Order Number</span>
           <input id="order-no" name="order_no" value="#" autocomplete="off" spellcheck="false" required />
         </label>
         <label>
-          <span>邮箱</span>
+          <span>Email Address</span>
           <input id="email" name="email" type="email" autocomplete="email" placeholder="name@example.com" required />
         </label>
-        <button id="submit-button" type="submit">查询物流</button>
+        <button id="submit-button" type="submit">Track Shipment</button>
       </form>
       <p id="form-message" class="form-message" role="alert" aria-live="polite"></p>
     </section>
@@ -45,7 +45,7 @@
     <section id="result" class="result" hidden aria-live="polite"></section>
   </main>
 
-  <footer>查询信息由 Cargo Pulse 安全提供</footer>
+  <footer>Shipment information securely provided by Cargo Pulse</footer>
   <script type="module" src="./app.js"></script>
 </body>
 </html>

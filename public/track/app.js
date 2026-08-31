@@ -134,7 +134,7 @@ function renderCustomerProfile(customerInfo){
 function renderResult(data){
   const order=data.order,shipments=Array.isArray(data.shipments)?data.shipments:[],events=normalizeEvents(data.events,order);
   const overview=el("section","order-overview"),customer=el("article","customer overview-panel"),customerInfo=parseCustomerInformation(order.customer_info);
-  customer.append(renderCustomerProfile(customerInfo));overview.append(customer);
+  customer.append(el("h3","overview-panel-title","Customer Information"),renderCustomerProfile(customerInfo));overview.append(customer);
   const representative=renderRepresentative(order.business_name);if(representative){representative.classList.add("overview-panel");overview.append(representative)}
   result.append(overview);
   if(shipments.length){const card=el("article","track-card"),title=el("div","section-title"),batches=el("div","batches");title.append(el("h3","","Shipment Journey"),el("span","",`${shipments.length} ${shipments.length===1?"shipment":"shipments"}`));card.append(title);shipments.forEach((item,index)=>batches.append(renderBatch(item,index)));card.append(batches);result.append(card)}

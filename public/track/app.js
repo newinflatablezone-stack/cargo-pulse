@@ -1,4 +1,10 @@
 const STEP_LABELS={rendering:"Order Confirmation",production:"Production",production_shipping:"Production Completed & Shipped",ready_to_ship:"Shipping Arrangements",shipping_selection:"Shipping Arrangements",tracking:"Tracking Number Added",air_pickup:"Awaiting Air Pickup",delivery:"Out for Delivery",domestic_customs:"Export Customs & Departure",ocean_transit:"Ocean Transit",overseas_customs:"Import Customs & Container Pickup",warehouse_appointment:"Warehouse Appointment",last_mile:"Final Delivery",batch_shipping:"Split Shipment",completed:"Delivered"};
+const SALES_REPRESENTATIVES={
+  ella:{name:"Ella",phone:"+1 (626) 342-7272",whatsapp:"+1 (626) 342-7272",email:"sales@inflatable-zone.com"},
+  sherry:{name:"Sherry",phone:"+1 (626) 230-3755",whatsapp:"+86 13580563412",email:"sherry@inflatable-zone.com"},
+  demi:{name:"Demi",phone:"+1 (626) 216-9617",whatsapp:"+1 (626) 216-9617",email:"demi@inflatable-zone.com"},
+  rayna:{name:"Rayna",phone:"+1 (213) 849-0088",whatsapp:"+1 (213) 849-0088",email:"rayna@inflatable-zone.com"}
+};
 const form=document.querySelector("#track-form"),orderInput=document.querySelector("#order-no"),emailInput=document.querySelector("#email"),button=document.querySelector("#submit-button"),message=document.querySelector("#form-message"),result=document.querySelector("#result");
 
 orderInput.addEventListener("focus",()=>{if(orderInput.value==="#")orderInput.setSelectionRange(1,1)});
@@ -30,6 +36,20 @@ function remainingDays(item){switch(item.current_step){case"rendering":return 8+
 function expectedDate(item){if(item.current_step==="completed"||item.completed_at)return new Date(item.completed_at||item.step_started_at);const due=new Date(item.step_deadline||Date.now()),now=new Date();const base=Number.isNaN(due.getTime())||due<now?now:due;return addDays(base,remainingDays(item)+1)}
 function fmt(value,withTime=false){if(!value)return"—";const d=new Date(value);if(Number.isNaN(d.getTime()))return"—";return new Intl.DateTimeFormat("en-US",withTime?{year:"numeric",month:"short",day:"2-digit",hour:"2-digit",minute:"2-digit"}:{year:"numeric",month:"short",day:"2-digit"}).format(d)}
 function el(tag,className,text){const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=text;return node}
+function contactLink(label,value,href){const row=el("a","representative-contact");row.href=href;row.target=href.startsWith("http")?"_blank":"_self";row.rel="noopener";row.append(el("span","",label),el("strong","",value));return row}
+function renderRepresentative(name){
+  const representative=SALES_REPRESENTATIVES[String(name||"").trim().toLowerCase()];
+  if(!representative)return null;
+  const card=el("article","representative"),title=el("div","section-title"),contacts=el("div","representative-contacts");
+  title.append(el("h3","","Your Sales Representative"),el("span","","Contact your dedicated account manager"));
+  contacts.append(
+    contactLink("Telephone",representative.phone,`tel:${representative.phone.replace(/[^+\d]/g,"")}`),
+    contactLink("WhatsApp",representative.whatsapp,`https://wa.me/${representative.whatsapp.replace(/\D/g,"")}`),
+    contactLink("Email",representative.email,`mailto:${representative.email}`)
+  );
+  const identity=el("div","representative-identity");identity.append(el("span","representative-avatar",representative.name.slice(0,1)),el("div","",representative.name));
+  card.append(title,identity,contacts);return card;
+}
 
 function renderResult(data){
   const order=data.order,shipments=Array.isArray(data.shipments)?data.shipments:[],events=normalizeEvents(data.events,order);
@@ -42,6 +62,7 @@ function renderResult(data){
   right.append(el("span","",complete?"Delivered On":"Estimated Delivery"),el("strong","",fmt(overallEta)));
   summary.append(left,right);result.append(summary);
   const customer=el("article","customer"),customerTitle=el("div","section-title");customerTitle.append(el("h3","","Customer Information"),el("span","","Details for this order only"));customer.append(customerTitle,el("p","",order.customer_info));result.append(customer);
+  const representative=renderRepresentative(order.business_name);if(representative)result.append(representative);
   if(shipments.length){const card=el("article","track-card"),title=el("div","section-title"),batches=el("div","batches");title.append(el("h3","","Shipment Journey"),el("span","",`${shipments.length} ${shipments.length===1?"shipment":"shipments"}`));card.append(title);shipments.forEach((item,index)=>batches.append(renderBatch(item,index)));card.append(batches);result.append(card)}
   else result.append(renderTimelineCard(events,"Shipment Journey"));
 }

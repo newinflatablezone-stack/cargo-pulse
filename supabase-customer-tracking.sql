@@ -42,6 +42,7 @@ begin
     'order', jsonb_build_object(
       'order_no', v_order.order_no,
       'customer_info', v_order.customer_info,
+      'business_name', v_order.business_name,
       'current_step', v_order.current_step,
       'step_started_at', v_order.step_started_at,
       'step_deadline', v_order.step_deadline,

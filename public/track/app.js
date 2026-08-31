@@ -76,16 +76,16 @@ function englishText(value,fallback=""){
 }
 function stepLabel(key){return STEP_LABELS[key]||"Shipment Update"}
 function el(tag,className,text){const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=text;return node}
-function contactLink(label,value,href){const row=el("a","representative-contact");row.href=href;row.target=href.startsWith("http")?"_blank":"_self";row.rel="noopener";row.append(el("span","",label),el("strong","",value));return row}
+function contactItem(label,value){const row=el("div","representative-contact");row.append(el("span","",label),el("strong","",value));return row}
 function renderRepresentative(name){
   const representative=SALES_REPRESENTATIVES[String(name||"").trim().toLowerCase()];
   if(!representative)return null;
   const card=el("article","representative"),title=el("div","section-title"),contacts=el("div","representative-contacts");
   title.append(el("h3","","Your Sales Representative"),el("span","","Contact your dedicated account manager"));
   contacts.append(
-    contactLink("Telephone",representative.phone,`tel:${representative.phone.replace(/[^+\d]/g,"")}`),
-    contactLink("WhatsApp",representative.whatsapp,`https://wa.me/${representative.whatsapp.replace(/\D/g,"")}`),
-    contactLink("Email",representative.email,`mailto:${representative.email}`)
+    contactItem("Telephone",representative.phone),
+    contactItem("WhatsApp",representative.whatsapp),
+    contactItem("Email",representative.email)
   );
   const identity=el("div","representative-identity");identity.append(el("span","representative-avatar",representative.name.slice(0,1)),el("div","",representative.name));
   card.append(title,identity,contacts);return card;

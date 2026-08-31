@@ -60,6 +60,9 @@ APP_SOURCE="/opt/cargo-pulse"
 APP_ROOT="/var/www/cargo-pulse"
 APP_CONFIG="/etc/cargo-pulse/config.json"
 
+chown -R "$APP_USER:$APP_USER" "$APP_SOURCE"
+git config --system --add safe.directory "$APP_SOURCE" 2>/dev/null || true
+sudo -u "$APP_USER" git config --global --add safe.directory "$APP_SOURCE" 2>/dev/null || true
 sudo -u "$APP_USER" git -C "$APP_SOURCE" fetch origin main
 sudo -u "$APP_USER" git -C "$APP_SOURCE" checkout main
 sudo -u "$APP_USER" git -C "$APP_SOURCE" pull --ff-only origin main
@@ -68,6 +71,7 @@ if [ -f "$APP_SOURCE/package-lock.json" ] || [ -f "$APP_SOURCE/npm-shrinkwrap.js
 else
   sudo -u "$APP_USER" bash -lc "cd '$APP_SOURCE' && npm install --no-audit --no-fund"
 fi
+rm -rf "$APP_SOURCE/dist"
 sudo -u "$APP_USER" bash -lc "cd '$APP_SOURCE' && npm run build"
 
 install -d "$APP_SOURCE/dist/api"

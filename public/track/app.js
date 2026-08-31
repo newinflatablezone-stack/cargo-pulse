@@ -130,10 +130,11 @@ function renderCustomerProfile(customerInfo){
 
 function renderResult(data){
   const order=data.order,shipments=Array.isArray(data.shipments)?data.shipments:[],events=normalizeEvents(data.events,order);
-  const customer=el("article","customer"),customerTitle=el("div","section-title"),customerInfo=parseCustomerInformation(order.customer_info);
+  const overview=el("section","order-overview"),customer=el("article","customer overview-panel"),customerTitle=el("div","section-title"),customerInfo=parseCustomerInformation(order.customer_info);
   customerTitle.append(el("h3","","Customer Information"));
-  customer.append(customerTitle,renderCustomerProfile(customerInfo));result.append(customer);
-  const representative=renderRepresentative(order.business_name);if(representative)result.append(representative);
+  customer.append(customerTitle,renderCustomerProfile(customerInfo));overview.append(customer);
+  const representative=renderRepresentative(order.business_name);if(representative){representative.classList.add("overview-panel");overview.append(representative)}
+  result.append(overview);
   if(shipments.length){const card=el("article","track-card"),title=el("div","section-title"),batches=el("div","batches");title.append(el("h3","","Shipment Journey"),el("span","",`${shipments.length} ${shipments.length===1?"shipment":"shipments"}`));card.append(title);shipments.forEach((item,index)=>batches.append(renderBatch(item,index)));card.append(batches);result.append(card)}
   else result.append(renderTimelineCard(events,"Shipment Journey",order));
 }

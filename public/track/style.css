@@ -10,3 +10,54 @@
 .representative-contact span{font-size:10px;letter-spacing:.08em}
 .representative-contact strong{font-size:14px;font-weight:650;line-height:1.45}
 @media(max-width:700px){.representative-contacts{grid-template-columns:1fr 1fr;row-gap:14px}.representative-contact{padding:0 12px}.representative-contact:first-child{padding-left:0}.representative-contact:nth-child(3){grid-column:1/-1;padding:13px 0 0;border-left:0;border-top:1px solid #d7e3df}}
+
+/* Compact tracking header and unified order overview. */
+.hero{display:grid;grid-template-columns:minmax(300px,.82fr) minmax(480px,1.18fr);gap:44px;align-items:end;padding:44px 0 30px}
+.hero h1{font-size:clamp(36px,4vw,50px);margin-bottom:12px}
+.hero-copy>p{font-size:15px;line-height:1.6;max-width:510px;color:#647772;margin:0}
+.hero-search{min-width:0}
+.lookup{align-self:end;margin-top:0;padding:14px;gap:12px;border-radius:15px;box-shadow:0 12px 34px rgba(22,67,55,.07)}
+.lookup input,.lookup button{height:48px}
+.form-message{margin:8px 2px 0!important}
+.order-overview{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(330px,.8fr);margin-top:16px;overflow:hidden;border:1px solid #d7e1de;border-radius:16px;background:rgba(255,255,255,.94);box-shadow:0 10px 30px rgba(22,67,55,.045)}
+.order-overview .overview-panel{min-width:0;margin:0;padding:22px;border:0;border-radius:0;box-shadow:none;background:transparent}
+.order-overview .representative{border-left:1px solid #dce5e2;background:linear-gradient(135deg,rgba(235,246,242,.72),rgba(255,255,255,.36))}
+.order-overview .section-title{margin-bottom:14px}
+.order-overview .section-title h3{font-size:16px}
+.order-overview .section-title span{max-width:190px;text-align:right;line-height:1.35}
+.order-overview .customer-profile{border:0;border-radius:0;background:transparent}
+.order-overview .customer-identity{padding:12px 16px 12px 0}
+.order-overview .customer-field{padding:12px 16px}
+.order-overview .customer-address{padding:12px 16px 12px 52px}
+.order-overview .customer-address::before{left:24px;top:19px}
+.order-overview .representative-identity{margin-bottom:13px;font-size:16px}
+.order-overview .representative-avatar{width:36px;height:36px;font-size:14px}
+.order-overview .representative-contacts{grid-template-columns:1fr;padding-top:12px}
+.order-overview .representative-contact,.order-overview .representative-contact:first-child{padding:9px 0;border:0;border-bottom:1px solid #dce5e2}
+.order-overview .representative-contact:last-child{border-bottom:0}
+
+@media(max-width:850px){
+  .hero{grid-template-columns:1fr;gap:22px;padding:34px 0 26px}
+  .hero h1{font-size:38px}
+  .order-overview{grid-template-columns:1fr}
+  .order-overview .representative{border-top:1px solid #dce5e2;border-left:0}
+  .order-overview .representative-contacts{grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
+  .order-overview .representative-contact,.order-overview .representative-contact:first-child{padding:0 12px;border-bottom:0}
+  .order-overview .representative-contact:first-child{padding-left:0}
+  .order-overview .representative-contact:not(:first-child){border-left:1px solid #d7e3df}
+}
+@media(max-width:700px){
+  .hero{gap:18px;padding:28px 0 22px}
+  .hero h1{font-size:32px;letter-spacing:-.03em}
+  .hero-copy>p{font-size:14px}
+  .lookup{grid-template-columns:1fr auto!important;margin-top:0;padding:10px}
+  .lookup label{gap:6px}
+  .lookup input,.lookup button{height:45px}
+  .lookup button{width:auto;padding:0 17px}
+  .order-overview .overview-panel{padding:17px}
+  .order-overview .section-title{flex-direction:row;align-items:center}
+  .order-overview .representative-contacts{grid-template-columns:1fr 1fr;row-gap:10px}
+  .order-overview .representative-contact{padding:0 10px!important}
+  .order-overview .representative-contact:first-child{padding-left:0!important}
+  .order-overview .representative-contact:nth-child(3){grid-column:1/-1;padding:10px 0 0!important;border-left:0;border-top:1px solid #d7e3df}
+}

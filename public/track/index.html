@@ -20,18 +20,22 @@
     </header>
 
     <section class="hero">
-      <p class="eyebrow">SHIPMENT TRACKING</p>
-      <h1>Track Your Shipment</h1>
-      <p>Enter your email address to view the latest shipment updates and estimated delivery date.</p>
+      <div class="hero-copy">
+        <p class="eyebrow">SHIPMENT TRACKING</p>
+        <h1>Track Your Shipment</h1>
+        <p>Enter your email address to view the latest shipment updates and estimated delivery date.</p>
+      </div>
 
-      <form id="track-form" class="lookup email-only" novalidate>
-        <label>
-          <span>Email Address</span>
-          <input id="email" name="email" type="email" autocomplete="email" placeholder="name@example.com" required />
-        </label>
-        <button id="submit-button" type="submit">Track Shipment</button>
-      </form>
-      <p id="form-message" class="form-message" role="alert" aria-live="polite"></p>
+      <div class="hero-search">
+        <form id="track-form" class="lookup email-only" novalidate>
+          <label>
+            <span>Email Address</span>
+            <input id="email" name="email" type="email" autocomplete="email" placeholder="name@example.com" required />
+          </label>
+          <button id="submit-button" type="submit">Track Shipment</button>
+        </form>
+        <p id="form-message" class="form-message" role="alert" aria-live="polite"></p>
+      </div>
     </section>
 
     <section id="result" class="result" hidden aria-live="polite"></section>

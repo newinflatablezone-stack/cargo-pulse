@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+exec 9>/run/lock/cargo-pulse-deploy.lock
+flock -n 9 || exit 0
+
+APP_USER="ubuntu"
+APP_SOURCE="/opt/cargo-pulse"
+APP_ROOT="/var/www/cargo-pulse"
+APP_CONFIG="/etc/cargo-pulse/config.json"
+RELEASE_DIR="$(mktemp -d /tmp/cargo-pulse-release.XXXXXX)"
+
+cleanup() { rm -rf -- "$RELEASE_DIR"; }
+trap cleanup EXIT
+
+test -d "$APP_SOURCE/.git" || { echo "部署失败：找不到 Git 仓库 $APP_SOURCE" >&2; exit 1; }
+test -s "$APP_CONFIG" || { echo "部署失败：找不到运行配置 $APP_CONFIG" >&2; exit 1; }
+
+# Use the repository only as an object store. Never pull, merge or build in it.
+git config --system --add safe.directory "$APP_SOURCE" 2>/dev/null || true
+sudo -u "$APP_USER" git config --global --add safe.directory "$APP_SOURCE" 2>/dev/null || true
+sudo -u "$APP_USER" git -C "$APP_SOURCE" fetch --prune origin main
+VERSION="$(sudo -u "$APP_USER" git -C "$APP_SOURCE" rev-parse origin/main)"
+
+CURRENT_VERSION=""
+if [ -f "$APP_ROOT/api/version" ]; then
+  CURRENT_VERSION="$(sed -n 's/.*"version":"\([^"]*\)".*/\1/p' "$APP_ROOT/api/version" | head -n 1)"
+fi
+if [ "$CURRENT_VERSION" = "$VERSION" ]; then
+  echo "Cargo Pulse 已是最新版本：$VERSION"
+  exit 0
+fi
+
+sudo -u "$APP_USER" git -C "$APP_SOURCE" archive --format=tar "$VERSION" | tar -xf - -C "$RELEASE_DIR"
+chown -R "$APP_USER:$APP_USER" "$RELEASE_DIR"
+if [ -f "$RELEASE_DIR/package-lock.json" ] || [ -f "$RELEASE_DIR/npm-shrinkwrap.json" ]; then
+  sudo -u "$APP_USER" bash -lc "cd '$RELEASE_DIR' && npm ci --no-audit --no-fund"
+else
+  sudo -u "$APP_USER" bash -lc "cd '$RELEASE_DIR' && npm install --no-audit --no-fund"
+fi
+sudo -u "$APP_USER" bash -lc "cd '$RELEASE_DIR' && npm run build"
+
+test -s "$RELEASE_DIR/dist/index.html"
+install -d -o "$APP_USER" -g "$APP_USER" "$RELEASE_DIR/dist/api"
+install -m 644 -o "$APP_USER" -g "$APP_USER" "$APP_CONFIG" "$RELEASE_DIR/dist/api/config"
+printf '{"version":"%s"}\n' "$VERSION" > "$RELEASE_DIR/dist/api/version"
+
+# Replace the live site only after the clean release built successfully.
+install -d "$APP_ROOT"
+rsync -a --delete "$RELEASE_DIR/dist/" "$APP_ROOT/"
+chown -R www-data:www-data "$APP_ROOT"
+nginx -t
+systemctl reload nginx
+echo "Cargo Pulse 部署成功：$VERSION"

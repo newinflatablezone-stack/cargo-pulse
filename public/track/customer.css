@@ -396,7 +396,7 @@ body>footer{filter:grayscale(1)}
 .representative-avatar{background:#151515;color:#fff}
 .representative-contact,.tracking-no{border-color:#ddd;background:#fafafa;color:#222}
 .sales-contact-card .representative-contacts{background:#fafafa}
-.representative-contact:hover{border-color:#999;background:#fff}
+.sales-contact-card .representative-contact:hover{border-color:#ddd;background:#fafafa}
 .event:not(.future):not(.current) .dot{background:#23856d;border-color:#dcefe9}
 .event.current .dot{background:#e0a126;border-color:#fff0c9}
 .event.current p{color:#9a6500}

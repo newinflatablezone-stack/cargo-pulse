@@ -386,7 +386,24 @@
 
 /* Monochrome customer interface; retain the storefront logo's brand colors. */
 .brand{border-bottom-color:#dedede}
-.hero,.general-contact,.result,body>footer{filter:grayscale(1)}
-.lookup.email-only button{background:#202020;color:#fff}
+.hero,.general-contact,body>footer{filter:grayscale(1)}
+.hero-copy h1,.general-contact h2{color:#111}
+.lookup.email-only button{background:#000;color:#fff}
 .lookup.email-only button:hover{background:#000}
 .lookup.email-only input:focus{border-color:#555;box-shadow:0 0 0 3px rgba(0,0,0,.09)}
+.result{color:#111}
+.summary,.sales-contact-header{background:#111;color:#fff}
+.summary h2,.summary strong,.sales-contact-header h2,.sales-contact-header p{color:#fff}
+.order-overview,.customer,.track-card,.representative,.customer-profile{border-color:#d8d8d8;background:#fff;box-shadow:none}
+.customer-identity,.customer-details .customer-field+.customer-field,.customer-address,.representative-contacts{border-color:#dedede}
+.customer-address{background:#fafafa}
+.overview-panel-title,.customer-name,.customer-value,.section-title h3,.event h4,.batch-head h4,.representative-identity,.representative-contact strong{color:#151515}
+.customer-label,.section-title span,.event time,.batch-head span,.event p,.schedule-label,.representative-contact span{color:#777}
+.representative-avatar{background:#151515;color:#fff}
+.representative-contact,.tracking-no{border-color:#ddd;background:#fafafa;color:#222}
+.representative-contact:hover{border-color:#999;background:#fff}
+.event:not(.future):not(.current) .dot{background:#23856d;border-color:#dcefe9}
+.event.current .dot{background:#e0a126;border-color:#fff0c9}
+.event.current p{color:#9a6500}
+.event.future .dot{background:#fff;border-color:#bdbdbd}
+.event:not(:last-child):before{background:#d2d2d2}

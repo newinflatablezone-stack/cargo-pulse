@@ -109,6 +109,14 @@
   line-height: 1.55;
 }
 .hero-search { max-width: 720px; margin: 0 auto; text-align: left; }
+.brand-link {
+  width: max-content;
+  height: 100%;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.brand-link .brand-mark,
+.brand-link span { pointer-events: none; }
 
 .order-overview .customer.overview-panel {
   padding: 22px 24px;

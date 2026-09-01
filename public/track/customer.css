@@ -248,10 +248,10 @@
 /* Standalone cards follow the customer reading order: customer, journey, contact. */
 .customer-card {
   padding: 22px 24px;
-  border: 1px solid #cfe2da;
-  border-radius: 18px;
-  background: linear-gradient(135deg, #f0f8f4, #fbfdfc);
-  box-shadow: 0 10px 30px rgba(26, 82, 64, .035);
+  border: 1px solid #d7e1de;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .92);
+  box-shadow: none;
 }
 .sales-contact-card {
   padding: 22px 24px;
@@ -290,7 +290,7 @@
   line-height: 1.55;
 }
 @media (max-width: 700px) {
-  .customer-card,
+  .customer-card { padding: 19px; border-radius: 16px; }
   .sales-contact-card { padding: 18px; border-radius: 15px; }
   .sales-contact-card .representative-contacts { grid-template-columns: 1fr; }
   .sales-contact-card .representative-contact,

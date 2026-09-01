@@ -63,7 +63,9 @@
 }
 .customer-label { display: block; margin-bottom: 4px; color: #71847f; font-size: 10px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
 .customer-value { display: block; color: #173a32; font-size: 14px; font-weight: 650; line-height: 1.45; overflow-wrap: anywhere; }
-.lookup.email-only { grid-template-columns: minmax(0, 1fr) auto; }
+.lookup.email-only { grid-template-columns: minmax(0, 1fr) !important; }
+.lookup.email-only > label { width: 100%; }
+.lookup.email-only > button { width: 100%; }
 @media (max-width: 700px) {
   .customer-profile { grid-template-columns: 1fr; }
   .customer-identity { padding: 15px 16px; border-right: 0; border-bottom: 1px solid #dfe8e5; }

@@ -316,7 +316,7 @@
 }
 
 /* Balanced brand, hero, and search proportions. */
-.brand { height: 78px; justify-content: center; }
+.brand { height: 78px; }
 .brand-link {
   gap: 10px;
   font-size: 19px;

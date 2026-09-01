@@ -901,6 +901,8 @@ header nav{margin-left:auto}
 /* Keep long order numbers inside their own grid cell */
 .card-top{min-width:0!important;max-width:100%!important}
 .order-no{display:block!important;min-width:0!important;max-width:100%!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-all!important}
+.order-card .forwarder-preview{color:#53675f;font-weight:500}
+.order-card .forwarder-preview b{color:#31584c;font-weight:600}
 
 
 /* Mobile status cards: two rows, complete readable text, no horizontal scroll */

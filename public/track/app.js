@@ -28,8 +28,8 @@ form.addEventListener("submit",async(event)=>{
 
 function addDays(value,days){const date=new Date(value);if(Number.isNaN(date.getTime()))return null;date.setDate(date.getDate()+days);return date}
 function oceanDays(item){const base=item.sea_region==="europe"?40:16;return base+(String(item.forwarder_name||"").trim()==="\u4f17\u4e00"&&item.sea_region!=="europe"?4:0)}
-function routeAfterProduction(item){if(item.shipping_mode==="air_freight")return 17;if(item.shipping_mode==="domestic_express")return 12;if(item.shipping_mode==="overseas_warehouse")return (item.overseas_method==="truck"?5:2)+7;return (item.sea_region==="europe"?14:10)+oceanDays(item)+21}
-function remainingDays(item){switch(item.current_step){case"rendering":return 11+routeAfterProduction(item);case"production":return routeAfterProduction(item);case"ready_to_ship":case"shipping_selection":return routeAfterProduction(item);case"tracking":return item.shipping_mode==="domestic_express"?10:7;case"air_pickup":return 7;case"domestic_customs":return oceanDays(item)+21;case"ocean_transit":return 21;case"overseas_customs":return 14;case"warehouse_appointment":return 7;case"delivery":case"last_mile":case"completed":return 0;default:return 0}}
+function routeAfterProduction(item){if(item.shipping_mode==="air_freight")return 17;if(item.shipping_mode==="domestic_express")return 12;if(item.shipping_mode==="overseas_warehouse")return (item.overseas_method==="truck"?5:2)+7;return (item.sea_region==="europe"?14:10)+oceanDays(item)+(item.shipping_mode==="domestic_sea_port"?0:21)}
+function remainingDays(item){switch(item.current_step){case"rendering":return 11+routeAfterProduction(item);case"production":return routeAfterProduction(item);case"ready_to_ship":case"shipping_selection":return routeAfterProduction(item);case"tracking":return item.shipping_mode==="domestic_express"?10:7;case"air_pickup":return 7;case"domestic_customs":return oceanDays(item)+(item.shipping_mode==="domestic_sea_port"?0:21);case"ocean_transit":return item.shipping_mode==="domestic_sea_port"?0:21;case"overseas_customs":return 14;case"warehouse_appointment":return 7;case"delivery":case"last_mile":case"completed":return 0;default:return 0}}
 function expectedDate(item){if(item.current_step==="completed"||item.completed_at)return new Date(item.completed_at||item.step_started_at);const due=new Date(item.step_deadline||Date.now()),now=new Date();const base=Number.isNaN(due.getTime())||due<now?now:due;return addDays(base,remainingDays(item)+1)}
 function nextPlannedStep(item,current){
   if(current==="rendering")return {key:"production",days:11};
@@ -42,7 +42,7 @@ function nextPlannedStep(item,current){
   if(current==="tracking")return {key:"delivery",days:item.shipping_mode==="domestic_express"?10:7};
   if(current==="air_pickup")return {key:"delivery",days:7};
   if(current==="domestic_customs")return {key:"ocean_transit",days:oceanDays(item)};
-  if(current==="ocean_transit")return {key:"overseas_customs",days:7};
+  if(current==="ocean_transit")return item.shipping_mode==="domestic_sea_port"?{key:"completed",days:0}:{key:"overseas_customs",days:7};
   if(current==="overseas_customs")return {key:"warehouse_appointment",days:7};
   if(current==="warehouse_appointment")return {key:"last_mile",days:7};
   if(current==="delivery"||current==="last_mile")return {key:"completed",days:1};

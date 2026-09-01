@@ -114,7 +114,7 @@ function renderCustomerProfile(customerInfo){
   const profile=el("div","customer-profile customer-profile-vertical");
   const contact=el("div","customer-contact-block");
   contact.append(
-    el("h4","customer-block-title","Contact information"),
+    el("h4","customer-block-title","Email address"),
     el("span","customer-contact-value",englishText(customerInfo.email,"Not provided"))
   );
 

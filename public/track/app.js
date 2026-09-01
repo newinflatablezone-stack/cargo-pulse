@@ -7,9 +7,21 @@ const SALES_REPRESENTATIVES={
 };
 const form=document.querySelector("#track-form"),contactInput=document.querySelector("#contact"),button=document.querySelector("#submit-button"),message=document.querySelector("#form-message"),result=document.querySelector("#result");
 
+function formatContactInput(value){
+  const raw=String(value||"").trim();
+  if(!raw||raw.includes("@")||/[a-z]/i.test(raw))return raw;
+  const digits=raw.replace(/\D/g,"");
+  if(digits.length===10)return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+  if(digits.length===11&&digits.startsWith("1"))return `+1 (${digits.slice(1,4)}) ${digits.slice(4,7)}-${digits.slice(7)}`;
+  return raw;
+}
+contactInput.addEventListener("blur",()=>{contactInput.value=formatContactInput(contactInput.value)});
+contactInput.addEventListener("paste",()=>setTimeout(()=>{contactInput.value=formatContactInput(contactInput.value)},0));
+
 form.addEventListener("submit",async(event)=>{
   event.preventDefault();message.textContent="";result.hidden=true;result.replaceChildren();
-  const contact=contactInput.value.trim(),isEmail=/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact),phoneDigits=contact.replace(/\D/g,"");
+  const contact=formatContactInput(contactInput.value),isEmail=/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact),phoneDigits=contact.replace(/\D/g,"");
+  contactInput.value=contact;
   if(!isEmail&&phoneDigits.length<7){message.textContent="Please enter a valid email address or phone number.";return}
   button.disabled=true;button.textContent="Tracking…";
   try{

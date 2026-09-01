@@ -387,11 +387,15 @@
 
 /* Monochrome customer interface; retain the storefront logo's brand colors. */
 .brand{border-bottom-color:#dedede}
-.hero,.general-contact,body>footer{filter:grayscale(1)}
+.general-contact,body>footer{filter:grayscale(1)}
 .hero-copy h1,.general-contact h2{color:#111}
+.hero-copy>p,label{color:#6b6b6b}
+.lookup.email-only input{color:#171717;border-color:#d0d0d0;background:#fff}
+.lookup.email-only input::placeholder{color:#858585}
 .lookup.email-only button{background:#000;color:#fff}
 .lookup.email-only button:hover{background:#000}
 .lookup.email-only input:focus{border-color:#555;box-shadow:0 0 0 3px rgba(0,0,0,.09)}
+.form-message{color:#8b1e1e!important}
 .result{color:#111}
 .summary,.sales-contact-header{background:#111;color:#fff}
 .summary h2,.summary strong,.sales-contact-header h2,.sales-contact-header p{color:#fff}

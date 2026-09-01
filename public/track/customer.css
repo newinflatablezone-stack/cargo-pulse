@@ -270,14 +270,14 @@
   background: rgba(255, 255, 255, .92);
   box-shadow: none;
 }
-.sales-contact-header { padding: 20px 24px; background: #0c4a3c; }
+.sales-contact-header { padding: 14px 24px; background: #0c4a3c; }
 .sales-contact-body { padding: 22px 24px; }
 .sales-contact-help {
   margin: 0;
   color: #fff;
-  font-size: 20px;
-  font-weight: 600;
-  line-height: 1.4;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.45;
 }
 .sales-contact-card .representative-identity {
   color: #203a33;
@@ -302,8 +302,8 @@
 @media (max-width: 700px) {
   .customer-card { padding: 19px; border-radius: 16px; }
   .sales-contact-card { padding: 0; border-radius: 16px; }
-  .sales-contact-header { padding: 18px 19px; }
-  .sales-contact-help { font-size: 18px; }
+  .sales-contact-header { padding: 13px 19px; }
+  .sales-contact-help { font-size: 15px; }
   .sales-contact-body { padding: 19px; }
   .sales-contact-card .representative-contacts { grid-template-columns: 1fr; }
   .sales-contact-card .representative-contact,

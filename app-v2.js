@@ -162,7 +162,33 @@ async function permanentlyDeleteOrder(o){const images=await api('/rest/v1/order_
 const ROLLBACK_COUNT_PATTERN=/\s*\[rollback-count:(\d+)\]/g;
 function rollbackCountFromRows(o,rows){if(o.rollback_used)return 2;const active=rows.find(x=>x.step_key===o.current_step&&!x.completed_at),match=String(active?.note||'').match(/\[rollback-count:(\d+)\]/);return Math.min(2,Number(match?.[1]||0))}
 function noteWithRollbackCount(note,count){const clean=String(note||'').replace(ROLLBACK_COUNT_PATTERN,'').trim();return (clean?clean+' ':'')+'[rollback-count:'+count+']'}
-async function rollbackOrder(o){const flow=flowFor(o).filter(step=>step!=='production_shipping'),currentIndex=flow.indexOf(o.current_step);if(currentIndex<=0)throw Error('当前已是第一步，无法继续回退');const rows=await api('/rest/v1/order_events?order_id=eq.'+o.id+'&select=*&order=started_at.asc,created_at.asc'),used=rollbackCountFromRows(o,rows);if(used>=2)throw Error('本次流程最多只能连续回退两次');const candidates=rows.filter(x=>{const index=flow.indexOf(x.step_key);return index>=0&&index<currentIndex}).sort((a,b)=>flow.indexOf(b.step_key)-flow.indexOf(a.step_key)||String(b.started_at||'').localeCompare(String(a.started_at||'')));const target=candidates[0];if(!target)throw Error('找不到上一步的流程记录');const targetIndex=flow.indexOf(target.step_key),nextCount=used+1,remove=rows.filter(x=>{const index=flow.indexOf(x.step_key);return x.id!==target.id&&(x.step_key==='production_shipping'||index===targetIndex||index>targetIndex)});if(remove.length)await api('/rest/v1/order_events?id=in.('+remove.map(x=>x.id).join(',')+')',{method:'DELETE'});await api('/rest/v1/order_events?id=eq.'+target.id,{method:'PATCH',body:JSON.stringify({completed_at:null,completed_by:null,note:noteWithRollbackCount(target.note,nextCount)})});const reset={current_step:target.step_key,step_started_at:target.started_at,step_deadline:target.deadline_at,rollback_used:nextCount>=2,updated_at:new Date().toISOString()};if(target.step_key==='production'||target.step_key==='shipping_selection')Object.assign(reset,{shipping_mode:null,forwarder_name:null,sea_region:null,overseas_method:null,tracking_no:null,shipped_at:null,...(shipmentFeatureReady?{blower_tracking_no:null}:{})});await api('/rest/v1/orders?id=eq.'+o.id,{method:'PATCH',body:JSON.stringify(reset)});const [verifiedOrder]=await api('/rest/v1/orders?id=eq.'+o.id+'&select=current_step,shipped_at'),verifiedEvents=await api('/rest/v1/order_events?order_id=eq.'+o.id+'&completed_at=is.null&select=id,step_key');if(verifiedOrder?.current_step!==target.step_key||verifiedEvents.length!==1||verifiedEvents[0].step_key!==target.step_key)throw Error('回退后状态校验失败，请刷新后重试')}
+async function rollbackOrder(o){
+ const flow=flowFor(o).filter(step=>step!=='production_shipping'),currentIndex=flow.indexOf(o.current_step);
+ if(currentIndex<=0)throw Error('当前已是第一步，无法继续回退');
+ const rows=await api('/rest/v1/order_events?order_id=eq.'+o.id+'&select=*&order=started_at.asc,created_at.asc'),used=rollbackCountFromRows(o,rows);
+ if(used>=2)throw Error('本次流程最多只能连续回退两次');
+ const candidates=rows.filter(row=>{const index=flow.indexOf(row.step_key);return index>=0&&index<currentIndex}).sort((a,b)=>flow.indexOf(b.step_key)-flow.indexOf(a.step_key)||String(b.started_at||'').localeCompare(String(a.started_at||'')));
+ const target=candidates[0];
+ if(!target)throw Error('找不到上一步的流程记录');
+ const targetIndex=flow.indexOf(target.step_key),nextCount=used+1;
+ const remove=rows.filter(row=>{const index=flow.indexOf(row.step_key);return row.id!==target.id&&(row.step_key==='production_shipping'||index===targetIndex||index>targetIndex)});
+ const reset={current_step:target.step_key,step_started_at:target.started_at,step_deadline:target.deadline_at,rollback_used:nextCount>=2,updated_at:new Date().toISOString()};
+ if(target.step_key==='production'||target.step_key==='shipping_selection')Object.assign(reset,{shipping_mode:null,forwarder_name:null,sea_region:null,overseas_method:null,tracking_no:null,shipped_at:null,...(shipmentFeatureReady?{blower_tracking_no:null}:{})});
+ try{
+  await api('/rest/v1/order_events?id=eq.'+target.id,{method:'PATCH',body:JSON.stringify({completed_at:null,completed_by:null,note:noteWithRollbackCount(target.note,nextCount)})});
+  await api('/rest/v1/orders?id=eq.'+o.id,{method:'PATCH',body:JSON.stringify(reset)});
+  if(remove.length)await api('/rest/v1/order_events?id=in.('+remove.map(row=>row.id).join(',')+')',{method:'DELETE'});
+ }catch(error){
+  try{await repairStuckRollback({...o,...reset})}catch(repairError){throw Error('回退未完成，自动恢复失败：'+repairError.message)}
+ }
+ let [verifiedOrder]=await api('/rest/v1/orders?id=eq.'+o.id+'&select=current_step,shipped_at'),verifiedEvents=await api('/rest/v1/order_events?order_id=eq.'+o.id+'&completed_at=is.null&select=id,step_key');
+ if(verifiedOrder?.current_step!==target.step_key||verifiedEvents.length!==1||verifiedEvents[0].step_key!==target.step_key){
+  await repairStuckRollback({...o,...reset});
+  [verifiedOrder]=await api('/rest/v1/orders?id=eq.'+o.id+'&select=current_step,shipped_at');
+  verifiedEvents=await api('/rest/v1/order_events?order_id=eq.'+o.id+'&completed_at=is.null&select=id,step_key');
+ }
+ if(verifiedOrder?.current_step!==target.step_key||verifiedEvents.length!==1||verifiedEvents[0].step_key!==target.step_key)throw Error('回退后状态仍不一致，系统已停止操作');
+}
 
 document.addEventListener('click',async event=>{const button=event.target.closest?.('#rollback');if(!button)return;event.preventDefault();event.stopImmediatePropagation();const dialog=button.closest('#detail'),orderNo=dialog?.querySelector('.detail-title .kicker')?.textContent?.trim(),order=orders.find(x=>String(x.order_no).trim()===orderNo);if(!order){alert('无法识别当前订单，请刷新后重试');return}if(!confirm('确定回退上一步吗？同一流程最多可以连续回退两次。'))return;button.disabled=true;button.textContent='正在回退…';try{await rollbackOrder(order);dialog.close();await refresh();reopenUpdatedOrder(order.id)}catch(error){button.disabled=false;button.textContent='回退上一步';alert('回退失败：'+error.message)}},true);
 function manageUsers(){let d=$('#manage');d.innerHTML=`<div class="detail"><button class="x">×</button><h2>用户管理</h2>${profiles.map(p=>`<label>${esc(p.email)}<select data-role="${p.id}"><option value="business" ${p.role==='business'?'selected':''}>业务员</option><option value="follower" ${p.role==='follower'?'selected':''}>跟单</option></select></label>`).join('')}</div>`;d.showModal();d.querySelector('.x').onclick=()=>d.close();d.querySelectorAll('[data-role]').forEach(s=>s.onchange=()=>api(`/rest/v1/profiles?id=eq.${s.dataset.role}`,{method:'PATCH',body:JSON.stringify({role:s.value})}))}

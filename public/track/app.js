@@ -82,8 +82,9 @@ function renderRepresentative(name){
   if(representative.phone===representative.whatsapp)contacts.append(contactItem("Phone & WhatsApp",representative.phone));
   else contacts.append(contactItem("Phone",representative.phone),contactItem("WhatsApp",representative.whatsapp));
   contacts.append(contactItem("Email",representative.email));
-  const identity=el("div","representative-identity",representative.name);
-  card.append(title,el("p","sales-contact-help","Questions about your shipment? Please contact your sales representative."),identity,contacts);return card;
+  const identity=el("div","representative-identity",representative.name),header=el("div","sales-contact-header"),body=el("div","sales-contact-body");
+  header.append(title,el("p","sales-contact-help","Questions about your shipment? Please contact your sales representative."));
+  body.append(identity,contacts);card.append(header,body);return card;
 }
 
 function parseCustomerInformation(value){

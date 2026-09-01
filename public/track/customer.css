@@ -263,12 +263,15 @@
   box-shadow: none;
 }
 .sales-contact-card {
-  padding: 22px 24px;
-  border: 1px solid #0c4a3c;
-  border-radius: 18px;
-  background: #0c4a3c;
-  box-shadow: 0 12px 30px rgba(12, 74, 60, .14);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #d7e1de;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .92);
+  box-shadow: none;
 }
+.sales-contact-header { padding: 20px 24px; background: #0c4a3c; }
+.sales-contact-body { padding: 22px 24px; }
 .sales-contact-card .section-title { margin-bottom: 6px; }
 .sales-contact-card .section-title h3 {
   color: #fff;
@@ -282,34 +285,36 @@
   line-height: 1.55;
 }
 .sales-contact-card .representative-identity {
-  color: #fff;
+  color: #203a33;
   font-size: 15px;
   font-weight: 600;
   line-height: 1.55;
 }
 .sales-contact-card .representative-contact span {
-  color: rgba(255, 255, 255, .68);
+  color: #71837e;
   font-size: 11px;
   font-weight: 700;
 }
 .sales-contact-card .representative-contact strong {
-  color: #fff;
+  color: #203a33;
   font-size: 15px;
   font-weight: 400;
   line-height: 1.55;
 }
-.sales-contact-card .representative-contacts { border-top-color: rgba(255, 255, 255, .2); }
-.sales-contact-card .representative-contact { border-color: rgba(255, 255, 255, .2); }
-.sales-contact-card .representative-contact:not(:first-child) { border-left-color: rgba(255, 255, 255, .2); }
+.sales-contact-card .representative-contacts { border-top-color: #dce5e2; }
+.sales-contact-card .representative-contact { border-color: #dce5e2; }
+.sales-contact-card .representative-contact:not(:first-child) { border-left-color: #dce5e2; }
 @media (max-width: 700px) {
   .customer-card { padding: 19px; border-radius: 16px; }
-  .sales-contact-card { padding: 18px; border-radius: 15px; }
+  .sales-contact-card { padding: 0; border-radius: 16px; }
+  .sales-contact-header { padding: 18px 19px; }
+  .sales-contact-body { padding: 19px; }
   .sales-contact-card .representative-contacts { grid-template-columns: 1fr; }
   .sales-contact-card .representative-contact,
   .sales-contact-card .representative-contact:first-child {
     padding: 9px 0;
     border-left: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, .2);
+    border-bottom: 1px solid #dce5e2;
   }
   .sales-contact-card .representative-contact:last-child { border-bottom: 0; }
 }

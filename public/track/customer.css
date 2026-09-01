@@ -272,17 +272,12 @@
 }
 .sales-contact-header { padding: 20px 24px; background: #0c4a3c; }
 .sales-contact-body { padding: 22px 24px; }
-.sales-contact-card .section-title { margin-bottom: 6px; }
-.sales-contact-card .section-title h3 {
-  color: #fff;
-  font-size: 18px;
-  font-weight: 700;
-}
 .sales-contact-help {
-  margin: 0 0 20px;
-  color: rgba(255, 255, 255, .76);
-  font-size: 14px;
-  line-height: 1.55;
+  margin: 0;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 .sales-contact-card .representative-identity {
   color: #203a33;
@@ -308,6 +303,7 @@
   .customer-card { padding: 19px; border-radius: 16px; }
   .sales-contact-card { padding: 0; border-radius: 16px; }
   .sales-contact-header { padding: 18px 19px; }
+  .sales-contact-help { font-size: 18px; }
   .sales-contact-body { padding: 19px; }
   .sales-contact-card .representative-contacts { grid-template-columns: 1fr; }
   .sales-contact-card .representative-contact,

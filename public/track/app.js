@@ -77,13 +77,12 @@ function contactItem(label,value){const row=el("div","representative-contact");r
 function renderRepresentative(name){
   const representative=SALES_REPRESENTATIVES[String(name||"").trim().toLowerCase()];
   if(!representative)return null;
-  const card=el("article","representative"),title=el("div","section-title"),contacts=el("div","representative-contacts");
-  title.append(el("h3","","Sales Contact"));
+  const card=el("article","representative"),contacts=el("div","representative-contacts");
   if(representative.phone===representative.whatsapp)contacts.append(contactItem("Phone & WhatsApp",representative.phone));
   else contacts.append(contactItem("Phone",representative.phone),contactItem("WhatsApp",representative.whatsapp));
   contacts.append(contactItem("Email",representative.email));
   const identity=el("div","representative-identity",representative.name),header=el("div","sales-contact-header"),body=el("div","sales-contact-body");
-  header.append(title,el("p","sales-contact-help","Questions about your shipment? Please contact your sales representative."));
+  header.append(el("p","sales-contact-help","Questions about your shipment? Please contact your sales representative."));
   body.append(identity,contacts);card.append(header,body);return card;
 }
 

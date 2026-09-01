@@ -396,12 +396,12 @@ body>footer{filter:grayscale(1)}
 .representative-avatar{background:#151515;color:#fff}
 .representative-contact,.tracking-no{border-color:#ddd;background:#fafafa;color:#222}
 .sales-contact-card .representative-contacts{background:#fafafa}
-.representative-contact:hover{border-color:#999;background:#fff}
+.sales-contact-card .representative-contact:hover{border-color:#ddd;background:#fafafa}
 .event:not(.future):not(.current) .dot{background:#23856d;border-color:#dcefe9}
 .event.current .dot{background:#e0a126;border-color:#fff0c9}
 .event.current p{color:#9a6500}
 .event.future .dot{background:#fff;border-color:#bdbdbd}
 .event:not(:last-child):before{background:#d2d2d2}
-.shipping-note{max-width:700px;margin:54px auto 26px;color:#747474;font-size:14px;line-height:1.55;text-align:left}
+.shipping-note{max-width:700px;margin:28px auto 0;color:#747474;font-size:14px;line-height:1.55;text-align:left}
 .shipping-note strong{color:#444;font-weight:700}
-@media(max-width:700px){.shipping-note{margin:42px auto 22px;font-size:14px;line-height:1.55}}
+@media(max-width:700px){.shipping-note{margin:24px auto 0;font-size:14px;line-height:1.55}}

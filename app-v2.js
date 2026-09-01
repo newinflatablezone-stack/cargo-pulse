@@ -103,8 +103,9 @@ async function completeStage(o,next,extra={},fixedDue=null,operationDate=null){
   const [latest]=await api('/rest/v1/orders?id=eq.'+o.id+'&select=current_step');
   if(!latest)throw Error('订单不存在或已被删除');
   if(latest.current_step!==o.current_step){await refresh();throw Error('订单已在其他页面推进，已自动刷新，请按最新步骤操作')}
-  const activeRows=await api('/rest/v1/order_events?order_id=eq.'+o.id+'&completed_at=is.null&select=id,step_key,note');
-  if(activeRows.length!==1||activeRows[0].step_key!==o.current_step){await refresh();throw Error('当前步骤记录异常，系统已停止推进并自动刷新')}
+  let activeRows=await api('/rest/v1/order_events?order_id=eq.'+o.id+'&completed_at=is.null&select=id,step_key,note');
+  if(activeRows.length!==1||activeRows[0].step_key!==o.current_step)activeRows=await repairStuckRollback(o);
+  if(activeRows.length!==1||activeRows[0].step_key!==o.current_step){await refresh();throw Error('流程自动修复失败，请刷新后重试')}
   const active=activeRows[0],duplicate=await api('/rest/v1/order_events?order_id=eq.'+o.id+'&step_key=eq.'+next.key+'&select=id');
   if(duplicate.length){
    if(/\[rollback-count:\d+\]/.test(String(active.note||'')))await api('/rest/v1/order_events?id=in.('+duplicate.map(x=>x.id).join(',')+')',{method:'DELETE'});
@@ -124,6 +125,20 @@ async function completeStage(o,next,extra={},fixedDue=null,operationDate=null){
   const [advanced]=await api('/rest/v1/orders?id=eq.'+o.id+'&select=current_step,step_started_at,step_deadline,shipping_mode,shipped_at'),activeAfter=await api('/rest/v1/order_events?order_id=eq.'+o.id+'&completed_at=is.null&select=step_key,started_at,deadline_at');
   if(advanced?.current_step!==next.key||activeAfter.length!==1||activeAfter[0].step_key!==next.key)throw Error('步骤保存后校验失败，请刷新后重试');
  }finally{stageTransitionBusy=false}
+}
+async function repairStuckRollback(o){
+ const rows=await api('/rest/v1/order_events?order_id=eq.'+o.id+'&select=id,step_key,note,started_at,deadline_at,completed_at,created_at&order=started_at.asc,created_at.asc');
+ const flow=flowFor(o).filter(step=>step!=='production_shipping'),currentIndex=flow.indexOf(o.current_step);
+ const targets=rows.filter(row=>row.step_key===o.current_step).sort((a,b)=>String(b.started_at||b.created_at||'').localeCompare(String(a.started_at||a.created_at||'')));
+ const target=targets[0];
+ if(!target||currentIndex<0)return [];
+ const invalid=rows.filter(row=>{const index=flow.indexOf(row.step_key);return row.id!==target.id&&(row.step_key==='production_shipping'||index<0||index>=currentIndex)});
+ if(invalid.length)await api('/rest/v1/order_events?id=in.('+invalid.map(row=>row.id).join(',')+')',{method:'DELETE'});
+ await api('/rest/v1/order_events?id=eq.'+target.id,{method:'PATCH',body:JSON.stringify({completed_at:null,completed_by:null,note:noteWithRollbackCount(target.note,Math.max(1,rollbackCountFromRows(o,rows)))})});
+ const reset={current_step:o.current_step,step_started_at:target.started_at,step_deadline:target.deadline_at,updated_at:new Date().toISOString()};
+ if(o.current_step==='production'||o.current_step==='shipping_selection')Object.assign(reset,{shipping_mode:null,forwarder_name:null,sea_region:null,overseas_method:null,tracking_no:null,shipped_at:null,...(shipmentFeatureReady?{blower_tracking_no:null}:{})});
+ await api('/rest/v1/orders?id=eq.'+o.id,{method:'PATCH',body:JSON.stringify(reset)});
+ return api('/rest/v1/order_events?order_id=eq.'+o.id+'&completed_at=is.null&select=id,step_key,note');
 }
 function operationDateValue(value){return new Date(value+'T00:00:00').toISOString()}
 function reopenUpdatedOrder(orderId){

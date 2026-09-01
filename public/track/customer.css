@@ -103,9 +103,9 @@
 
 .order-overview .customer.overview-panel {
   padding: 22px 24px;
-  border: 1px solid #d8e3df;
+  border: 1px solid #cfe0da;
   border-radius: 18px;
-  background: #fff;
+  background: linear-gradient(135deg, rgba(235, 246, 242, .98), rgba(255, 255, 255, .96));
   box-shadow: 0 10px 30px rgba(26, 62, 52, .035);
 }
 .customer .overview-panel-title {
@@ -139,12 +139,11 @@
 }
 .customer .customer-contact-value {
   display: block;
-  width: max-content;
+  width: auto;
   max-width: 100%;
-  color: #1767bd;
+  color: #203a33;
   font-size: 15px;
   line-height: 1.5;
-  text-decoration: none;
   overflow-wrap: anywhere;
 }
 .customer .customer-shipping-name,

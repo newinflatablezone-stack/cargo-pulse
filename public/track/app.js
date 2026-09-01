@@ -115,9 +115,8 @@ function renderCustomerProfile(customerInfo){
   const contact=el("div","customer-contact-block");
   contact.append(
     el("h4","customer-block-title","Contact information"),
-    el("a","customer-contact-value",englishText(customerInfo.email,"Not provided"))
+    el("span","customer-contact-value",englishText(customerInfo.email,"Not provided"))
   );
-  if(customerInfo.email)contact.lastChild.href=`mailto:${customerInfo.email}`;
 
   const shipping=el("div","customer-shipping-block");
   shipping.append(

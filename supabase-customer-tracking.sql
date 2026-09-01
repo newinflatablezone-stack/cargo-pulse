@@ -9,37 +9,27 @@ security definer
 set search_path = public
 as $$
 declare
-  v_query text := lower(trim(coalesce(p_email, '')));
-  v_phone text := regexp_replace(coalesce(p_email, ''), '[^0-9]', '', 'g');
-  v_is_email boolean := position('@' in coalesce(p_email, '')) > 1;
+  v_email text := lower(trim(coalesce(p_email, '')));
   v_order public.orders%rowtype;
   v_result jsonb;
 begin
-  if (v_is_email and (length(v_query) < 5 or length(v_query) > 254))
-     or (not v_is_email and length(v_phone) < 7) then
+  if length(v_email) < 5 or length(v_email) > 254
+     or position('@' in v_email) <= 1 then
     return jsonb_build_object('found', false);
   end if;
 
   select o.* into v_order
   from public.orders o
   where o.deleted_at is null
-    and ((v_is_email and exists (
+    and exists (
       select 1
       from regexp_matches(
         lower(o.customer_info),
         '[a-z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+',
         'g'
       ) as matched(value)
-      where value[1] = v_query
-    )) or (not v_is_email and exists (
-      select 1
-      from regexp_matches(
-        coalesce(o.customer_info, ''),
-        '\+?[0-9][0-9[:space:]().-]{6,}[0-9]',
-        'g'
-      ) as matched(value)
-      where regexp_replace(value[1], '[^0-9]', '', 'g') = v_phone
-    )))
+      where value[1] = v_email
+    )
   order by o.order_date desc nulls last, o.created_at desc
   limit 1;
 

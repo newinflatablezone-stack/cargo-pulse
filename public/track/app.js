@@ -5,34 +5,22 @@ const SALES_REPRESENTATIVES={
   demi:{name:"Demi",phone:"+1 (626) 216-9617",whatsapp:"+1 (626) 216-9617",email:"demi@inflatable-zone.com"},
   rayna:{name:"Rayna",phone:"+1 (213) 849-0088",whatsapp:"+1 (213) 849-0088",email:"rayna@inflatable-zone.com"}
 };
-const form=document.querySelector("#track-form"),contactInput=document.querySelector("#contact"),button=document.querySelector("#submit-button"),message=document.querySelector("#form-message"),result=document.querySelector("#result");
-
-function formatContactInput(value){
-  const raw=String(value||"").trim();
-  if(!raw||raw.includes("@")||/[a-z]/i.test(raw))return raw;
-  const digits=raw.replace(/\D/g,"");
-  if(digits.length===10)return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
-  if(digits.length===11&&digits.startsWith("1"))return `+1 (${digits.slice(1,4)}) ${digits.slice(4,7)}-${digits.slice(7)}`;
-  return raw;
-}
-contactInput.addEventListener("blur",()=>{contactInput.value=formatContactInput(contactInput.value)});
-contactInput.addEventListener("paste",()=>setTimeout(()=>{contactInput.value=formatContactInput(contactInput.value)},0));
+const form=document.querySelector("#track-form"),emailInput=document.querySelector("#email"),button=document.querySelector("#submit-button"),message=document.querySelector("#form-message"),result=document.querySelector("#result");
 
 form.addEventListener("submit",async(event)=>{
   event.preventDefault();message.textContent="";result.hidden=true;result.replaceChildren();
-  const contact=formatContactInput(contactInput.value),isEmail=/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact),phoneDigits=contact.replace(/\D/g,"");
-  contactInput.value=contact;
-  if(!isEmail&&phoneDigits.length<7){message.textContent="Please enter a valid email address or phone number.";return}
+  const email=emailInput.value.trim();
+  if(!emailInput.validity.valid||email===""){message.textContent="Please enter a valid email address.";return}
   button.disabled=true;button.textContent="Tracking…";
   try{
     const configResponse=await fetch("/api/config",{cache:"no-store"});
     if(!configResponse.ok)throw new Error("config");
     const config=await configResponse.json();
     if(!config.url||!config.key)throw new Error("config");
-    const response=await fetch(`${config.url}/rest/v1/rpc/lookup_customer_tracking`,{method:"POST",headers:{"Content-Type":"application/json",apikey:config.key,Authorization:`Bearer ${config.key}`},body:JSON.stringify({p_email:contact}),cache:"no-store"});
+    const response=await fetch(`${config.url}/rest/v1/rpc/lookup_customer_tracking`,{method:"POST",headers:{"Content-Type":"application/json",apikey:config.key,Authorization:`Bearer ${config.key}`},body:JSON.stringify({p_email:email}),cache:"no-store"});
     if(!response.ok){if(response.status===404)throw new Error("setup");throw new Error("request")}
     const data=await response.json();
-    if(!data?.found){message.textContent="No matching shipment was found. Please check your email address or phone number.";return}
+    if(!data?.found){message.textContent="No matching shipment was found. Please check your email address.";return}
     renderResult(data);result.hidden=false;result.scrollIntoView({behavior:"smooth",block:"start"});
   }catch(error){message.textContent=error.message==="setup"?"The tracking service is being configured. Please try again shortly.":"Tracking is temporarily unavailable. Please try again later."}
   finally{button.disabled=false;button.textContent="Track Shipment"}

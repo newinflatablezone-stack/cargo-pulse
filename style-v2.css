@@ -262,11 +262,11 @@ main{max-width:1560px;padding:24px max(22px,3vw) 56px}
 .card-status .alert{white-space:nowrap;font-size:10.5px;padding:4px 7px}
 .pagination{padding:12px 20px;font-size:11.5px}
 @media(min-width:801px){
- .order-card{grid-template-columns:86px minmax(300px,1fr) minmax(410px,480px) 150px;gap:14px;min-height:70px;padding:10px 20px}
+ .order-card{grid-template-columns:86px minmax(300px,1fr) minmax(470px,560px) 150px;gap:14px;min-height:70px;padding:10px 20px}
  .card-top{align-self:center}
  .card-main{display:flex;align-items:center;justify-content:space-between;gap:16px}
  .card-main .step-name{flex:0 0 auto;max-width:130px;text-align:right}
- .order-card footer{grid-template-columns:90px 112px 1fr auto;gap:12px}
+ .order-card footer{grid-template-columns:80px 96px minmax(62px,1fr) minmax(78px,1fr) auto;gap:10px}
  .card-status{justify-self:end}
 }
 @media(max-width:800px){
@@ -901,8 +901,7 @@ header nav{margin-left:auto}
 /* Keep long order numbers inside their own grid cell */
 .card-top{min-width:0!important;max-width:100%!important}
 .order-no{display:block!important;min-width:0!important;max-width:100%!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-all!important}
-.order-card .forwarder-preview{color:#53675f;font-weight:500}
-.order-card .forwarder-preview b{color:#31584c;font-weight:600}
+.order-card .forwarder-column{color:#31584c;font-weight:600}
 
 
 /* Mobile status cards: two rows, complete readable text, no horizontal scroll */
@@ -1080,7 +1079,7 @@ header nav{margin-left:auto}
     grid-column:1/-1!important;
     grid-row:3!important;
     display:grid!important;
-    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;
     gap:8px!important;
     margin:0!important;
     padding:6px 0 0!important;
@@ -1231,8 +1230,8 @@ header nav{margin-left:auto}
     grid-column:1/-1!important;
     grid-row:3!important;
     display:grid!important;
-    grid-template-columns:repeat(3,minmax(0,1fr))!important;
-    gap:8px!important;
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;
+    gap:6px!important;
     margin:0!important;
     padding:6px 0 0!important;
     border-top:1px dashed #e3e9e5!important;

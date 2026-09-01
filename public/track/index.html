@@ -24,14 +24,14 @@
     <section class="hero">
       <div class="hero-copy">
         <h1>Track Your Shipment</h1>
-        <p>Enter your email to view shipment updates and estimated delivery.</p>
+        <p>Enter your email address or phone number to view shipment updates.</p>
       </div>
 
       <div class="hero-search">
         <form id="track-form" class="lookup email-only" novalidate>
           <label>
-            <span>Email Address</span>
-            <input id="email" name="email" type="email" autocomplete="email" placeholder="name@example.com" required />
+            <span>Email Address or Phone Number</span>
+            <input id="contact" name="contact" type="text" autocomplete="email" inputmode="email" placeholder="name@example.com or phone number" required />
           </label>
           <button id="submit-button" type="submit">Track Shipment</button>
         </form>

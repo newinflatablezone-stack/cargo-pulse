@@ -329,7 +329,7 @@
 }
 .hero {
   max-width: 740px;
-  padding: 64px 0 18px;
+  padding: 78px 0 34px;
 }
 .hero-copy { margin-bottom: 26px; }
 .hero-copy h1 {
@@ -354,9 +354,9 @@
   .brand { height: 68px; }
   .brand-link { gap: 9px; font-size: 18px; }
   .brand-mark { width: 34px; height: 34px; flex-basis: 34px; }
-  .hero { padding: 38px 0 14px; }
+  .hero { padding: 54px 0 28px; }
   .hero-copy { margin-bottom: 20px; }
-  .hero-copy h1 { font-size: clamp(28px, 8vw, 32px); }
+  .hero-copy h1 { max-width: 300px; margin-left: auto; margin-right: auto; font-size: 30px; line-height: 1.16; }
   .hero-copy > p { font-size: 14px; }
   .lookup.email-only input,
   .lookup.email-only button { height: 46px; }
@@ -365,14 +365,6 @@
 /* Inflatable-Zone brand and general shipment support. */
 .brand-logo{display:block;width:220px;max-width:54vw;height:auto;object-fit:contain;mix-blend-mode:multiply}
 .shell,body{background:#fff}
-.general-contact{display:flex;align-items:center;justify-content:space-between;gap:28px;max-width:700px;margin:84px auto 42px;padding:19px 21px;border:1px solid #d4e1dd;border-radius:16px;background:rgba(255,255,255,.7)}
-.general-contact[hidden]{display:none}
-.general-contact h2{margin:0 0 5px;color:#102d26;font-size:17px;line-height:1.3}
-.general-contact p{margin:0;color:#6b7e78;font-size:13px;line-height:1.5}
-.general-contact-details{display:flex;gap:26px;flex:0 0 auto}
-.general-contact-details a{display:grid;gap:4px;color:#173d33;text-decoration:none}
-.general-contact-details span{color:#748680;font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase}
-.general-contact-details strong{font-size:14px;font-weight:650;white-space:nowrap}
 .hero{text-align:left}
 .hero-copy,.hero-search{width:100%;max-width:700px;margin-left:auto;margin-right:auto}
 .hero-copy{text-align:center}
@@ -380,15 +372,12 @@
 .form-message:empty{display:none}
 @media (max-width:700px){
   .brand-logo{width:180px;max-width:62vw}
-  .general-contact{display:block;margin:52px auto 30px;padding:18px}
-  .general-contact-details{display:grid;gap:12px;margin-top:16px;padding-top:15px;border-top:1px solid #dce5e2}
-  .general-contact-details strong{white-space:normal}
 }
 
 /* Monochrome customer interface; retain the storefront logo's brand colors. */
 .brand{border-bottom-color:#dedede}
-.general-contact,body>footer{filter:grayscale(1)}
-.hero-copy h1,.general-contact h2{color:#111}
+body>footer{filter:grayscale(1)}
+.hero-copy h1{color:#111}
 .hero-copy>p,label{color:#6b6b6b}
 .lookup.email-only input{color:#171717;border-color:#d0d0d0;background:#fff}
 .lookup.email-only input::placeholder{color:#858585}

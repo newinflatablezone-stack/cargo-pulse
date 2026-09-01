@@ -334,7 +334,7 @@
 .hero-copy { margin-bottom: 26px; }
 .hero-copy h1 {
   margin-bottom: 10px;
-  font-size: clamp(32px, 3vw, 36px);
+  font-size: 28px;
   font-weight: 700;
   line-height: 1.12;
   letter-spacing: -.025em;
@@ -356,7 +356,7 @@
   .brand-mark { width: 34px; height: 34px; flex-basis: 34px; }
   .hero { padding: 54px 0 28px; }
   .hero-copy { margin-bottom: 20px; }
-  .hero-copy h1 { max-width: 300px; margin-left: auto; margin-right: auto; font-size: 30px; line-height: 1.16; }
+  .hero-copy h1 { max-width: 280px; margin-left: auto; margin-right: auto; font-size: 26px; line-height: 1.16; }
   .hero-copy > p { font-size: 14px; }
   .lookup.email-only input,
   .lookup.email-only button { height: 46px; }

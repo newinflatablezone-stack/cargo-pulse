@@ -23,7 +23,7 @@ form.addEventListener("submit",async(event)=>{
     if(!data?.found){message.textContent="No matching shipment was found. Please check your email address.";return}
     renderResult(data);result.hidden=false;result.scrollIntoView({behavior:"smooth",block:"start"});
   }catch(error){message.textContent=error.message==="setup"?"The tracking service is being configured. Please try again shortly.":"Tracking is temporarily unavailable. Please try again later."}
-  finally{button.disabled=false;button.textContent="Track Shipment"}
+  finally{button.disabled=false;button.textContent="Track Order"}
 });
 
 function addDays(value,days){const date=new Date(value);if(Number.isNaN(date.getTime()))return null;date.setDate(date.getDate()+days);return date}

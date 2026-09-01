@@ -225,6 +225,7 @@
   font-weight: 600;
   line-height: 1.55;
 }
+.customer .customer-shipping-name { font-weight: 400; }
 @media (max-width: 850px) {
   .order-overview { gap: 16px; }
   .order-overview .representative.overview-panel { border: 1px solid #d3dce8; }

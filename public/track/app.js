@@ -5,10 +5,10 @@ const SALES_REPRESENTATIVES={
   demi:{name:"Demi",phone:"+1 (626) 216-9617",whatsapp:"+1 (626) 216-9617",email:"demi@inflatable-zone.com"},
   rayna:{name:"Rayna",phone:"+1 (213) 849-0088",whatsapp:"+1 (213) 849-0088",email:"rayna@inflatable-zone.com"}
 };
-const form=document.querySelector("#track-form"),emailInput=document.querySelector("#email"),button=document.querySelector("#submit-button"),message=document.querySelector("#form-message"),result=document.querySelector("#result");
+const form=document.querySelector("#track-form"),emailInput=document.querySelector("#email"),button=document.querySelector("#submit-button"),message=document.querySelector("#form-message"),result=document.querySelector("#result"),generalContact=document.querySelector("#general-contact");
 
 form.addEventListener("submit",async(event)=>{
-  event.preventDefault();message.textContent="";result.hidden=true;result.replaceChildren();
+  event.preventDefault();message.textContent="";result.hidden=true;result.replaceChildren();generalContact.hidden=false;
   const email=emailInput.value.trim();
   if(!emailInput.validity.valid||email===""){message.textContent="Please enter a valid email address.";return}
   button.disabled=true;button.textContent="Tracking…";
@@ -21,7 +21,7 @@ form.addEventListener("submit",async(event)=>{
     if(!response.ok){if(response.status===404)throw new Error("setup");throw new Error("request")}
     const data=await response.json();
     if(!data?.found){message.textContent="No matching shipment was found. Please check your email address.";return}
-    renderResult(data);result.hidden=false;result.scrollIntoView({behavior:"smooth",block:"start"});
+    renderResult(data);generalContact.hidden=true;result.hidden=false;result.scrollIntoView({behavior:"smooth",block:"start"});
   }catch(error){message.textContent=error.message==="setup"?"The tracking service is being configured. Please try again shortly.":"Tracking is temporarily unavailable. Please try again later."}
   finally{button.disabled=false;button.textContent="Track Shipment"}
 });

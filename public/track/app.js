@@ -78,13 +78,11 @@ function renderRepresentative(name){
   const representative=SALES_REPRESENTATIVES[String(name||"").trim().toLowerCase()];
   if(!representative)return null;
   const card=el("article","representative"),title=el("div","section-title"),contacts=el("div","representative-contacts");
-  title.append(el("h3","","Your Sales Representative"),el("span","","Contact your dedicated account manager"));
-  contacts.append(
-    contactItem("Telephone",representative.phone),
-    contactItem("WhatsApp",representative.whatsapp),
-    contactItem("Email",representative.email)
-  );
-  const identity=el("div","representative-identity");identity.append(el("span","representative-avatar",representative.name.slice(0,1)),el("div","",representative.name));
+  title.append(el("h3","","Sales Contact"));
+  if(representative.phone===representative.whatsapp)contacts.append(contactItem("Phone & WhatsApp",representative.phone));
+  else contacts.append(contactItem("Phone",representative.phone),contactItem("WhatsApp",representative.whatsapp));
+  contacts.append(contactItem("Email",representative.email));
+  const identity=el("div","representative-identity",representative.name);
   card.append(title,identity,contacts);return card;
 }
 
@@ -114,13 +112,13 @@ function renderCustomerProfile(customerInfo){
   const profile=el("div","customer-profile customer-profile-vertical");
   const contact=el("div","customer-contact-block");
   contact.append(
-    el("h4","customer-block-title","Email address"),
+    el("h4","customer-block-title","Email"),
     el("span","customer-contact-value",englishText(customerInfo.email,"Not provided"))
   );
 
   const shipping=el("div","customer-shipping-block");
   shipping.append(
-    el("h4","customer-block-title","Shipping address"),
+    el("h4","customer-block-title","Delivery address"),
     el("strong","customer-shipping-name",englishText(customerInfo.name,"Customer")),
     el("span","customer-shipping-address",englishText(customerInfo.address,"Not provided"))
   );
@@ -133,7 +131,7 @@ function renderCustomerProfile(customerInfo){
 function renderResult(data){
   const order=data.order,shipments=Array.isArray(data.shipments)?data.shipments:[],events=normalizeEvents(data.events,order);
   const overview=el("section","order-overview"),customer=el("article","customer overview-panel"),customerInfo=parseCustomerInformation(order.customer_info);
-  customer.append(el("h3","overview-panel-title","Customer Information"),renderCustomerProfile(customerInfo));overview.append(customer);
+  customer.append(el("h3","overview-panel-title","Customer"),renderCustomerProfile(customerInfo));overview.append(customer);
   const representative=renderRepresentative(order.business_name);if(representative){representative.classList.add("overview-panel");overview.append(representative)}
   result.append(overview);
   if(shipments.length){const card=el("article","track-card"),title=el("div","section-title"),batches=el("div","batches");title.append(el("h3","","Shipment Journey"),el("span","",`${shipments.length} ${shipments.length===1?"shipment":"shipments"}`));card.append(title);shipments.forEach((item,index)=>batches.append(renderBatch(item,index)));card.append(batches);result.append(card)}

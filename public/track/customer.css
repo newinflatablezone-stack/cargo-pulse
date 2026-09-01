@@ -203,4 +203,12 @@
     padding: 18px;
     border-radius: 15px;
   }
+  .order-overview .representative-contacts { grid-template-columns: 1fr; }
+  .order-overview .representative-contact,
+  .order-overview .representative-contact:first-child {
+    padding: 9px 0 !important;
+    border-left: 0;
+    border-bottom: 1px solid #dce5e2;
+  }
+  .order-overview .representative-contact:last-child { border-bottom: 0; }
 }

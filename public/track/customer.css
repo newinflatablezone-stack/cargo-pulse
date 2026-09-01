@@ -193,6 +193,38 @@
   background: linear-gradient(135deg, rgba(235, 246, 242, .98), rgba(255, 255, 255, .96));
   box-shadow: 0 10px 30px rgba(26, 62, 52, .035);
 }
+.order-overview .section-title h3,
+.customer .overview-panel-title {
+  color: #102d26;
+  font-size: 18px;
+  font-weight: 750;
+  line-height: 1.3;
+}
+.customer .customer-block-title,
+.order-overview .representative-contact span {
+  color: #71837e;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.3;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.customer .customer-contact-value,
+.customer .customer-shipping-address,
+.customer .customer-shipping-phone,
+.order-overview .representative-contact strong {
+  color: #203a33;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.55;
+}
+.customer .customer-shipping-name,
+.order-overview .representative-identity {
+  color: #203a33;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.55;
+}
 @media (max-width: 850px) {
   .order-overview { gap: 16px; }
   .order-overview .representative.overview-panel { border: 1px solid #cfe0da; }

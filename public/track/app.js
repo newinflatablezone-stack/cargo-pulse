@@ -83,7 +83,7 @@ function renderRepresentative(name){
   else contacts.append(contactItem("Phone",representative.phone),contactItem("WhatsApp",representative.whatsapp));
   contacts.append(contactItem("Email",representative.email));
   const identity=el("div","representative-identity",representative.name);
-  card.append(title,identity,contacts);return card;
+  card.append(title,el("p","sales-contact-help","Questions about your shipment? Please contact your sales representative."),identity,contacts);return card;
 }
 
 function parseCustomerInformation(value){
@@ -130,12 +130,11 @@ function renderCustomerProfile(customerInfo){
 
 function renderResult(data){
   const order=data.order,shipments=Array.isArray(data.shipments)?data.shipments:[],events=normalizeEvents(data.events,order);
-  const overview=el("section","order-overview"),customer=el("article","customer overview-panel"),customerInfo=parseCustomerInformation(order.customer_info);
-  customer.append(el("h3","overview-panel-title","Customer"),renderCustomerProfile(customerInfo));overview.append(customer);
-  const representative=renderRepresentative(order.business_name);if(representative){representative.classList.add("overview-panel");overview.append(representative)}
-  result.append(overview);
+  const customer=el("article","customer customer-card"),customerInfo=parseCustomerInformation(order.customer_info);
+  customer.append(el("h3","overview-panel-title","Customer"),renderCustomerProfile(customerInfo));result.append(customer);
   if(shipments.length){const card=el("article","track-card"),title=el("div","section-title"),batches=el("div","batches");title.append(el("h3","","Shipment Journey"),el("span","",`${shipments.length} ${shipments.length===1?"shipment":"shipments"}`));card.append(title);shipments.forEach((item,index)=>batches.append(renderBatch(item,index)));card.append(batches);result.append(card)}
   else result.append(renderTimelineCard(events,"Shipment Journey",order));
+  const representative=renderRepresentative(order.business_name);if(representative){representative.classList.add("sales-contact-card");result.append(representative)}
 }
 function normalizeEvents(source,item){const list=Array.isArray(source)?source:[];const seen=new Set(),out=[];for(const event of list){const key=`${event.step_key}|${event.started_at}|${event.completed_at||""}`;if(seen.has(key))continue;seen.add(key);out.push(event)}if(!out.some(e=>e.step_key===item.current_step))out.push({step_key:item.current_step,started_at:item.step_started_at,deadline_at:item.step_deadline,completed_at:item.current_step==="completed"?item.step_started_at:null,tracking_no:item.tracking_no});return out.filter(e=>e.step_key&&e.step_key!=="production_shipping")}
 function renderTimelineCard(events,titleText,item){const card=el("article","track-card"),title=el("div","section-title");title.append(el("h3","",titleText),el("span","","Actual milestones and upcoming schedule"));card.append(title,renderTimeline(events,item));return card}

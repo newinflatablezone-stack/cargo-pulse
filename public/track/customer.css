@@ -244,3 +244,60 @@
   }
   .order-overview .representative-contact:last-child { border-bottom: 0; }
 }
+
+/* Standalone cards follow the customer reading order: customer, journey, contact. */
+.customer-card {
+  padding: 22px 24px;
+  border: 1px solid #cfe2da;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #f0f8f4, #fbfdfc);
+  box-shadow: 0 10px 30px rgba(26, 82, 64, .035);
+}
+.sales-contact-card {
+  padding: 22px 24px;
+  border: 1px solid #d3dce8;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #f2f6fb, #fcfdff);
+  box-shadow: 0 10px 30px rgba(44, 66, 96, .035);
+}
+.sales-contact-card .section-title { margin-bottom: 6px; }
+.sales-contact-card .section-title h3 {
+  color: #102d26;
+  font-size: 18px;
+  font-weight: 700;
+}
+.sales-contact-help {
+  margin: 0 0 20px;
+  color: #657974;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.sales-contact-card .representative-identity {
+  color: #203a33;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.55;
+}
+.sales-contact-card .representative-contact span {
+  color: #71837e;
+  font-size: 11px;
+  font-weight: 700;
+}
+.sales-contact-card .representative-contact strong {
+  color: #203a33;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+@media (max-width: 700px) {
+  .customer-card,
+  .sales-contact-card { padding: 18px; border-radius: 15px; }
+  .sales-contact-card .representative-contacts { grid-template-columns: 1fr; }
+  .sales-contact-card .representative-contact,
+  .sales-contact-card .representative-contact:first-child {
+    padding: 9px 0;
+    border-left: 0;
+    border-bottom: 1px solid #dce5e2;
+  }
+  .sales-contact-card .representative-contact:last-child { border-bottom: 0; }
+}

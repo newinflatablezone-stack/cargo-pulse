@@ -1299,3 +1299,5 @@ header nav{margin-left:auto}
 @media(min-width:901px){.index-filters:has(.workflow-step-filter){grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}}
 .workflow-step-filter select{border-color:#bfd3c8;background:#f5faf7}
 
+.duty-prepaid-field select{background:#f7faf8}.duty-prepaid-note-field textarea{min-height:130px;resize:vertical}.duty-prepaid-detail strong.prepaid{color:#19704f}.duty-prepaid-detail strong.not-prepaid{color:#7a8780}.duty-prepaid-note-detail dd{white-space:pre-wrap;overflow-wrap:anywhere}
+

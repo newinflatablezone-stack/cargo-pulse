@@ -187,6 +187,7 @@ button:disabled{cursor:not-allowed;opacity:.48;transform:none!important}
 .index-filters:has(.red-delay-cause-filter){grid-template-columns:repeat(4,minmax(0,1fr))}.red-delay-cause-select{max-width:126px;padding:4px 22px 4px 7px;border:1px solid #ef8277;border-radius:999px;background:#fff1ef;color:#9f3026;font-size:10px;font-weight:600}.red-delay-cause-select.required{border-color:#e54335;background:#ffdcd7;box-shadow:0 0 0 2px #e5433518}.red-delay-cause-label{border:1px solid #ef8277}@media(max-width:800px){.index-filters:has(.red-delay-cause-filter){grid-template-columns:repeat(2,minmax(0,1fr))}.red-delay-cause-select{max-width:108px;font-size:8px;padding:3px 18px 3px 5px}}@media(max-width:500px){.index-filters:has(.red-delay-cause-filter){grid-template-columns:repeat(2,minmax(0,1fr))}}
 .card-status:has(.red-delay-cause-select),.card-status:has(.red-delay-cause-label){flex-direction:column!important;align-items:flex-end!important;gap:4px!important}
 #abnormalNoteForm textarea{min-height:360px;resize:vertical;font-size:14px;line-height:1.65;padding:14px 15px}@media(max-width:650px){#abnormalNoteForm textarea{min-height:48vh;max-height:65vh;font-size:13px}}
+.product-weight-field{display:flex;flex-direction:column;gap:7px;margin:12px 0 16px;padding:12px 14px;border:1px solid #cbdcd3;border-radius:9px;background:#f5faf7;color:#31584c;font-size:12px;font-weight:600}.product-weight-field input{max-width:260px;background:#fff}
 @media(max-width:500px){
   .order-no{font-size:17px}
   .order-card h3{font-size:16px}

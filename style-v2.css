@@ -1296,3 +1296,6 @@ header nav{margin-left:auto}
 .forwarder-payment-choice legend{padding:0 5px;color:#31584c;font-size:12px;font-weight:650}.forwarder-payment-choice label{display:inline-flex;flex-direction:row;align-items:center;gap:6px;margin:0;color:#324a42;font-size:13px}.forwarder-payment-choice input{width:auto;margin:0;accent-color:#174f40}
 .forwarder-payment-detail select{min-width:110px;padding:6px 9px;border:1px solid #ced8d2;border-radius:7px;background:#fff;color:#23473d}.forwarder-payment-detail strong.unpaid{color:#c74535}
 
+@media(min-width:901px){.index-filters:has(.workflow-step-filter){grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}}
+.workflow-step-filter select{border-color:#bfd3c8;background:#f5faf7}
+

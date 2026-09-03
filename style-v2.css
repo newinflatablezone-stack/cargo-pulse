@@ -1301,3 +1301,5 @@ header nav{margin-left:auto}
 
 .duty-prepaid-field select{background:#f7faf8}.duty-prepaid-note-field textarea{min-height:130px;resize:vertical}.duty-prepaid-detail strong.prepaid{color:#19704f}.duty-prepaid-detail strong.not-prepaid{color:#7a8780}.duty-prepaid-note-detail dd{white-space:pre-wrap;overflow-wrap:anywhere}
 
+.duty-prepaid-filter select,.forwarder-paid-filter select{border-color:#c8d6ce;background:#f8faf8}.forwarder-paid-filter select{color:#254e42}
+

@@ -1292,3 +1292,7 @@ header nav{margin-left:auto}
 .internal-readonly-note{margin:14px 0 0;color:#78867f;font-size:12px}.resource-links [data-internal-resource]{cursor:pointer}
 @media(max-width:700px){#resourceDialog:has(.internal-resource-modal){width:96vw}.internal-resource-modal{min-width:0;padding:22px 16px}.internal-resource-head{align-items:flex-end}.internal-resource-editor{grid-template-columns:1fr}.internal-resource-editor .primary{justify-self:stretch}.internal-table-scroll{max-height:54vh}}
 
+.forwarder-payment-choice{display:flex;align-items:center;gap:18px;margin:16px 0;padding:13px 15px;border:1px solid #cbdcd3;border-radius:9px;background:#f5faf7}
+.forwarder-payment-choice legend{padding:0 5px;color:#31584c;font-size:12px;font-weight:650}.forwarder-payment-choice label{display:inline-flex;flex-direction:row;align-items:center;gap:6px;margin:0;color:#324a42;font-size:13px}.forwarder-payment-choice input{width:auto;margin:0;accent-color:#174f40}
+.forwarder-payment-detail select{min-width:110px;padding:6px 9px;border:1px solid #ced8d2;border-radius:7px;background:#fff;color:#23473d}.forwarder-payment-detail strong.unpaid{color:#c74535}
+

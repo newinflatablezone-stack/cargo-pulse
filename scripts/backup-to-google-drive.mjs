@@ -5,7 +5,19 @@ const mode = process.argv[2];
 const supabaseUrl = requireEnv('SUPABASE_URL').replace(/\/$/, '');
 const supabaseKey = requireEnv('SUPABASE_SECRET_KEY');
 const outputDir = path.resolve('backup-output');
-const tables = ['profiles', 'app_settings', 'partners', 'orders', 'order_events', 'order_images'];
+const requiredTables = [
+  'profiles',
+  'app_settings',
+  'partners',
+  'orders',
+  'order_events',
+  'order_images',
+  'order_factories',
+  'order_shipments',
+  'order_shipment_events',
+  'internal_resource_tables',
+  'shipments',
+];
 
 function requireEnv(name) {
   const value = process.env[name];
@@ -40,6 +52,24 @@ async function exportTable(table) {
   }
   await fs.writeFile(path.join(outputDir, 'data', `${table}.json`), JSON.stringify(all, null, 2));
   return all;
+}
+
+async function discoverPublicTables(warnings) {
+  try {
+    const response = await checkedFetch(`${supabaseUrl}/rest/v1/`, {
+      headers: apiHeaders({ Accept: 'application/openapi+json' }),
+    });
+    const specification = await response.json();
+    const discovered = Object.keys(specification.definitions ?? {})
+      .filter((name) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name));
+    if (!discovered.length) {
+      warnings.push('No public tables were discovered from the REST schema; using the required table list.');
+    }
+    return [...new Set([...requiredTables, ...discovered])].sort();
+  } catch (error) {
+    warnings.push(`Public table discovery failed; using the required table list: ${error.message}`);
+    return [...requiredTables];
+  }
 }
 
 async function exportAuthUsers(warnings) {
@@ -110,6 +140,7 @@ async function exportBackup() {
   const warnings = [];
   const counts = {};
   let imageRows = [];
+  const tables = await discoverPublicTables(warnings);
   for (const table of tables) {
     const rows = await exportTable(table);
     counts[table] = rows.length;
@@ -121,6 +152,8 @@ async function exportBackup() {
   const manifest = {
     created_at: new Date().toISOString(),
     source: supabaseUrl,
+    source_revision: process.env.GITHUB_SHA ?? null,
+    tables,
     counts,
     schema_files: schemaFiles,
     warnings,

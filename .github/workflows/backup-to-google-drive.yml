@@ -3,7 +3,9 @@ name: Backup Cargo Pulse
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 18 * * 0"
+    # GitHub cron does not support a true "every 3 days" interval across month boundaries.
+    # Run the lightweight gate daily, then create a backup every third day from 2026-09-03.
+    - cron: "0 18 * * *"
   push:
     branches: [main]
     paths:
@@ -26,21 +28,53 @@ jobs:
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
 
     steps:
+      - name: Decide whether today is a backup day
+        id: backup_gate
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != "schedule" ]]; then
+            echo "run_backup=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          anchor_day=$(date -u -d "2026-09-03" +%s)
+          current_day=$(date -u -d "$(date -u +%F)" +%s)
+          elapsed_days=$(( (current_day - anchor_day) / 86400 ))
+          if (( elapsed_days % 3 == 0 )); then
+            echo "run_backup=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_backup=false" >> "$GITHUB_OUTPUT"
+            echo "Not a scheduled backup day."
+          fi
+
       - name: Download repository
+        if: steps.backup_gate.outputs.run_backup == 'true'
         uses: actions/checkout@v4
 
       - name: Use Node.js 20
+        if: steps.backup_gate.outputs.run_backup == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Export database and order images
+        if: steps.backup_gate.outputs.run_backup == 'true'
         run: node scripts/backup-to-google-drive.mjs export
 
+      - name: Add code snapshot
+        if: steps.backup_gate.outputs.run_backup == 'true'
+        shell: bash
+        run: |
+          mkdir -p backup-output/code
+          git archive --format=tar.gz --output=backup-output/code/source-${GITHUB_SHA}.tar.gz HEAD
+          printf '%s\n' "$GITHUB_SHA" > backup-output/code/commit.txt
+
       - name: Create compressed backup
+        if: steps.backup_gate.outputs.run_backup == 'true'
         run: cd backup-output && zip -r "$RUNNER_TEMP/cargo-pulse-backup.zip" .
 
       - name: Save backup in GitHub
+        if: steps.backup_gate.outputs.run_backup == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: cargo-pulse-backup-${{ github.run_id }}

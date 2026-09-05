@@ -13,6 +13,8 @@ fi
 install -d -m 755 /opt/cargo-pulse-runtime
 install -m 644 "$SOURCE" /opt/cargo-pulse-runtime/resource-image-server.mjs
 install -d -o www-data -g www-data -m 755 /var/lib/cargo-pulse/uploads/resources
+chgrp www-data /etc/cargo-pulse
+chmod 750 /etc/cargo-pulse
 chgrp www-data /etc/cargo-pulse/config.json
 chmod 640 /etc/cargo-pulse/config.json
 NODE_BIN="$(command -v node)"
@@ -68,8 +70,24 @@ if 'location = /api/resource-image' not in s:
 PY
 
 systemctl daemon-reload
-systemctl enable --now cargo-pulse-images.service
+systemctl enable cargo-pulse-images.service
+systemctl restart cargo-pulse-images.service
 nginx -t
 systemctl reload nginx
-curl -fsS http://127.0.0.1:8787/not-found >/dev/null || test "$?" -eq 22
+
+healthy=''
+for _ in {1..10}; do
+  status="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/not-found || true)"
+  if [ "$status" = 404 ]; then
+    healthy=1
+    break
+  fi
+  sleep 1
+done
+if [ -z "$healthy" ]; then
+  echo '图片服务启动失败，以下是诊断信息：' >&2
+  systemctl status cargo-pulse-images.service --no-pager >&2 || true
+  journalctl -u cargo-pulse-images.service -n 50 --no-pager >&2 || true
+  exit 1
+fi
 echo '腾讯云资料图片服务安装完成'

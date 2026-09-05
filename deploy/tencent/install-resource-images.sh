@@ -55,7 +55,7 @@ p=Path('/etc/nginx/sites-available/default')
 s=p.read_text()
 marker='    location = /api/config {'
 block='''    location = /api/resource-image {
-        client_max_body_size 18k;
+        client_max_body_size 24k;
         proxy_pass http://127.0.0.1:8787/resource-image$is_args$args;
         proxy_set_header Authorization $http_authorization;
         proxy_set_header Content-Type $content_type;
@@ -72,7 +72,10 @@ block='''    location = /api/resource-image {
 if 'location = /api/resource-image' not in s:
     if marker not in s: raise SystemExit('未找到 Nginx 插入位置')
     p.with_suffix('.before-images').write_text(s)
-    p.write_text(s.replace(marker,block+marker))
+    s=s.replace(marker,block+marker)
+else:
+    s=s.replace('client_max_body_size 18k;', 'client_max_body_size 24k;')
+p.write_text(s)
 PY
 
 systemctl daemon-reload

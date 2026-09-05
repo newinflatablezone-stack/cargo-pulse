@@ -124,6 +124,19 @@ async function downloadImages(rows, warnings) {
   return downloaded;
 }
 
+function resourceImageRows(rows) {
+  const images = [];
+  for (const resource of rows) {
+    for (const value of Array.isArray(resource.rows) ? resource.rows : []) {
+      if (!value || Array.isArray(value) || value.__cargo_pulse_resource_meta__ !== 1) continue;
+      for (const image of Array.isArray(value.images) ? value.images : []) {
+        if (image?.object_path) images.push({ object_path: image.object_path });
+      }
+    }
+  }
+  return images;
+}
+
 async function copySchemaFiles() {
   const names = await fs.readdir('.');
   const sqlFiles = names.filter((name) => name.toLowerCase().endsWith('.sql'));
@@ -140,14 +153,17 @@ async function exportBackup() {
   const warnings = [];
   const counts = {};
   let imageRows = [];
+  let internalResourceImageRows = [];
   const tables = await discoverPublicTables(warnings);
   for (const table of tables) {
     const rows = await exportTable(table);
     counts[table] = rows.length;
     if (table === 'order_images') imageRows = rows;
+    if (table === 'internal_resource_tables') internalResourceImageRows = resourceImageRows(rows);
   }
   counts.auth_users = await exportAuthUsers(warnings);
-  counts.downloaded_images = await downloadImages(imageRows, warnings);
+  const storageRows = [...new Map([...imageRows, ...internalResourceImageRows].map(row => [row.object_path, row])).values()];
+  counts.downloaded_images = await downloadImages(storageRows, warnings);
   const schemaFiles = await copySchemaFiles();
   const manifest = {
     created_at: new Date().toISOString(),

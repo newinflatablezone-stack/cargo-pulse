@@ -1304,6 +1304,17 @@ header nav{margin-left:auto}
 .internal-resource-modal.is-editing .internal-resource-editor{padding:18px}.internal-resource-modal.is-editing .resource-editor-intro{margin-bottom:13px}.internal-resource-modal.is-editing .resource-editor-footer{position:sticky;bottom:-18px;z-index:20;margin:14px -18px -18px;padding:13px 18px;background:#fff;box-shadow:0 -5px 16px rgba(35,66,56,.09)}
 @media(max-width:700px){.resource-import-methods{grid-template-columns:1fr}.resource-excel-scroll{max-height:42vh}.resource-excel-grid thead th{min-width:125px}.resource-excel-grid thead input,.resource-excel-grid tbody input{min-width:120px}.resource-excel-toolbar{flex-wrap:wrap}.resource-excel-toolbar span{width:100%;margin-left:0}.internal-resource-modal.is-editing .internal-resource-editor{padding:11px}.internal-resource-modal.is-editing .resource-editor-footer{bottom:-11px;margin:12px -11px -11px;padding:12px 11px}}
 
+/* Inventory and logistics parameters are full pages, not constrained dialogs. */
+main.internal-resource-page-shell{width:100%;max-width:none!important;min-height:calc(100vh - 64px);margin:0!important;padding:0!important;background:#f4f7f5}
+.internal-resource-page-shell .internal-resource-modal{width:100%;min-height:calc(100vh - 64px);padding:34px clamp(22px,4vw,72px) 56px;overflow:visible;box-sizing:border-box}
+.internal-resource-page-shell .internal-resource-modal>.resource-page-back{position:absolute!important;top:28px!important;right:clamp(22px,4vw,72px)!important;float:none!important;width:auto!important;height:auto!important;margin:0!important;padding:9px 14px!important;border-radius:8px!important;background:#fff!important;color:#285649!important;font-size:12px!important;line-height:1.4!important}
+.internal-resource-page-shell .internal-resource-head{padding-right:155px}
+.internal-resource-page-shell .internal-table-scroll{max-height:none;min-height:240px}
+.internal-resource-page-shell .resource-excel-scroll{min-height:320px;max-height:calc(100vh - 390px)}
+.internal-resource-page-shell .internal-resource-modal.is-editing .resource-editor-footer{bottom:0}
+.internal-resource-page-shell .resource-page-loading{padding-top:72px}
+@media(max-width:700px){main.internal-resource-page-shell{min-height:calc(100vh - 54px)}.internal-resource-page-shell .internal-resource-modal{min-height:calc(100vh - 54px);padding:76px 14px 32px}.internal-resource-page-shell .internal-resource-modal>.resource-page-back{top:18px!important;right:14px!important}.internal-resource-page-shell .internal-resource-head{padding-right:0}.internal-resource-page-shell .resource-excel-scroll{min-height:280px;max-height:calc(100vh - 430px)}}
+
 .forwarder-payment-choice{display:flex;align-items:center;gap:18px;margin:16px 0;padding:13px 15px;border:1px solid #cbdcd3;border-radius:9px;background:#f5faf7}
 .forwarder-payment-choice legend{padding:0 5px;color:#31584c;font-size:12px;font-weight:650}.forwarder-payment-choice label{display:inline-flex;flex-direction:row;align-items:center;gap:6px;margin:0;color:#324a42;font-size:13px}.forwarder-payment-choice input{width:auto;margin:0;accent-color:#174f40}
 .forwarder-payment-detail select{min-width:110px;padding:6px 9px;border:1px solid #ced8d2;border-radius:7px;background:#fff;color:#23473d}.forwarder-payment-detail strong.unpaid{color:#c74535}

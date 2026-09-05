@@ -108,12 +108,15 @@ async function downloadImages(rows, warnings) {
   for (const row of rows) {
     if (!row.object_path) continue;
     try {
-      const objectPath = safeObjectPath(row.object_path);
-      const response = await checkedFetch(
-        `${supabaseUrl}/storage/v1/object/authenticated/order-images/${encodedObjectPath(objectPath)}`,
-        { headers: apiHeaders() },
-      );
-      const target = path.join(outputDir, 'storage', 'order-images', ...objectPath.split('/'));
+      const isTencent = String(row.object_path).startsWith('tencent:');
+      const objectPath = safeObjectPath(isTencent ? String(row.object_path).slice(8) : row.object_path);
+      const response = isTencent
+        ? await checkedFetch(`https://kis.net/uploads/${encodedObjectPath(objectPath)}`)
+        : await checkedFetch(
+          `${supabaseUrl}/storage/v1/object/authenticated/order-images/${encodedObjectPath(objectPath)}`,
+          { headers: apiHeaders() },
+        );
+      const target = path.join(outputDir, 'storage', isTencent ? 'tencent' : 'order-images', ...objectPath.split('/'));
       await fs.mkdir(path.dirname(target), { recursive: true });
       await fs.writeFile(target, Buffer.from(await response.arrayBuffer()));
       downloaded += 1;

@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+test "$(id -u)" -eq 0 || { echo '请使用 sudo 运行'; exit 1; }
+SOURCE=/opt/cargo-pulse/server/resource-image-server.mjs
+test -s "$SOURCE" || { echo "找不到 $SOURCE，请先等待 GitHub 自动同步"; exit 1; }
+install -d -m 755 /opt/cargo-pulse-runtime
+install -m 644 "$SOURCE" /opt/cargo-pulse-runtime/resource-image-server.mjs
+install -d -o www-data -g www-data -m 755 /var/lib/cargo-pulse/uploads/resources
+chgrp www-data /etc/cargo-pulse/config.json
+chmod 640 /etc/cargo-pulse/config.json
+NODE_BIN="$(command -v node)"
+
+cat >/etc/systemd/system/cargo-pulse-images.service <<EOF
+[Unit]
+Description=Cargo Pulse Tencent resource image service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+ExecStart=$NODE_BIN /opt/cargo-pulse-runtime/resource-image-server.mjs
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/cargo-pulse/uploads
+ReadOnlyPaths=/etc/cargo-pulse/config.json
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+python3 - <<'PY'
+from pathlib import Path
+p=Path('/etc/nginx/sites-available/default')
+s=p.read_text()
+marker='    location = /api/config {'
+block='''    location = /api/resource-image {
+        client_max_body_size 24k;
+        proxy_pass http://127.0.0.1:8787/resource-image$is_args$args;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header Content-Type $content_type;
+        proxy_request_buffering off;
+    }
+
+    location /uploads/ {
+        alias /var/lib/cargo-pulse/uploads/;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        expires 1y;
+    }
+
+'''
+if 'location = /api/resource-image' not in s:
+    if marker not in s: raise SystemExit('未找到 Nginx 插入位置')
+    p.with_suffix('.before-images').write_text(s)
+    p.write_text(s.replace(marker,block+marker))
+PY
+
+systemctl daemon-reload
+systemctl enable --now cargo-pulse-images.service
+nginx -t
+systemctl reload nginx
+curl -fsS http://127.0.0.1:8787/not-found >/dev/null || test "$?" -eq 22
+echo '腾讯云资料图片服务安装完成'

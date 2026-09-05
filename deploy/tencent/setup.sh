@@ -117,6 +117,7 @@ TIMER
 systemctl daemon-reload
 systemctl enable --now cargo-pulse-deploy.timer
 /usr/local/bin/cargo-pulse-deploy
+bash "$APP_SOURCE/deploy/tencent/install-resource-images.sh"
 systemctl restart nginx
 
 echo

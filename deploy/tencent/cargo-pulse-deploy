@@ -49,6 +49,10 @@ printf '{"version":"%s"}\n' "$VERSION" > "$RELEASE_DIR/dist/api/version"
 install -d "$APP_ROOT"
 rsync -a --delete "$RELEASE_DIR/dist/" "$APP_ROOT/"
 chown -R www-data:www-data "$APP_ROOT"
+if systemctl cat cargo-pulse-images.service >/dev/null 2>&1 && [ -s "$RELEASE_DIR/server/resource-image-server.mjs" ]; then
+  install -m 644 "$RELEASE_DIR/server/resource-image-server.mjs" /opt/cargo-pulse-runtime/resource-image-server.mjs
+  systemctl restart cargo-pulse-images.service
+fi
 nginx -t
 systemctl reload nginx
 echo "Cargo Pulse 部署成功：$VERSION"

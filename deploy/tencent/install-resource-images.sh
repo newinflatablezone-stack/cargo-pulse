@@ -18,6 +18,12 @@ chmod 750 /etc/cargo-pulse
 chgrp www-data /etc/cargo-pulse/config.json
 chmod 640 /etc/cargo-pulse/config.json
 NODE_BIN="$(command -v node)"
+if [ "$NODE_BIN" = /snap/bin/node ] && [ -x /snap/node/current/bin/node ]; then
+  # The Snap launcher needs privileges intentionally removed by the hardened
+  # systemd unit. Calling the packaged Node binary directly avoids snap-confine.
+  NODE_BIN=/snap/node/current/bin/node
+fi
+"$NODE_BIN" --version >/dev/null
 
 cat >/etc/systemd/system/cargo-pulse-images.service <<EOF
 [Unit]

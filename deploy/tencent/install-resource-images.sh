@@ -3,7 +3,13 @@ set -Eeuo pipefail
 
 test "$(id -u)" -eq 0 || { echo '请使用 sudo 运行'; exit 1; }
 SOURCE=/opt/cargo-pulse/server/resource-image-server.mjs
-test -s "$SOURCE" || { echo "找不到 $SOURCE，请先等待 GitHub 自动同步"; exit 1; }
+TEMP_SOURCE=''
+if [ ! -s "$SOURCE" ]; then
+  TEMP_SOURCE="$(mktemp)"
+  curl -fsSL "https://raw.githubusercontent.com/newinflatablezone-stack/cargo-pulse/main/server/resource-image-server.mjs?v=$(date +%s)" -o "$TEMP_SOURCE"
+  SOURCE="$TEMP_SOURCE"
+  trap 'rm -f -- "$TEMP_SOURCE"' EXIT
+fi
 install -d -m 755 /opt/cargo-pulse-runtime
 install -m 644 "$SOURCE" /opt/cargo-pulse-runtime/resource-image-server.mjs
 install -d -o www-data -g www-data -m 755 /var/lib/cargo-pulse/uploads/resources

@@ -41,7 +41,7 @@ create table if not exists public.partners (
 );
 insert into public.partners(kind,name) values
 ('factory','龙一'),('factory','特凡'),('factory','茄果'),('factory','新点'),('factory','蓝宏'),('factory','鼎峰'),('factory','申奥'),
-('forwarder','递四方'),('forwarder','众一'),('forwarder','东盛'),('forwarder','讯飞'),('forwarder','嘉城'),('forwarder','善善')
+('forwarder','递四方'),('forwarder','众一'),('forwarder','东盛'),('forwarder','讯飞'),('forwarder','嘉诚'),('forwarder','善善')
 on conflict do nothing;
 
 create table if not exists public.orders (

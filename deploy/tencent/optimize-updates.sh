@@ -23,11 +23,35 @@ s = s.replace("AccuracySec=5s", "AccuracySec=1s")
 p.write_text(s)
 PY
 
-cat > /etc/nginx/conf.d/cargo-pulse-fresh-assets.conf <<'NGINX'
-add_header Cache-Control "no-cache, no-store, must-revalidate" always;
-add_header Pragma "no-cache" always;
-add_header Expires "0" always;
+rm -f /etc/nginx/conf.d/cargo-pulse-fresh-assets.conf
+
+cat > /etc/nginx/conf.d/cargo-pulse-compression.conf <<'NGINX'
+gzip on;
+gzip_vary on;
+gzip_min_length 1024;
+gzip_comp_level 5;
+gzip_types text/plain text/css application/javascript application/json application/xml image/svg+xml;
 NGINX
+
+python3 - <<'PY'
+from pathlib import Path
+p = Path('/etc/nginx/sites-available/default')
+s = p.read_text()
+block = '''    location ^~ /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        expires 1y;
+        try_files $uri =404;
+    }
+
+'''
+if 'location ^~ /assets/' not in s:
+    marker = '    location / {'
+    if marker not in s:
+        raise SystemExit('未找到 Nginx 静态资源插入位置')
+    p.with_suffix('.before-performance').write_text(s)
+    s = s.replace(marker, block + marker, 1)
+p.write_text(s)
+PY
 
 systemctl daemon-reload
 systemctl restart cargo-pulse-deploy.timer
@@ -35,4 +59,4 @@ nginx -t
 systemctl reload nginx
 systemctl start cargo-pulse-deploy.service
 
-echo "Cargo Pulse 快速更新已启用：每 15 秒检查，并禁止页面使用旧缓存。"
+echo "Cargo Pulse 快速更新已启用：首页实时更新，版本化静态资源已压缩并长期缓存。"

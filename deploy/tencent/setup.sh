@@ -81,6 +81,10 @@ server {
     }
 
     location ^~ /assets/ {
+        gzip on;
+        gzip_vary on;
+        gzip_comp_level 5;
+        gzip_types text/css application/javascript application/json image/svg+xml;
         add_header Cache-Control "public, max-age=31536000, immutable" always;
         expires 1y;
         try_files $uri =404;
@@ -93,14 +97,6 @@ server {
         try_files $uri $uri/ /index.html;
     }
 }
-NGINX
-
-cat > /etc/nginx/conf.d/cargo-pulse-compression.conf <<'NGINX'
-gzip on;
-gzip_vary on;
-gzip_min_length 1024;
-gzip_comp_level 5;
-gzip_types text/plain text/css application/javascript application/json application/xml image/svg+xml;
 NGINX
 
 cat > /etc/systemd/system/cargo-pulse-deploy.service <<'SERVICE'

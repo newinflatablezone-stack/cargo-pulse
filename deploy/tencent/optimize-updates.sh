@@ -24,20 +24,17 @@ p.write_text(s)
 PY
 
 rm -f /etc/nginx/conf.d/cargo-pulse-fresh-assets.conf
-
-cat > /etc/nginx/conf.d/cargo-pulse-compression.conf <<'NGINX'
-gzip on;
-gzip_vary on;
-gzip_min_length 1024;
-gzip_comp_level 5;
-gzip_types text/plain text/css application/javascript application/json application/xml image/svg+xml;
-NGINX
+rm -f /etc/nginx/conf.d/cargo-pulse-compression.conf
 
 python3 - <<'PY'
 from pathlib import Path
 p = Path('/etc/nginx/sites-available/default')
 s = p.read_text()
 block = '''    location ^~ /assets/ {
+        gzip on;
+        gzip_vary on;
+        gzip_comp_level 5;
+        gzip_types text/css application/javascript application/json image/svg+xml;
         add_header Cache-Control "public, max-age=31536000, immutable" always;
         expires 1y;
         try_files $uri =404;
@@ -50,6 +47,8 @@ if 'location ^~ /assets/' not in s:
         raise SystemExit('未找到 Nginx 静态资源插入位置')
     p.with_suffix('.before-performance').write_text(s)
     s = s.replace(marker, block + marker, 1)
+elif 'location ^~ /assets/ {\n        gzip on;' not in s:
+    s = s.replace('    location ^~ /assets/ {\n', '    location ^~ /assets/ {\n        gzip on;\n        gzip_vary on;\n        gzip_comp_level 5;\n        gzip_types text/css application/javascript application/json image/svg+xml;\n', 1)
 p.write_text(s)
 PY
 

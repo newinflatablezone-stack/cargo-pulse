@@ -20,11 +20,11 @@ export function nextStep(order,current){
  if(current==='tracking')return {key:'delivery',days:order.shipping_mode==='domestic_express'?10:7};
  if(current==='air_pickup')return {key:'delivery',days:7};
  if(current==='delivery')return {key:'completed',days:null};
- if(current==='domestic_customs')return {key:'ocean_tracking',days:1};
+ if(current==='domestic_customs')return {key:'ocean_transit',days:1};
  if(current==='ocean_tracking')return {key:'ocean_transit',days:oceanTransitDays(order)};
  if(current==='ocean_transit')return order.shipping_mode==='domestic_sea_port'?{key:'completed',days:null}:{key:'overseas_customs',days:7};
  if(current==='overseas_customs')return {key:'warehouse_appointment',days:7};
- if(current==='warehouse_appointment')return {key:'last_mile_tracking',days:1};
+ if(current==='warehouse_appointment')return {key:'last_mile',days:1};
  if(current==='last_mile_tracking')return {key:'last_mile',days:7};
  if(current==='last_mile')return {key:'completed',days:null};
  return firstStep(order);
@@ -38,7 +38,7 @@ export const RED_OVERDUE_AFTER_DAYS=7;
 export function alertLevel(value){if(!value)return 'normal';const today=new Date(),due=new Date(value);today.setHours(0,0,0,0);due.setHours(0,0,0,0);const overdue=Math.round((today-due)/86400000);if(overdue<=0)return 'normal';if(overdue<=RED_OVERDUE_AFTER_DAYS)return 'yellow';return 'red'}
 
 
-export function flowFor(order){if(order.current_step==='batch_shipping')return ['batch_shipping','completed'];const start=order.inventory_mode==='stock'?['shipping_selection']:order.needs_rendering?['rendering','production','production_shipping']:['production','production_shipping'];if(order.shipping_mode==='air_freight')return [...start,'air_pickup','delivery','completed'];if(order.shipping_mode==='domestic_express')return [...start,'tracking','delivery','completed'];if(order.shipping_mode==='overseas_warehouse')return [...start,'tracking','delivery','completed'];if(order.shipping_mode==='domestic_sea_port')return [...start,'domestic_customs','ocean_tracking','ocean_transit','completed'];return [...start,'domestic_customs','ocean_tracking','ocean_transit','overseas_customs','warehouse_appointment','last_mile_tracking','last_mile','completed']}
+export function flowFor(order){if(order.current_step==='batch_shipping')return ['batch_shipping','completed'];const start=order.inventory_mode==='stock'?['shipping_selection']:order.needs_rendering?['rendering','production','production_shipping']:['production','production_shipping'];if(order.shipping_mode==='air_freight')return [...start,'air_pickup','delivery','completed'];if(order.shipping_mode==='domestic_express')return [...start,'tracking','delivery','completed'];if(order.shipping_mode==='overseas_warehouse')return [...start,'tracking','delivery','completed'];if(order.shipping_mode==='domestic_sea_port')return [...start,'domestic_customs','ocean_transit','completed'];return [...start,'domestic_customs','ocean_transit','overseas_customs','warehouse_appointment','last_mile','completed']}
 
 export function overallDeadline(order){
  if(!order?.order_date||order.current_step==='completed')return null;if(order.current_step==='batch_shipping')return order.step_deadline||null;
@@ -51,7 +51,7 @@ export function overallDeadline(order){
  if(order.current_step==='tracking'){const trackingDays=order.shipping_mode==='overseas_warehouse'&&order.overseas_method==='truck'?5:2;return deadline(base+trackingDays,start)}
  if(order.current_step==='delivery'){if(order.shipping_mode==='air_freight')return deadline(base+17,start);const trackingDays=order.shipping_mode==='overseas_warehouse'&&order.overseas_method==='truck'?5:2;const deliveryDays=order.shipping_mode==='domestic_express'?10:7;return deadline(base+trackingDays+deliveryDays,start)}
  const europe=order.sea_region==='europe',customs=europe?14:10,ocean=oceanTransitDays(order);
- const seaTotals={domestic_customs:customs,ocean_tracking:customs+1,ocean_transit:customs+1+ocean,overseas_customs:customs+1+ocean+7,warehouse_appointment:customs+1+ocean+14,last_mile_tracking:customs+1+ocean+15,last_mile:customs+1+ocean+22};
+ const seaTotals={domestic_customs:customs,ocean_tracking:customs+1,ocean_transit:customs+ocean,overseas_customs:customs+ocean+7,warehouse_appointment:customs+ocean+14,last_mile_tracking:customs+ocean+15,last_mile:customs+ocean+21};
  return deadline(base+(seaTotals[order.current_step]??0),start);
 }
 export function orderAlertLevel(order){const rank={normal:0,yellow:1,red:2},stage=alertLevel(effectiveStepDeadline(order)),overall=alertLevel(overallDeadline(order));return rank[stage]>=rank[overall]?stage:overall}

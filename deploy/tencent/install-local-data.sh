@@ -105,7 +105,7 @@ for base in (Path('/etc/nginx/sites-available'),Path('/etc/nginx/conf.d')):
   if not p.is_file(): continue
   try: s=p.read_text()
   except UnicodeDecodeError: continue
-  if 'root /var/www/cargo-pulse' in s: candidates.append((p,s))
+  if 'root /var/www/cargo-pulse' in s or 'location = /api/config {' in s: candidates.append((p,s))
 if not candidates:
  p=Path('/etc/nginx/sites-available/default'); candidates=[(p,p.read_text())]
 marker='    location = /api/config {'
@@ -121,11 +121,13 @@ block='''    location ~ ^/(auth/v1|rest/v1|storage/v1)/ {
 '''
 patched=0
 for p,s in candidates:
- if 'proxy_pass http://127.0.0.1:8788' in s: continue
  if marker not in s: continue
- p.write_text(s.replace(marker,block+marker,1))
+ # One file may contain separate HTTP and HTTPS server blocks. Remove the
+ # generated block first, then insert it before every Cargo Pulse API marker.
+ s=s.replace(block,'')
+ p.write_text(s.replace(marker,block+marker))
  patched+=1
-if not patched and not any('proxy_pass http://127.0.0.1:8788' in s for _,s in candidates):
+if not patched:
  raise SystemExit('未找到 Cargo Pulse 当前生效的 Nginx 配置')
 PY
 
@@ -160,6 +162,16 @@ systemctl enable --now cargo-pulse-data.service
 systemctl enable --now cargo-pulse-data-backup.timer
 nginx -t
 systemctl reload nginx
-curl -fsS http://127.0.0.1:8788/health
+healthy=''
+for _ in {1..20}; do
+  if curl -fsS http://127.0.0.1:8788/health; then healthy=1; break; fi
+  sleep 0.5
+done
+if [ -z "$healthy" ]; then
+  echo '腾讯云本地数据服务启动失败：' >&2
+  systemctl status cargo-pulse-data.service --no-pager -l >&2 || true
+  journalctl -u cargo-pulse-data.service -n 80 --no-pager >&2 || true
+  exit 1
+fi
 echo
 echo '本地数据服务已安装但尚未切换。确认空闲后运行：sudo cargo-pulse-activate-local-data'

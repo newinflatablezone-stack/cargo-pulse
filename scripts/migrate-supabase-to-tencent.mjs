@@ -52,21 +52,27 @@ for (const table of tables) {
 }
 
 let copiedImages = 0;
+const skippedImages = [];
 for (const row of imageRows) {
   if (!row.object_path || row.object_path.startsWith('tencent:')) continue;
-  const encoded = row.object_path.split('/').map(encodeURIComponent).join('/');
-  const signed = await checked(`${source}/storage/v1/object/sign/order-images/${encoded}`, {
-    method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ expiresIn: 3600 })
-  });
-  const imageResponse = await fetch(`${source}/storage/v1${signed.signedURL}`);
-  if (!imageResponse.ok) throw Error(`图片读取失败：${row.object_path}`);
-  const upload = await fetch(`${target}/admin/import-object/${encoded}`, {
-    method: 'POST', headers: { 'X-Import-Secret': secret, 'Content-Type': imageResponse.headers.get('content-type') || 'application/octet-stream' }, body: await imageResponse.arrayBuffer()
-  });
-  if (!upload.ok) throw Error(`图片写入失败：${row.object_path}`);
-  copiedImages += 1;
+  try {
+    const encoded = row.object_path.split('/').map(encodeURIComponent).join('/');
+    const signed = await checked(`${source}/storage/v1/object/sign/order-images/${encoded}`, {
+      method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ expiresIn: 3600 })
+    });
+    const imageResponse = await fetch(`${source}/storage/v1${signed.signedURL}`);
+    if (!imageResponse.ok) throw Error(`读取返回 ${imageResponse.status}`);
+    const upload = await fetch(`${target}/admin/import-object/${encoded}`, {
+      method: 'POST', headers: { 'X-Import-Secret': secret, 'Content-Type': imageResponse.headers.get('content-type') || 'application/octet-stream' }, body: await imageResponse.arrayBuffer()
+    });
+    if (!upload.ok) throw Error(`写入返回 ${upload.status}`);
+    copiedImages += 1;
+  } catch (error) {
+    skippedImages.push({ path: row.object_path, reason: error.message });
+    process.stderr.write(`跳过无效历史图片：${row.object_path}（${error.message}）\n`);
+  }
 }
 
 const health = await checked(`${target}/health`);
 if (Number(health.orders) !== Number(counts.orders)) throw Error(`订单数量校验失败：源端 ${counts.orders}，腾讯云 ${health.orders}`);
-process.stdout.write(`迁移校验完成：${counts.orders} 个订单，${copiedImages} 张历史图片。\n`);
+process.stdout.write(`迁移校验完成：${counts.orders} 个订单，${copiedImages} 张历史图片，${skippedImages.length} 张无效历史图片已跳过。\n`);

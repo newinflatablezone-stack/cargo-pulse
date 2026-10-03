@@ -57,10 +57,9 @@ for (const row of imageRows) {
   if (!row.object_path || row.object_path.startsWith('tencent:')) continue;
   try {
     const encoded = row.object_path.split('/').map(encodeURIComponent).join('/');
-    const signed = await checked(`${source}/storage/v1/object/sign/order-images/${encoded}`, {
-      method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ expiresIn: 3600 })
-    });
-    const imageResponse = await fetch(`${source}/storage/v1${signed.signedURL}`);
+    // Authenticated object reads accept legacy names containing # and Unicode;
+    // Supabase's signing endpoint rejects some of those otherwise valid keys.
+    const imageResponse = await fetch(`${source}/storage/v1/object/authenticated/order-images/${encoded}`, { headers: auth });
     if (!imageResponse.ok) throw Error(`读取返回 ${imageResponse.status}`);
     const upload = await fetch(`${target}/admin/import-object/${encoded}`, {
       method: 'POST', headers: { 'X-Import-Secret': secret, 'Content-Type': imageResponse.headers.get('content-type') || 'application/octet-stream' }, body: await imageResponse.arrayBuffer()

@@ -53,13 +53,24 @@ for (const table of tables) {
 
 let copiedImages = 0;
 const skippedImages = [];
+const legacyImagePaths = imageRows.filter(row => row.object_path && !row.object_path.startsWith('tencent:')).map(row => row.object_path);
+let signedByPath = new Map();
+if (legacyImagePaths.length) {
+  const signedRows = await checked(`${source}/storage/v1/object/sign/order-images`, {
+    method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ expiresIn: 3600, paths: legacyImagePaths })
+  });
+  signedByPath = new Map(signedRows.map(row => [row.path, row]));
+}
 for (const row of imageRows) {
   if (!row.object_path || row.object_path.startsWith('tencent:')) continue;
   try {
     const encoded = row.object_path.split('/').map(encodeURIComponent).join('/');
-    // Authenticated object reads accept legacy names containing # and Unicode;
-    // Supabase's signing endpoint rejects some of those otherwise valid keys.
-    const imageResponse = await fetch(`${source}/storage/v1/object/authenticated/order-images/${encoded}`, { headers: auth });
+    // Put legacy paths in the JSON body. The single-object signing and direct
+    // download routes reject otherwise valid object names containing #.
+    const signed = signedByPath.get(row.object_path);
+    if (!signed?.signedURL) throw Error(signed?.error || '批量签名失败');
+    const query = signed.signedURL.includes('?') ? signed.signedURL.slice(signed.signedURL.indexOf('?')) : '';
+    const imageResponse = await fetch(`${source}/storage/v1/object/sign/order-images/${encoded}${query}`);
     if (!imageResponse.ok) throw Error(`读取返回 ${imageResponse.status}`);
     const upload = await fetch(`${target}/admin/import-object/${encoded}`, {
       method: 'POST', headers: { 'X-Import-Secret': secret, 'Content-Type': imageResponse.headers.get('content-type') || 'application/octet-stream' }, body: await imageResponse.arrayBuffer()

@@ -6,6 +6,17 @@ SOURCE="${SOURCE:-/opt/cargo-pulse}"
 RUNTIME=/opt/cargo-pulse-runtime
 CONFIG_DIR=/etc/cargo-pulse
 DATA_DIR=/var/lib/cargo-pulse/data
+TEMP_SOURCE=''
+
+if [ ! -s "$SOURCE/server/tencent-data-server.mjs" ]; then
+  TEMP_SOURCE="$(mktemp -d)"
+  trap 'rm -rf -- "$TEMP_SOURCE"' EXIT
+  git -C /opt/cargo-pulse archive origin/main \
+    server/tencent-data-core.mjs server/tencent-data-server.mjs \
+    scripts/migrate-supabase-to-tencent.mjs scripts/backup-tencent-data.mjs \
+    deploy/tencent/cargo-pulse-deploy | tar -xf - -C "$TEMP_SOURCE"
+  SOURCE="$TEMP_SOURCE"
+fi
 
 test -s "$CONFIG_DIR/config.json" || { echo '找不到现有系统配置'; exit 1; }
 install -d -m 750 "$CONFIG_DIR" "$RUNTIME"
@@ -15,6 +26,7 @@ install -m 644 "$SOURCE/server/tencent-data-core.mjs" "$RUNTIME/tencent-data-cor
 install -m 644 "$SOURCE/server/tencent-data-server.mjs" "$RUNTIME/tencent-data-server.mjs"
 install -m 644 "$SOURCE/scripts/migrate-supabase-to-tencent.mjs" "$RUNTIME/migrate-supabase-to-tencent.mjs"
 install -m 644 "$SOURCE/scripts/backup-tencent-data.mjs" "$RUNTIME/backup-tencent-data.mjs"
+install -m 755 "$SOURCE/deploy/tencent/cargo-pulse-deploy" /usr/local/bin/cargo-pulse-deploy
 
 IMPORT_SECRET="$(openssl rand -hex 32)"
 python3 - "$CONFIG_DIR/legacy-config.json" "$CONFIG_DIR/local-data.env" "$IMPORT_SECRET" <<'PY'
@@ -86,8 +98,16 @@ EOF
 
 python3 - <<'PY'
 from pathlib import Path
-p=Path('/etc/nginx/sites-available/default')
-s=p.read_text()
+candidates=[]
+for base in (Path('/etc/nginx/sites-available'),Path('/etc/nginx/conf.d')):
+ if not base.exists(): continue
+ for p in base.glob('*'):
+  if not p.is_file(): continue
+  try: s=p.read_text()
+  except UnicodeDecodeError: continue
+  if 'root /var/www/cargo-pulse' in s: candidates.append((p,s))
+if not candidates:
+ p=Path('/etc/nginx/sites-available/default'); candidates=[(p,p.read_text())]
 marker='    location = /api/config {'
 block='''    location ~ ^/(auth/v1|rest/v1|storage/v1)/ {
         proxy_pass http://127.0.0.1:8788;
@@ -96,13 +116,17 @@ block='''    location ~ ^/(auth/v1|rest/v1|storage/v1)/ {
         proxy_set_header Authorization $http_authorization;
         proxy_set_header Content-Type $content_type;
         client_max_body_size 100m;
-    }
+}
 
 '''
-if 'proxy_pass http://127.0.0.1:8788' not in s:
- if marker not in s: raise SystemExit('未找到 Nginx 插入位置')
- s=s.replace(marker,block+marker,1)
-p.write_text(s)
+patched=0
+for p,s in candidates:
+ if 'proxy_pass http://127.0.0.1:8788' in s: continue
+ if marker not in s: continue
+ p.write_text(s.replace(marker,block+marker,1))
+ patched+=1
+if not patched and not any('proxy_pass http://127.0.0.1:8788' in s for _,s in candidates):
+ raise SystemExit('未找到 Cargo Pulse 当前生效的 Nginx 配置')
 PY
 
 cat > /usr/local/sbin/cargo-pulse-activate-local-data <<'ACTIVATE'

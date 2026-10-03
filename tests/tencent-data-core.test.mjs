@@ -47,3 +47,19 @@ test('业务员只读、跟单可更新、主管账号权限固定', () => {
     assert.equal(store.profile(supervisor.id).role, 'follower');
   } finally { close(); }
 });
+
+test('首页快照一次返回首屏资料并隐藏普通账号的回收站订单', () => {
+  const { store, close } = fixture();
+  try {
+    const user = store.upsertAccount({ email: 'business@example.com', password: 'password123', role: 'business' });
+    store.put('orders', { id: 'visible', order_no: 'A-1', deleted_at: null });
+    store.put('orders', { id: 'deleted', order_no: 'A-2', deleted_at: '2026-10-01T00:00:00Z' });
+    store.put('order_events', { id: 'active', order_id: 'visible', note: 'tracking:ABC', completed_at: null });
+    store.put('order_images', { id: 'proof', order_id: 'visible', object_path: 'visible/delivery-proof-test.png' });
+    const snapshot = store.homeSnapshot(user.id);
+    assert.deepEqual(snapshot.orders.map(row => row.id), ['visible']);
+    assert.equal(snapshot.active_events.length, 1);
+    assert.equal(snapshot.tracking_events.length, 1);
+    assert.equal(snapshot.images.length, 1);
+  } finally { close(); }
+});

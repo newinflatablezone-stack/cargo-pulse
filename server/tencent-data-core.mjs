@@ -172,6 +172,21 @@ export class TencentDataStore {
   isFollower(userId) { return this.profile(userId)?.role === 'follower'; }
   isSupervisor(userId) { return this.accountById(userId)?.email?.toLowerCase() === SUPERVISOR_EMAIL; }
 
+  homeSnapshot(userId) {
+    const supervisor = this.isSupervisor(userId);
+    return {
+      profile: this.profile(userId) || null,
+      orders: this.all('orders').filter(row => supervisor || !row.deleted_at),
+      profiles: this.all('profiles'),
+      partners: this.all('partners').filter(row => row.active !== false),
+      images: this.all('order_images').filter(row => String(row.object_path || '').includes('/delivery-proof-')),
+      tracking_events: this.all('order_events').filter(row => String(row.note || '').startsWith('tracking:')),
+      active_events: this.all('order_events').filter(row => !row.completed_at),
+      factories: this.all('order_factories'),
+      shipments: this.all('order_shipments')
+    };
+  }
+
   query(table, url, rangeHeader = '') {
     const ignored = new Set(['select', 'order', 'limit', 'offset']);
     let rows = this.all(table).filter(row => [...url.searchParams].every(([key, value]) => ignored.has(key) || matches(row, key, value)));

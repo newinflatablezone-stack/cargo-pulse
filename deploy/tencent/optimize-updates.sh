@@ -28,8 +28,6 @@ rm -f /etc/nginx/conf.d/cargo-pulse-compression.conf
 
 python3 - <<'PY'
 from pathlib import Path
-p = Path('/etc/nginx/sites-available/default')
-s = p.read_text()
 block = '''    location ^~ /assets/ {
         gzip on;
         gzip_vary on;
@@ -41,15 +39,32 @@ block = '''    location ^~ /assets/ {
     }
 
 '''
-if 'location ^~ /assets/' not in s:
-    marker = '    location / {'
-    if marker not in s:
-        raise SystemExit('未找到 Nginx 静态资源插入位置')
-    p.with_suffix('.before-performance').write_text(s)
-    s = s.replace(marker, block + marker, 1)
-elif 'location ^~ /assets/ {\n        gzip on;' not in s:
-    s = s.replace('    location ^~ /assets/ {\n', '    location ^~ /assets/ {\n        gzip on;\n        gzip_vary on;\n        gzip_comp_level 5;\n        gzip_types text/css application/javascript application/json image/svg+xml;\n', 1)
-p.write_text(s)
+seen=set()
+patched=[]
+for candidate in Path('/etc/nginx').rglob('*'):
+    if not candidate.is_file() or candidate.suffix in {'.before-performance','.bak'}:
+        continue
+    try:
+        p=candidate.resolve()
+        if p in seen: continue
+        seen.add(p)
+        s=p.read_text()
+    except (OSError,UnicodeDecodeError):
+        continue
+    if 'root /var/www/cargo-pulse' not in s:
+        continue
+    marker='    location / {'
+    if 'location ^~ /assets/' not in s:
+        if marker not in s: continue
+        p.with_name(p.name+'.before-performance').write_text(s)
+        s=s.replace(marker,block+marker,1)
+    elif 'location ^~ /assets/ {\n        gzip on;' not in s:
+        s=s.replace('    location ^~ /assets/ {\n','    location ^~ /assets/ {\n        gzip on;\n        gzip_vary on;\n        gzip_comp_level 5;\n        gzip_types text/css application/javascript application/json image/svg+xml;\n',1)
+    p.write_text(s)
+    patched.append(str(p))
+if not patched:
+    raise SystemExit('未找到当前生效的 Cargo Pulse Nginx 配置')
+print('已检查静态资源配置：',', '.join(patched))
 PY
 
 systemctl daemon-reload
@@ -57,5 +72,11 @@ systemctl restart cargo-pulse-deploy.timer
 nginx -t
 systemctl reload nginx
 systemctl start cargo-pulse-deploy.service
+
+ASSET="$(find /var/www/cargo-pulse/assets -maxdepth 1 -type f -name '*.js' -printf '%f\n' 2>/dev/null | head -n 1)"
+if [ -n "$ASSET" ]; then
+  echo "静态资源响应检查："
+  curl -fsSI -H 'Accept-Encoding: gzip' "http://127.0.0.1/assets/$ASSET" | grep -Ei 'HTTP/|content-encoding|cache-control|expires' || true
+fi
 
 echo "Cargo Pulse 快速更新已启用：首页实时更新，版本化静态资源已压缩并长期缓存。"

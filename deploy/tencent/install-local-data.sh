@@ -27,6 +27,13 @@ install -m 644 "$SOURCE/server/tencent-data-server.mjs" "$RUNTIME/tencent-data-s
 install -m 644 "$SOURCE/scripts/migrate-supabase-to-tencent.mjs" "$RUNTIME/migrate-supabase-to-tencent.mjs"
 install -m 644 "$SOURCE/scripts/backup-tencent-data.mjs" "$RUNTIME/backup-tencent-data.mjs"
 install -m 755 "$SOURCE/deploy/tencent/cargo-pulse-deploy" /usr/local/bin/cargo-pulse-deploy
+for file in \
+  "$RUNTIME/tencent-data-core.mjs" \
+  "$RUNTIME/tencent-data-server.mjs" \
+  "$RUNTIME/migrate-supabase-to-tencent.mjs" \
+  "$RUNTIME/backup-tencent-data.mjs"; do
+  test -s "$file" || { echo "运行文件安装失败：$file" >&2; exit 1; }
+done
 
 IMPORT_SECRET="$(openssl rand -hex 32)"
 python3 - "$CONFIG_DIR/legacy-config.json" "$CONFIG_DIR/local-data.env" "$IMPORT_SECRET" <<'PY'

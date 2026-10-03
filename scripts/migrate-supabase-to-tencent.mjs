@@ -53,7 +53,11 @@ for (const table of tables) {
 
 let copiedImages = 0;
 const skippedImages = [];
-const legacyImagePaths = imageRows.filter(row => row.object_path && !row.object_path.startsWith('tencent:')).map(row => row.object_path);
+// The legacy uploader interpolated object names directly into a URL. A # in
+// the original filename became a URL fragment, so Supabase stored only the
+// prefix before # while order_images retained the full intended path.
+const sourceObjectPath = path => path.includes('#') ? path.slice(0, path.indexOf('#')) : path;
+const legacyImagePaths = [...new Set(imageRows.filter(row => row.object_path && !row.object_path.startsWith('tencent:')).map(row => sourceObjectPath(row.object_path)))];
 let signedByPath = new Map();
 if (legacyImagePaths.length) {
   const signedRows = await checked(`${source}/storage/v1/object/sign/order-images`, {
@@ -64,13 +68,15 @@ if (legacyImagePaths.length) {
 for (const row of imageRows) {
   if (!row.object_path || row.object_path.startsWith('tencent:')) continue;
   try {
+    const sourcePath = sourceObjectPath(row.object_path);
     const encoded = row.object_path.split('/').map(encodeURIComponent).join('/');
     // Put legacy paths in the JSON body. The single-object signing and direct
     // download routes reject otherwise valid object names containing #.
-    const signed = signedByPath.get(row.object_path);
+    const signed = signedByPath.get(sourcePath);
     if (!signed?.signedURL) throw Error(signed?.error || '批量签名失败');
     const query = signed.signedURL.includes('?') ? signed.signedURL.slice(signed.signedURL.indexOf('?')) : '';
-    const imageResponse = await fetch(`${source}/storage/v1/object/sign/order-images/${encoded}${query}`);
+    const sourceEncoded = sourcePath.split('/').map(encodeURIComponent).join('/');
+    const imageResponse = await fetch(`${source}/storage/v1/object/sign/order-images/${sourceEncoded}${query}`);
     if (!imageResponse.ok) throw Error(`读取返回 ${imageResponse.status}`);
     const upload = await fetch(`${target}/admin/import-object/${encoded}`, {
       method: 'POST', headers: { 'X-Import-Secret': secret, 'Content-Type': imageResponse.headers.get('content-type') || 'application/octet-stream' }, body: await imageResponse.arrayBuffer()

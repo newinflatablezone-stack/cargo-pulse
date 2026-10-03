@@ -53,6 +53,14 @@ if systemctl cat cargo-pulse-images.service >/dev/null 2>&1 && [ -s "$RELEASE_DI
   install -m 644 "$RELEASE_DIR/server/resource-image-server.mjs" /opt/cargo-pulse-runtime/resource-image-server.mjs
   systemctl restart cargo-pulse-images.service
 fi
+if systemctl cat cargo-pulse-data.service >/dev/null 2>&1 && [ -s "$RELEASE_DIR/server/tencent-data-server.mjs" ]; then
+  install -m 644 "$RELEASE_DIR/server/tencent-data-core.mjs" /opt/cargo-pulse-runtime/tencent-data-core.mjs
+  install -m 644 "$RELEASE_DIR/server/tencent-data-server.mjs" /opt/cargo-pulse-runtime/tencent-data-server.mjs
+  install -m 644 "$RELEASE_DIR/scripts/migrate-supabase-to-tencent.mjs" /opt/cargo-pulse-runtime/migrate-supabase-to-tencent.mjs
+  systemctl restart cargo-pulse-data.service
+elif [ -s "$RELEASE_DIR/deploy/tencent/install-local-data.sh" ]; then
+  SOURCE="$RELEASE_DIR" bash "$RELEASE_DIR/deploy/tencent/install-local-data.sh"
+fi
 nginx -t
 systemctl reload nginx
 echo "Cargo Pulse 部署成功：$VERSION"

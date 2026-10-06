@@ -57,7 +57,20 @@ if systemctl cat cargo-pulse-data.service >/dev/null 2>&1 && [ -s "$RELEASE_DIR/
   install -m 644 "$RELEASE_DIR/server/tencent-data-core.mjs" /opt/cargo-pulse-runtime/tencent-data-core.mjs
   install -m 644 "$RELEASE_DIR/server/tencent-data-server.mjs" /opt/cargo-pulse-runtime/tencent-data-server.mjs
   install -m 644 "$RELEASE_DIR/scripts/migrate-supabase-to-tencent.mjs" /opt/cargo-pulse-runtime/migrate-supabase-to-tencent.mjs
+  systemctl reset-failed cargo-pulse-data.service 2>/dev/null || true
   systemctl restart cargo-pulse-data.service
+  data_healthy=''
+  for _ in {1..20}; do
+    if curl -fsS http://127.0.0.1:8788/health >/dev/null; then data_healthy=1; break; fi
+    sleep 0.5
+  done
+  if [ -z "$data_healthy" ]; then
+    rm -f "$APP_ROOT/api/version"
+    echo '腾讯云本地数据服务启动失败，部署不会标记为成功：' >&2
+    systemctl status cargo-pulse-data.service --no-pager -l >&2 || true
+    journalctl -u cargo-pulse-data.service -n 100 --no-pager >&2 || true
+    exit 1
+  fi
 elif [ -s "$RELEASE_DIR/deploy/tencent/install-local-data.sh" ]; then
   SOURCE="$RELEASE_DIR" bash "$RELEASE_DIR/deploy/tencent/install-local-data.sh"
 fi

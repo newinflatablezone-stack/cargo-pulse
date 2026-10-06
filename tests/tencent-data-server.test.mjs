@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { TencentDataStore } from '../server/tencent-data-core.mjs';
 
 async function freePort() {
   return await new Promise((resolvePort, reject) => {
@@ -32,6 +33,10 @@ async function waitForHealth(baseUrl, child) {
 test('错误密码只返回 400，不会导致本地数据服务退出', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'cargo-pulse-server-'));
   const port = await freePort();
+  const store = new TencentDataStore(join(dataDir, 'test.sqlite'));
+  store.put('orders', { id: 'tracking-order', order_no: 'TRACK-1', customer_info: 'Customer customer@example.com', current_step: 'ocean_transit' });
+  store.put('order_events', { id: 'tracking-event', order_id: 'tracking-order', step_key: 'ocean_transit', note: 'tracking:SHIP123' });
+  store.db.close();
   const child = spawn(process.execPath, [resolve('server/tencent-data-server.mjs')], {
     env: {
       ...process.env,
@@ -47,6 +52,15 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
   const baseUrl = `http://127.0.0.1:${port}`;
   try {
     await waitForHealth(baseUrl, child);
+    const tracking = await fetch(`${baseUrl}/rest/v1/rpc/lookup_customer_tracking`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ p_email: 'CUSTOMER@example.com' })
+    });
+    assert.equal(tracking.status, 200);
+    const trackingResult = await tracking.json();
+    assert.equal(trackingResult.found, true);
+    assert.equal(trackingResult.order.order_no, 'TRACK-1');
+    assert.equal(trackingResult.events[0].tracking_no, 'SHIP123');
+    assert.deepEqual(trackingResult.shipments, []);
     const signup = await fetch(`${baseUrl}/auth/v1/signup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

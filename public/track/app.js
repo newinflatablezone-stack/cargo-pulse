@@ -17,7 +17,8 @@ form.addEventListener("submit",async(event)=>{
     if(!configResponse.ok)throw new Error("config");
     const config=await configResponse.json();
     if(!config.url||!config.key)throw new Error("config");
-    const response=await fetch(`${config.url}/rest/v1/rpc/lookup_customer_tracking`,{method:"POST",headers:{"Content-Type":"application/json",apikey:config.key,Authorization:`Bearer ${config.key}`},body:JSON.stringify({p_email:email}),cache:"no-store"});
+    const apiBase=config.url==="same-origin"?location.origin:String(config.url).replace(/\/$/,"");
+    const response=await fetch(`${apiBase}/rest/v1/rpc/lookup_customer_tracking`,{method:"POST",headers:{"Content-Type":"application/json",apikey:config.key,Authorization:`Bearer ${config.key}`},body:JSON.stringify({p_email:email}),cache:"no-store"});
     if(!response.ok){if(response.status===404)throw new Error("setup");throw new Error("request")}
     const data=await response.json();
     if(!data?.found){message.textContent="No matching shipment was found. Please check your email address.";return}

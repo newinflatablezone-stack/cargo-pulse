@@ -2,7 +2,7 @@ import http from 'node:http';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize } from 'node:path';
-import { TencentDataStore, TABLES, isPublicRequest } from './tencent-data-core.mjs';
+import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking } from './tencent-data-core.mjs';
 
 const PORT = Number(process.env.PORT || 8788);
 const DATA_DIR = process.env.CARGO_PULSE_DATA_DIR || '/var/lib/cargo-pulse/data';
@@ -90,10 +90,7 @@ async function authRoute(req, res, url) {
 
 function rpc(req, res, name, body, user) {
   if (name === 'lookup_customer_tracking') {
-    const email = String(body.p_email || '').trim().toLowerCase();
-    const rows = store.all('orders').filter(row => String(row.customer_info || '').toLowerCase().includes(email) && !row.deleted_at)
-      .map(row => ({ order_no: row.order_no, product_name: row.product_name, current_step: row.current_step, updated_at: row.updated_at }));
-    return send(res, 200, rows);
+    return send(res, 200, lookupCustomerTracking(store, body.p_email));
   }
   if (!user) throw Object.assign(Error('请先登录'), { status: 401 });
   if (name === 'home_bootstrap') return send(res, 200, store.homeSnapshot(user.id));

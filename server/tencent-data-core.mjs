@@ -250,3 +250,44 @@ export class TencentDataStore {
 export function isPublicRequest(pathname) {
   return pathname.startsWith('/auth/v1/') || [...PUBLIC_RPC].some(name => pathname.endsWith(`/rpc/${name}`));
 }
+
+// Keep the public response aligned with supabase-customer-tracking.sql.
+const ORDER_FIELDS = ['order_no', 'business_name', 'current_step', 'step_started_at', 'step_deadline', 'order_date', 'shipping_mode', 'sea_region', 'overseas_method', 'forwarder_name', 'tracking_no', 'blower_tracking_no', 'split_shipping'];
+const SHIPMENT_FIELDS = ['batch_name', 'quantity', 'shipping_mode', 'forwarder_name', 'sea_region', 'overseas_method', 'tracking_no', 'ocean_tracking_no', 'last_mile_tracking_no', 'blower_tracking_no', 'current_step', 'step_started_at', 'step_deadline', 'shipped_at', 'completed_at'];
+const pick = (row, fields) => Object.fromEntries(fields.map(field => [field, row[field] ?? null]));
+const compare = (fields) => (a, b) => {
+  for (const field of fields) {
+    const result = String(a[field] ?? '').localeCompare(String(b[field] ?? ''));
+    if (result) return result;
+  }
+  return 0;
+};
+const eventsFor = (rows) => rows.sort(compare(['started_at', 'created_at', 'id'])).map(row => ({
+  ...pick(row, ['step_key', 'started_at', 'deadline_at', 'completed_at']),
+  tracking_no: String(row.note || '').startsWith('tracking:') ? row.note.slice(9) : null
+}));
+
+export function lookupCustomerTracking(store, value) {
+  const email = String(value ?? '').trim().toLowerCase();
+  if (email.length < 5 || email.length > 254 || email.indexOf('@') <= 0) return { found: false };
+  const emailPattern = /[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+/g;
+  const matches = store.all('orders').filter(row => !row.deleted_at &&
+    (String(row.customer_info || '').toLowerCase().match(emailPattern) || []).includes(email));
+  matches.sort((a, b) => compare(['order_date', 'created_at'])(b, a));
+  const order = matches[0];
+  if (!order) return { found: false };
+  const shipmentEvents = store.all('order_shipment_events');
+  return {
+    found: true,
+    order: {
+      ...pick(order, ORDER_FIELDS),
+      customer_info: String(order.customer_info || '').replace(/\+?[0-9][0-9\s().-]{6,}[0-9]/g, ' ')
+    },
+    events: eventsFor(store.all('order_events').filter(row => row.order_id === order.id)),
+    shipments: store.all('order_shipments').filter(row => row.order_id === order.id)
+      .sort(compare(['created_at', 'id'])).map(row => ({
+        ...pick(row, SHIPMENT_FIELDS),
+        events: eventsFor(shipmentEvents.filter(event => event.shipment_id === row.id))
+      }))
+  };
+}

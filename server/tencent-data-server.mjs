@@ -169,11 +169,14 @@ async function serveObject(req, res, url) {
   const info = await stat(file); res.writeHead(200, { 'Content-Length': info.size, 'Cache-Control': 'private, max-age=3600' }); res.end(await readFile(file));
 }
 
-const server = http.createServer(async (req, res) => {
+async function handleRequest(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     if (url.pathname === '/health') return send(res, 200, { ok: true, orders: store.count('orders') });
-    if (url.pathname.startsWith('/auth/v1/')) return authRoute(req, res, url);
+    // Await every asynchronous route here so its rejection stays inside this
+    // request's error boundary. Returning the promise directly would let a
+    // normal 4xx error become an unhandled rejection and terminate Node.
+    if (url.pathname.startsWith('/auth/v1/')) return await authRoute(req, res, url);
     if (url.pathname === '/admin/import' && req.method === 'POST') {
       if (!IMPORT_SECRET || req.headers['x-import-secret'] !== IMPORT_SECRET) throw Object.assign(Error('禁止导入'), { status: 403 });
       const body = await readBody(req, 1024 * 1024 * 1024);
@@ -189,9 +192,9 @@ const server = http.createServer(async (req, res) => {
       await writeFile(file, body);
       return send(res, 200, { ok: true, size: body.length });
     }
-    if (url.pathname.startsWith('/storage/v1/object/order-images/') && req.method === 'GET') return serveObject(req, res, url);
+    if (url.pathname.startsWith('/storage/v1/object/order-images/') && req.method === 'GET') return await serveObject(req, res, url);
     const user = isPublicRequest(url.pathname) ? store.session(bearer(req)) : requireUser(req);
-    if (url.pathname.startsWith('/storage/v1/')) return storageRoute(req, res, url, user);
+    if (url.pathname.startsWith('/storage/v1/')) return await storageRoute(req, res, url, user);
     const rpcMatch = /^\/rest\/v1\/rpc\/([a-z0-9_]+)$/.exec(url.pathname);
     if (rpcMatch) return rpc(req, res, rpcMatch[1], await readBody(req), user);
     const tableMatch = /^\/rest\/v1\/([a-z0-9_]+)$/.exec(url.pathname);
@@ -201,6 +204,16 @@ const server = http.createServer(async (req, res) => {
     }
     throw Object.assign(Error('接口不存在'), { status: 404 });
   } catch (caught) { error(res, caught); }
+}
+
+const server = http.createServer((req, res) => {
+  // Keep one final promise boundary at the HTTP server edge. handleRequest
+  // normally consumes route errors itself; this protects the process if a
+  // future asynchronous branch is added without its own error handling.
+  void handleRequest(req, res).catch(caught => {
+    if (!res.headersSent) error(res, caught);
+    else res.destroy(caught);
+  });
 });
 
 server.listen(PORT, '127.0.0.1', () => console.log(`Cargo Pulse Tencent data service listening on 127.0.0.1:${PORT}`));

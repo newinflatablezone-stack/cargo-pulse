@@ -24,6 +24,15 @@ test('账号、密码和刷新会话保存在腾讯云本地数据库', () => {
   } finally { close(); }
 });
 
+test('尚无本地密码的迁移账号返回未匹配而不是抛出异常', () => {
+  const { store, close } = fixture();
+  try {
+    store.upsertAccount({ email: 'migrated@example.com', role: 'business' });
+    assert.equal(store.accountByEmail('migrated@example.com').password_hash, null);
+    assert.equal(store.login('migrated@example.com', 'legacy-password'), null);
+  } finally { close(); }
+});
+
 test('兼容首页使用的 PostgREST 筛选、排序和字段选择', () => {
   const { store, close } = fixture();
   try {

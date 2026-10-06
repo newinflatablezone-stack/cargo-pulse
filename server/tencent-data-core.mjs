@@ -17,7 +17,10 @@ function passwordHash(password, salt = randomBytes(16).toString('hex')) {
 }
 
 function passwordMatches(password, encoded = '') {
-  const [salt, expectedHex] = encoded.split(':');
+  // Imported Supabase profiles deliberately start without a local password
+  // hash. Treat that as a non-match so the auth route can verify the legacy
+  // password once and persist a Tencent-local hash.
+  const [salt, expectedHex] = String(encoded || '').split(':');
   if (!salt || !expectedHex) return false;
   const actual = scryptSync(password, salt, 64);
   const expected = Buffer.from(expectedHex, 'hex');

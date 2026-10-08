@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize } from 'node:path';
 import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking } from './tencent-data-core.mjs';
@@ -14,10 +14,11 @@ const LEGACY_KEY = process.env.LEGACY_SUPABASE_KEY || '';
 await mkdir(DATA_DIR, { recursive: true });
 await mkdir(UPLOAD_DIR, { recursive: true });
 const store = new TencentDataStore(DB_FILE);
+const DATA_REVISION = createHash('sha256').update(await readFile(new URL('./tencent-data-core.mjs', import.meta.url))).digest('hex');
 
 const send = (res, status, value, headers = {}) => {
   const body = value == null ? '' : JSON.stringify(value);
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Cargo-Pulse-Data-Revision': DATA_REVISION, ...headers });
   res.end(body);
 };
 const error = (res, caught) => send(res, caught.status || 500, { message: caught.message || '服务器错误' });

@@ -223,10 +223,14 @@ export class TencentDataStore {
       });
       return created;
     }
-    let matchesRows = this.query(table, url);
+    // Mutations must operate on complete matched records. A projected row may
+    // omit its identity, and unrelated absent keys must never compare equal.
+    const mutationUrl = new URL(url);
+    if (method !== 'GET') mutationUrl.searchParams.delete('select');
+    let matchesRows = this.query(table, mutationUrl);
     if (method === 'GET' && table === 'orders' && !supervisor) matchesRows = matchesRows.filter(row => !row.deleted_at);
-    if (method === 'PATCH') return matchesRows.map(row => this.put(table, { ...this.all(table).find(item => item.id === row.id || item.key === row.key || item.resource_key === row.resource_key), ...body }));
-    if (method === 'DELETE') { this.remove(table, matchesRows.map(row => row.id ?? row.key ?? row.resource_key)); return matchesRows; }
+    if (method === 'PATCH') return matchesRows.map(row => project(this.put(table, { ...row, ...body }), url.searchParams.get('select')));
+    if (method === 'DELETE') { this.remove(table, matchesRows.map(row => row.id ?? row.key ?? row.resource_key)); return matchesRows.map(row => project(row, url.searchParams.get('select'))); }
     return matchesRows;
   }
 

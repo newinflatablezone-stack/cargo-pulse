@@ -72,3 +72,39 @@ test('首页快照一次返回首屏资料并隐藏普通账号的回收站订�
     assert.equal(snapshot.images.length, 1);
   } finally { close(); }
 });
+
+for (const table of ['orders', 'order_events', 'order_shipments', 'order_shipment_events', 'partners', 'order_factories', 'order_images', 'app_settings', 'internal_resource_tables']) {
+  test(`${table} 更新只修改筛选命中的记录，保留身份和其余字段`, () => {
+    const { store, close } = fixture();
+    try {
+      const user = store.upsertAccount({ email: 'follower@example.com', password: 'password123', role: 'follower' });
+      const key = table === 'app_settings' ? 'key' : table === 'internal_resource_tables' ? 'resource_key' : 'id';
+      store.put(table, { [key]: 'first', note: 'keep-first', current_step: 'last_mile_tracking', custom: 'first-value' });
+      store.put(table, { [key]: 'target', note: 'keep-target', current_step: 'last_mile_tracking', custom: 'target-value' });
+      const url = new URL(`http://local/rest/v1/${table}?${key}=eq.target&current_step=eq.last_mile_tracking&select=note,current_step`);
+      const result = store.mutate(table, 'PATCH', url, { note: 'tracking:S182908058731', current_step: 'last_mile' }, user.id);
+      assert.deepEqual(result, [{ note: 'tracking:S182908058731', current_step: 'last_mile' }]);
+      const rows = store.all(table);
+      assert.equal(rows.length, 2);
+      assert.equal(rows.find(row => row[key] === 'first').note, 'keep-first');
+      const target = rows.find(row => row[key] === 'target');
+      assert.equal(target.note, 'tracking:S182908058731');
+      assert.equal(target.custom, 'target-value');
+      assert.equal(target.current_step, 'last_mile');
+      assert.deepEqual(store.mutate(table, 'PATCH', url, { note: 'stale-write' }, user.id), []);
+    } finally { close(); }
+  });
+}
+
+test('批量更新和带投影删除不会混淆主键', () => {
+  const { store, close } = fixture();
+  try {
+    const user = store.upsertAccount({ email: 'follower@example.com', password: 'password123', role: 'follower' });
+    for (const id of ['first', 'second', 'third']) store.put('order_events', { id, order_id: id === 'first' ? 'other' : 'target', note: id });
+    const url = new URL('http://local/rest/v1/order_events?order_id=eq.target&select=note');
+    assert.equal(store.mutate('order_events', 'PATCH', url, { note: 'tracking:TRUCK123' }, user.id).length, 2);
+    assert.equal(store.all('order_events').find(row => row.id === 'first').note, 'first');
+    assert.equal(store.mutate('order_events', 'DELETE', url, {}, user.id).length, 2);
+    assert.deepEqual(store.all('order_events').map(row => row.id), ['first']);
+  } finally { close(); }
+});

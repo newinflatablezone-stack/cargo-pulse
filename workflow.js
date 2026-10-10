@@ -40,6 +40,54 @@ export function alertLevel(value){if(!value)return 'normal';const today=new Date
 
 export function flowFor(order){if(order.current_step==='batch_shipping')return ['batch_shipping','completed'];const start=order.inventory_mode==='stock'?['shipping_selection']:order.needs_rendering?['rendering','production','production_shipping']:['production','production_shipping'];if(order.shipping_mode==='air_freight')return [...start,'air_pickup','delivery','completed'];if(order.shipping_mode==='domestic_express')return [...start,'tracking','delivery','completed'];if(order.shipping_mode==='overseas_warehouse')return [...start,'tracking','delivery','completed'];if(order.shipping_mode==='domestic_sea_port')return [...start,'domestic_customs','ocean_transit','completed'];return [...start,'domestic_customs','ocean_transit','overseas_customs','warehouse_appointment','last_mile','completed']}
 
+export function canonicalStage(step) {
+ return step==='ocean_tracking'?'ocean_transit':step==='last_mile_tracking'?'last_mile':step;
+}
+export function trackingNoteNumber(note) {
+ const text=String(note||'');
+ return text.startsWith('tracking:')?text.slice(9).replace(/\s*\[rollback-count:\d+\]/g,'').trim():'';
+}
+export function eventsWithinCurrentFlow(order,events) {
+ const flow=flowFor(order).map(canonicalStage),position=flow.indexOf(canonicalStage(order.current_step));
+ if(position<0)return [];
+ const scoped=events.filter(event=>!event.order_id||event.order_id===order.id);
+ return scoped.filter(event=>{
+  if(event.order_id&&event.order_id!==order.id)return false;
+  const index=flow.indexOf(canonicalStage(event.step_key));
+  if(index<0||index>position)return false;
+  const start=Date.parse(event.started_at);
+  // A later milestone cannot start before an earlier milestone finishes.
+  // This also keeps an old invalid record quarantined after the order advances.
+  if(Number.isFinite(start)&&scoped.some(previous=>{
+   const previousIndex=flow.indexOf(canonicalStage(previous.step_key)),finished=Date.parse(previous.completed_at);
+   return previousIndex>=0&&previousIndex<index&&Number.isFinite(finished)&&finished>start;
+  }))return false;
+  const currentStart=Date.parse(order.step_started_at);
+  if(index===position&&Number.isFinite(start)&&Number.isFinite(currentStart)&&start<currentStart)return false;
+  return true;
+ });
+}
+export function currentStageNumber(order,step,events) {
+ const current=canonicalStage(order.current_step),target=canonicalStage(step);
+ if(current!==target||['ocean_tracking','last_mile_tracking'].includes(order.current_step))return '';
+ const open=events.filter(event=>!event.completed_at&&(!event.order_id||event.order_id===order.id));
+ if(open.length!==1||canonicalStage(open[0].step_key)!==current)return '';
+ const event=open[0];
+ if(order.step_started_at&&event.started_at&&Date.parse(order.step_started_at)!==Date.parse(event.started_at))return '';
+ return trackingNoteNumber(event.note);
+}
+export function resetNumberStageNote(note,step) {
+ if(!['tracking','ocean_transit','last_mile'].includes(canonicalStage(step)))return note;
+ return String(note||'').startsWith('tracking:')?(String(note).match(/\[rollback-count:\d+\]/)?.[0]||null):note;
+}
+export function trackingFieldsOnEntry(step) {
+ const key=canonicalStage(step);
+ if(['production','shipping_selection','domestic_customs'].includes(key))return {ocean_tracking_no:null,last_mile_tracking_no:null};
+ if(key==='ocean_transit')return {ocean_tracking_no:null,last_mile_tracking_no:null};
+ if(['overseas_customs','warehouse_appointment','last_mile'].includes(key))return {last_mile_tracking_no:null};
+ return {};
+}
+
 export function overallDeadline(order){
  if(!order?.order_date||order.current_step==='completed')return null;if(order.current_step==='batch_shipping')return order.step_deadline||null;
  const start=new Date(order.order_date+'T00:00:00');

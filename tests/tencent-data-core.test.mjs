@@ -79,6 +79,11 @@ test('首页快照一次返回首屏资料并隐藏普通账号的回收站订�
     store.put('orders', { id: 'deleted', order_no: 'A-2', deleted_at: '2026-10-01T00:00:00Z' });
     store.put('order_events', { id: 'active', order_id: 'visible', note: 'tracking:ABC', completed_at: null });
     store.put('order_images', { id: 'proof', order_id: 'visible', object_path: 'visible/delivery-proof-test.png' });
+    const core = store.homeCoreSnapshot(user.id);
+    const relations = store.homeRelationsSnapshot();
+    assert.deepEqual(core.orders.map(row => row.id), ['visible']);
+    assert.equal(Object.prototype.hasOwnProperty.call(core, 'active_events'), false);
+    assert.equal(relations.active_events.length, 1);
     const snapshot = store.homeSnapshot(user.id);
     assert.deepEqual(snapshot.orders.map(row => row.id), ['visible']);
     assert.equal(snapshot.active_events.length, 1);

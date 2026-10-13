@@ -1395,3 +1395,7 @@ main.internal-resource-page-shell{width:100%;max-width:none!important;min-height
  .resource-links a,.resource-links button{padding-left:8px;padding-right:8px}
 }
 
+/* Skip layout and paint work for order cards outside the viewport. */
+.orders .order-card{content-visibility:auto;contain-intrinsic-size:auto 210px}
+@media(max-width:700px){.orders .order-card{contain-intrinsic-size:auto 265px}}
+

@@ -127,6 +127,14 @@ export class TicketService {
     return { count: ticketIds.size, notifications: notifications.slice(0, 20) };
   }
 
+  notificationSnapshot(userId) {
+    const unread = this.unreadNotifications(userId);
+    return {
+      badge_count: new Set(unread.map(row => row.ticket_id).filter(Boolean)).size,
+      notifications: unread.slice(0, 20)
+    };
+  }
+
   bootstrap(userId) {
     const actor = this.actor(userId);
     const notifications = this.unreadNotifications(userId);
@@ -138,7 +146,7 @@ export class TicketService {
       settings: { ...reminderHours },
       tickets: this.visibleTickets(actor),
       notifications,
-      badge_count: this.badge(userId)
+      badge_count: new Set(notifications.map(row => row.ticket_id).filter(Boolean)).size
     };
   }
 

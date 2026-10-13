@@ -151,7 +151,7 @@ async function rpc(req, res, name, body, user) {
   if (name === 'ticket_admin_update') return send(res, 200, tickets.adminUpdate(body, user.id));
   if (name === 'ticket_archive') return send(res, 200, tickets.archive(body.ticket_id, user.id));
   if (name === 'ticket_notifications_read') return send(res, 200, tickets.markNotificationsRead(user.id));
-  if (name === 'ticket_notification_snapshot') return send(res, 200, { badge_count: tickets.badge(user.id), notifications: tickets.unreadNotifications(user.id).slice(0, 20) });
+  if (name === 'ticket_notification_snapshot') return send(res, 200, tickets.notificationSnapshot(user.id));
   if (name === 'ticket_push_subscribe') return send(res, 200, requirePush().subscribe(user.id, body.subscription || body));
   if (name === 'ticket_push_unsubscribe') return send(res, 200, requirePush().unsubscribe(user.id, body.endpoint));
   if (name === 'ticket_push_test') return send(res, 200, await requirePush().test(user.id));
@@ -168,6 +168,15 @@ async function rpc(req, res, name, body, user) {
       ticket_notifications: ticketReminder.notifications
     });
   }
+  if (name === 'home_core') {
+    const ticketReminder = tickets.homeReminder(user.id);
+    return send(res, 200, {
+      ...store.homeCoreSnapshot(user.id),
+      ticket_badge_count: ticketReminder.count,
+      ticket_notifications: ticketReminder.notifications
+    });
+  }
+  if (name === 'home_relations') return send(res, 200, store.homeRelationsSnapshot());
   if (name === 'list_visible_orders') return send(res, 200, store.all('orders').filter(row => !row.deleted_at || store.isSupervisor(user.id)));
   if (name === 'impersonate_user') {
     if (!store.isSupervisor(user.id)) throw Object.assign(Error('仅主管可以切换账号'), { status: 403 });

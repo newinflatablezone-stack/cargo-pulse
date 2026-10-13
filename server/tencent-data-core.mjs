@@ -75,6 +75,7 @@ function project(row, select) {
 export class TencentDataStore {
   constructor(file) {
     this.db = new DatabaseSync(file);
+    this.tableCache = new Map();
     this.db.exec(`
       pragma journal_mode=WAL;
       pragma synchronous=NORMAL;
@@ -109,7 +110,12 @@ export class TencentDataStore {
   }
 
   all(table) {
-    return this.db.prepare('select data from records where table_name=?').all(table).map(({ data }) => JSON.parse(data));
+    if (!this.tableCache.has(table)) {
+      this.tableCache.set(table, this.db.prepare('select data from records where table_name=?').all(table).map(({ data }) => JSON.parse(data)));
+    }
+    // Callers historically received fresh row objects. Preserve that contract
+    // while avoiding repeated SQLite reads and JSON parsing for every request.
+    return this.tableCache.get(table).map(row => ({ ...row }));
   }
 
   put(table, row) {
@@ -119,6 +125,7 @@ export class TencentDataStore {
     if (!id || id === 'undefined') throw Error(`缺少 ${table} 主键`);
     this.db.prepare('insert into records(table_name,record_id,data) values(?,?,?) on conflict(table_name,record_id) do update set data=excluded.data')
       .run(table, id, json(next));
+    this.tableCache.delete(table);
     return next;
   }
 
@@ -127,6 +134,7 @@ export class TencentDataStore {
     this.db.exec('begin immediate');
     try { ids.forEach(id => del.run(table, String(id))); this.db.exec('commit'); }
     catch (error) { this.db.exec('rollback'); throw error; }
+    this.tableCache.delete(table);
   }
 
   accountByEmail(email) { return this.db.prepare('select * from accounts where email=? collate nocase').get(email); }
@@ -197,19 +205,28 @@ export class TencentDataStore {
   isFollower(userId) { return this.profile(userId)?.role === 'follower'; }
   isSupervisor(userId) { return this.accountById(userId)?.email?.toLowerCase() === SUPERVISOR_EMAIL; }
 
-  homeSnapshot(userId) {
+  homeCoreSnapshot(userId) {
     const supervisor = this.isSupervisor(userId);
     return {
       profile: this.profile(userId) || null,
       orders: this.all('orders').filter(row => supervisor || !row.deleted_at),
       profiles: supervisor ? this.all('profiles') : this.all('profiles').filter(row => row.id === userId),
-      partners: this.all('partners').filter(row => row.active !== false),
+      partners: this.all('partners').filter(row => row.active !== false)
+    };
+  }
+
+  homeRelationsSnapshot() {
+    return {
       images: this.all('order_images').filter(row => String(row.object_path || '').includes('/delivery-proof-')),
       tracking_events: this.all('order_events').filter(row => String(row.note || '').startsWith('tracking:')),
       active_events: this.all('order_events').filter(row => !row.completed_at),
       factories: this.all('order_factories'),
       shipments: this.all('order_shipments')
     };
+  }
+
+  homeSnapshot(userId) {
+    return { ...this.homeCoreSnapshot(userId), ...this.homeRelationsSnapshot() };
   }
 
   query(table, url, rangeHeader = '') {

@@ -32,11 +32,13 @@ test('新建工单不需要标题并自动使用问题描述第一行作为摘�
   const { service, users, close } = fixture();
   try {
     const ticket = service.create({
-      description: '客户反馈货物未更新\n请尽快核实', category: 'logistics',
+      description: '客户反馈货物未更新\n请尽快核实',
       priority: 'normal', assignee_id: users.icey.id
     }, users.sales.id);
     assert.equal(ticket.title, '客户反馈货物未更新');
     assert.equal(ticket.description, '客户反馈货物未更新\n请尽快核实');
+    assert.equal(ticket.order_no, null);
+    assert.equal(ticket.category, 'other');
   } finally { close(); }
 });
 

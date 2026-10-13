@@ -159,14 +159,15 @@ export class TicketService {
     const description = String(body.description || '').trim();
     if (!description) fail('请填写问题描述');
     const title = (String(body.title || '').trim() || description.split(/\r?\n/).find(line => line.trim())?.trim() || '问题跟进').slice(0, 160);
-    if (!['production', 'logistics', 'delivery', 'after_sales', 'other'].includes(body.category)) fail('问题分类无效');
+    const category = body.category || 'other';
+    if (!['production', 'logistics', 'delivery', 'after_sales', 'other'].includes(category)) fail('问题分类无效');
     if (!['normal', 'important', 'urgent'].includes(body.priority)) fail('优先级无效');
     const follower = this.followers().find(item => item.id === body.assignee_id && item.id);
     if (!follower) fail('请选择 ICEY 或秦枝作为负责人');
     const stamp = now();
     const ticket = this.store.put('tickets', {
       id: randomUUID(), ticket_no: this.nextNumber(), title, description,
-      order_no: String(body.order_no || '').trim() || null, category: body.category, priority: body.priority,
+      order_no: null, category, priority: body.priority,
       status: 'pending', created_by: actor.id, creator_email: actor.email, creator_name: actor.name,
       assignee_id: follower.id, assignee_email: follower.email, assignee_name: follower.name,
       first_deadline: null, current_deadline: null, accepted_at: null, resolved_at: null,

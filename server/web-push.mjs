@@ -46,11 +46,15 @@ export class WebPushService {
 
   status(userId) {
     const subscriptions = this.store.all('push_subscriptions').filter(row => row.user_id === userId);
+    const pending = this.store.all('ticket_notifications').filter(row => row.user_id === userId && row.push_pending_at && !row.push_completed_at);
     return {
       available: true,
       public_key: this.vapid.publicKey,
       subscriptions: subscriptions.length,
-      healthy_subscriptions: subscriptions.filter(row => !row.last_error).length
+      healthy_subscriptions: subscriptions.filter(row => !row.last_error).length,
+      pending_notifications: pending.length,
+      last_success_at: subscriptions.map(row => row.last_success_at).filter(Boolean).sort().at(-1) || null,
+      last_error: subscriptions.map(row => row.last_error).filter(Boolean).at(-1) || null
     };
   }
 
@@ -73,9 +77,29 @@ export class WebPushService {
   }
 
   queueTicketNotification(notification, tickets) {
-    const task = this.sendTicketNotification(notification, tickets).catch(error => console.error('Web Push delivery failed:', error));
+    // Never let a push provider or a concurrent SQLite write terminate the
+    // core data process. Push is retried from the durable notification row;
+    // orders, login and tickets must stay available even when delivery fails.
+    const task = (async () => {
+      let result;
+      try { result = await this.sendTicketNotification(notification, tickets); }
+      catch (error) {
+        result = {
+          sent: 0, delivered: 0, pending: 1,
+          error: String(error?.body || error?.message || error).slice(0, 500)
+        };
+      }
+      try { return this.recordTicketDelivery(notification, result); }
+      catch (error) {
+        console.error('Web Push delivery state could not be saved:', String(error?.message || error));
+        return result;
+      }
+    })();
     this.pending.add(task);
-    task.finally(() => this.pending.delete(task));
+    // Supplying both handlers prevents the Promise returned by finally() from
+    // becoming an unhandled rejection under Node's strict default behavior.
+    void task.then(() => this.pending.delete(task), () => this.pending.delete(task));
+    return task;
   }
 
   async flush() { await Promise.all([...this.pending]); }
@@ -99,6 +123,36 @@ export class WebPushService {
     }, notification.id);
   }
 
+  recordTicketDelivery(notification, result) {
+    const current = this.store.all('ticket_notifications').find(row => row.id === notification.id);
+    if (!current) return result;
+    const stamp = now(), attempts = Number(current.push_attempts || 0) + 1;
+    const completed = Number(result.delivered || result.sent || 0) > 0 && Number(result.pending || 0) === 0;
+    const delays = [30, 120, 300, 900, 1800];
+    const retrySeconds = delays[Math.min(attempts - 1, delays.length - 1)];
+    this.store.put('ticket_notifications', {
+      ...current,
+      push_attempts: attempts,
+      push_last_attempt_at: stamp,
+      push_completed_at: completed ? stamp : null,
+      push_next_attempt_at: completed ? null : new Date(Date.now() + retrySeconds * 1000).toISOString(),
+      push_last_error: result.error || (completed ? null : '没有可确认送达的浏览器订阅')
+    });
+    if (result.error) console.error('Web Push delivery failed:', result.error);
+    return result;
+  }
+
+  async retryPendingTicketNotifications(tickets, { userId = null, limit = 50, at = Date.now() } = {}) {
+    const rows = this.store.all('ticket_notifications')
+      .filter(row => row.push_pending_at && !row.push_completed_at && (!userId || row.user_id === userId))
+      .filter(row => !row.push_next_attempt_at || new Date(row.push_next_attempt_at).getTime() <= at)
+      .sort((left, right) => String(left.created_at).localeCompare(String(right.created_at)))
+      .slice(0, limit);
+    const results = [];
+    for (const notification of rows) results.push(await this.queueTicketNotification(notification, tickets));
+    return { attempted: rows.length, sent: results.reduce((sum, row) => sum + Number(row?.sent || 0), 0) };
+  }
+
   async test(userId) {
     return this.deliver(userId, {
       title: 'Cargo Pulse · 测试通知', body: '桌面通知已成功开启', event_type: '测试通知',
@@ -107,21 +161,22 @@ export class WebPushService {
   }
 
   async deliver(userId, payload, dedupeKey) {
-    let sent = 0, removed = 0;
+    let sent = 0, removed = 0, failed = 0, delivered = 0;
     const subscriptions = this.store.all('push_subscriptions').filter(row => row.user_id === userId);
     for (const subscription of subscriptions) {
       const deliveryId = hash(`${dedupeKey}:${subscription.id}`);
-      if (this.store.all('push_delivery_logs').some(row => row.id === deliveryId)) continue;
+      if (this.store.all('push_delivery_logs').some(row => row.id === deliveryId)) { delivered += 1; continue; }
       try {
         const result = await this.sender(subscription, payload, this.vapid);
         if (result.ok || [201, 202].includes(result.status)) {
           this.store.put('push_delivery_logs', { id: deliveryId, user_id: userId, subscription_id: subscription.id, dedupe_key: dedupeKey, created_at: now() });
           this.store.put('push_subscriptions', { ...subscription, last_success_at: now(), last_error: null, last_status: result.status, updated_at: now() });
           sent += 1;
+          delivered += 1;
         } else if ([404, 410].includes(result.status)) {
           this.store.remove('push_subscriptions', [subscription.id]);
           removed += 1;
-        }
+        } else failed += 1;
       } catch (error) {
         if ([404, 410].includes(error?.statusCode || error?.status)) {
           this.store.remove('push_subscriptions', [subscription.id]);
@@ -130,9 +185,10 @@ export class WebPushService {
           const message = String(error?.body || error?.message || error).slice(0, 500);
           this.store.put('push_subscriptions', { ...subscription, last_error: message, last_status: error?.statusCode || error?.status || null, updated_at: now() });
           console.error('Web Push request failed:', message);
+          failed += 1;
         }
       }
     }
-    return { sent, removed, subscriptions: subscriptions.length };
+    return { sent, delivered, removed, failed, pending: failed, subscriptions: subscriptions.length };
   }
 }

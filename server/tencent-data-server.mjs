@@ -4,6 +4,14 @@ import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize } from 'node:path';
 import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking } from './tencent-data-core.mjs';
 
+// A rejected third-party push request must never terminate the primary data
+// service. Individual delivery paths already catch and persist failures; this
+// is the process-level safety net for provider/library rejections that occur
+// outside their returned promise chain.
+process.on('unhandledRejection', reason => {
+  console.error('Background task rejection (service kept alive):', reason);
+});
+
 let TicketService;
 try { ({ TicketService } = await import('./ticket-service.mjs')); }
 catch (localModuleError) {
@@ -152,7 +160,14 @@ async function rpc(req, res, name, body, user) {
   if (name === 'ticket_archive') return send(res, 200, tickets.archive(body.ticket_id, user.id));
   if (name === 'ticket_notifications_read') return send(res, 200, tickets.markNotificationsRead(user.id));
   if (name === 'ticket_notification_snapshot') return send(res, 200, tickets.notificationSnapshot(user.id));
-  if (name === 'ticket_push_subscribe') return send(res, 200, requirePush().subscribe(user.id, body.subscription || body));
+  if (name === 'ticket_push_subscribe') {
+    const service = requirePush();
+    const status = service.subscribe(user.id, body.subscription || body);
+    // If an event happened while this browser subscription was unavailable,
+    // retry it as soon as the device reconnects instead of waiting for a timer.
+    await service.retryPendingTicketNotifications(tickets, { userId: user.id, limit: 20 });
+    return send(res, 200, { ...status, ...service.status(user.id) });
+  }
   if (name === 'ticket_push_unsubscribe') return send(res, 200, requirePush().unsubscribe(user.id, body.endpoint));
   if (name === 'ticket_push_test') return send(res, 200, await requirePush().test(user.id));
   if (name === 'ticket_register_attachment') return send(res, 200, tickets.registerAttachment(body, user.id));
@@ -345,7 +360,13 @@ const runTicketReminders = () => {
   try { tickets.runReminders(); }
   catch (caught) { console.error('Ticket reminder check failed:', caught); }
 };
+const retryTicketPush = () => {
+  if (!push) return;
+  void push.retryPendingTicketNotifications(tickets).catch(caught => console.error('Ticket push retry failed:', caught));
+};
 setTimeout(runTicketReminders, 10_000).unref();
 setInterval(runTicketReminders, 5 * 60_000).unref();
+setTimeout(retryTicketPush, 5_000).unref();
+setInterval(retryTicketPush, 15_000).unref();
 
 server.listen(PORT, '127.0.0.1', () => console.log(`Cargo Pulse Tencent data service listening on 127.0.0.1:${PORT}`));

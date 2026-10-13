@@ -164,7 +164,16 @@ export class TicketService {
   notify(userId, ticketId, type, title, dedupeKey = '') {
     if (!userId) return null;
     if (dedupeKey && this.store.all('ticket_notifications').some(row => row.dedupe_key === dedupeKey && row.user_id === userId)) return null;
-    const notification = this.store.put('ticket_notifications', { id: randomUUID(), user_id: userId, ticket_id: ticketId, type, title, dedupe_key: dedupeKey || null, read_at: null, created_at: now() });
+    const stamp = now();
+    const notification = this.store.put('ticket_notifications', {
+      id: randomUUID(), user_id: userId, ticket_id: ticketId, type, title,
+      dedupe_key: dedupeKey || null, read_at: null, created_at: stamp,
+      // Web Push is a durable outbox, not a best-effort side effect. The push
+      // service clears this marker only after at least one registered device
+      // accepted the message; transient gateway failures are retried.
+      push_pending_at: stamp, push_attempts: 0, push_next_attempt_at: stamp,
+      push_last_attempt_at: null, push_completed_at: null, push_last_error: null
+    });
     if (this.notificationHandler) {
       try {
         this.notificationHandler(notification);

@@ -136,6 +136,25 @@ test('打开工单即视为已读，只清除该工单提醒', () => {
   } finally { close(); }
 });
 
+test('每张工单按业务员等待到跟单有效回复计算平均回复时间', () => {
+  const { store, service, users, close } = fixture();
+  try {
+    const ticket = createForIcey(service, users);
+    const created = store.all('ticket_messages').find(row => row.ticket_id === ticket.id && row.kind === 'created');
+    store.put('ticket_messages', { ...created, created_at: '2026-10-13T10:00:00.000Z' });
+    const first = service.reply({ ticket_id: ticket.id, kind: 'progress', text: '第一次回复' }, users.icey.id).message;
+    store.put('ticket_messages', { ...first, created_at: '2026-10-13T12:00:00.000Z' });
+    const followUp = service.reply({ ticket_id: ticket.id, kind: 'message', text: '业务员补充' }, users.sales.id).message;
+    store.put('ticket_messages', { ...followUp, created_at: '2026-10-13T14:00:00.000Z' });
+    const second = service.reply({ ticket_id: ticket.id, kind: 'resolution', text: '第二次回复' }, users.icey.id).message;
+    store.put('ticket_messages', { ...second, created_at: '2026-10-13T15:00:00.000Z' });
+    const listed = service.bootstrap(users.sales.id).tickets.find(row => row.id === ticket.id);
+    assert.equal(listed.average_response_seconds, 90 * 60);
+    assert.equal(listed.response_count, 2);
+    assert.equal(service.detail(ticket.id, users.sales.id).ticket.average_response_seconds, 90 * 60);
+  } finally { close(); }
+});
+
 test('待业务员确认持续提醒提交人，确认解决后停止提醒', () => {
   const { store, service, users, close } = fixture();
   try {

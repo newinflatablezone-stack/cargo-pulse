@@ -57,8 +57,31 @@ export class TicketService {
     });
   }
 
+  responseStats(ticket, messages = this.store.all('ticket_messages')) {
+    const rows = messages.filter(row => row.ticket_id === ticket.id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+    const durations = [];
+    let waitingAt = null;
+    for (const row of rows) {
+      const moment = new Date(row.created_at).getTime();
+      if (!Number.isFinite(moment)) continue;
+      if (row.author_id === ticket.created_by) {
+        if (waitingAt === null) waitingAt = moment;
+      } else if (waitingAt !== null && ['message', 'progress', 'resolution'].includes(row.kind)) {
+        durations.push(Math.max(0, moment - waitingAt));
+        waitingAt = null;
+      }
+    }
+    return {
+      average_response_seconds: durations.length ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length / 1000) : null,
+      response_count: durations.length
+    };
+  }
+
+  enrichTicket(ticket, messages) { return { ...ticket, ...this.responseStats(ticket, messages) }; }
+
   visibleTickets(actor) {
-    return this.store.all('tickets').filter(ticket => !ticket.archived_at && this.canView(ticket, actor)).sort((a, b) => priorityRank[a.priority] - priorityRank[b.priority] || String(b.updated_at).localeCompare(String(a.updated_at)));
+    const messages = this.store.all('ticket_messages');
+    return this.store.all('tickets').filter(ticket => !ticket.archived_at && this.canView(ticket, actor)).map(ticket => this.enrichTicket(ticket, messages)).sort((a, b) => priorityRank[a.priority] - priorityRank[b.priority] || String(b.updated_at).localeCompare(String(a.updated_at)));
   }
 
   badge(userId) {
@@ -146,9 +169,10 @@ export class TicketService {
     // Opening the ticket is the read receipt. Resolution/reminder state is
     // independent and can create a new notification later when required.
     this.markTicketNotificationsRead(ticket.id, actor.id);
+    const messages = this.store.all('ticket_messages').filter(row => row.ticket_id === ticket.id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
     return {
-      ticket,
-      messages: this.store.all('ticket_messages').filter(row => row.ticket_id === ticket.id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))),
+      ticket: this.enrichTicket(ticket, messages),
+      messages,
       attachments: this.store.all('ticket_attachments').filter(row => row.ticket_id === ticket.id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))),
       history: this.store.all('ticket_history').filter(row => row.ticket_id === ticket.id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
     };

@@ -73,3 +73,97 @@ main{max-width:1280px;padding:16px}
   .compact-reply,.compact-reply.business-reply,.compact-reply.processor-reply{grid-template-columns:1fr}.compact-reply textarea{min-height:60px}
   .reply-choice-actions{flex-direction:column}.reply-choice-actions button{width:100%}
 }
+
+/* Mobile workspace: dense controls and information-rich ticket cards. */
+.mobile-list-tools{display:none}
+@media(max-width:700px){
+  :root,body{font-size:11px}
+  body>header{display:grid;grid-template-columns:auto 1fr;align-items:center;min-height:45px;height:auto;padding:5px 9px;gap:5px}
+  body>header .brand{gap:6px;font-size:12px}
+  body>header .brand img{width:30px;height:30px}
+  body>header .ticket-nav{display:none}
+  body>header nav{grid-column:2;gap:4px;margin-left:auto;font-size:10px;white-space:nowrap}
+  body>header nav .role,body>header nav button,body>header nav .button{padding:4px 7px;font-size:9.5px;border-radius:7px}
+  main{padding:8px 9px 20px}
+  .panel{padding:0;border:0;background:transparent;border-radius:0}
+  .page-head{margin-bottom:7px;gap:6px}
+  .page-head h1{font-size:16px;white-space:nowrap}
+  .head-actions{margin:0;gap:4px;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+  .head-actions::-webkit-scrollbar{display:none}
+  .head-actions button,.page-head>.button{min-height:30px;padding:4px 8px;font-size:10px;white-space:nowrap;border-radius:7px}
+  .status-stats{gap:4px;margin-bottom:7px}
+  .status-stats .stat{min-height:31px;padding:4px 2px;border-radius:7px;gap:4px}
+  .status-stats .stat span{font-size:9.5px}
+  .status-stats .stat b{font-size:12px}
+  .mobile-list-tools{display:flex;grid-column:2/3;grid-row:1;justify-content:flex-end}
+  .mobile-list-tools button{min-height:28px;padding:3px 9px;border-radius:7px;font-size:10px}
+  .filters{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px;margin-bottom:7px}
+  .filters.mobile-open{grid-template-columns:1fr 1fr}
+  .filters input{grid-column:1/2;grid-row:1;height:31px;padding:4px 8px;font-size:10.5px}
+  .filters select{height:31px;padding:3px 24px 3px 7px;font-size:10px}
+  .filters:not(.mobile-open) select{display:none}
+  .table-wrap{overflow:visible}
+  .tickets,.tickets tbody{display:block;width:100%;min-width:0}
+  .tickets thead{display:none}
+  .tickets tr{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 8px;margin:0 0 6px;padding:9px 10px;border:1px solid #dce7e1;border-radius:10px;background:#fff;box-shadow:0 2px 8px rgba(24,63,53,.04)}
+  .tickets td{display:block!important;min-width:0;padding:0!important;border:0!important;font-size:10px!important;line-height:1.35;color:#52675f}
+  .tickets td:before{display:none!important}
+  .tickets .title-cell{grid-column:1/-1;padding-right:76px!important}
+  .tickets .title-cell b{overflow:hidden;font-size:12px;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}
+  .tickets .title-cell small{margin-top:1px;font-size:8.5px}
+  .tickets td:nth-child(2){grid-column:1/2;color:#315a4e}
+  .tickets td:nth-child(2):before{content:'订单 ';display:inline!important;color:#8a9993!important;font-size:8.5px!important}
+  .tickets td:nth-child(3){grid-column:2/4;overflow:hidden;white-space:nowrap}
+  .tickets td:nth-child(4){position:absolute;right:9px;top:9px}
+  .tickets td:nth-child(5){grid-column:1/2;white-space:nowrap}
+  .tickets td:nth-child(5):before{content:'平均 ';display:inline!important;color:#8a9993!important;font-size:8.5px!important}
+  .tickets td:nth-child(6){grid-column:2/3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tickets td:nth-child(7){grid-column:3/4;color:#8a9993;white-space:nowrap}
+  .tickets .tag{padding:1px 5px;font-size:8px;border-radius:8px}
+  .tickets .status-tag{padding:2px 6px;font-size:8.5px;border-radius:8px}
+  .empty{padding:28px 10px}
+  .detail-panel{padding:9px;border-radius:10px}
+  .detail-head{display:block}
+  .detail-head h1{font-size:16px;line-height:1.35;margin:2px 0 6px}
+  .ticket-people{margin-top:6px;font-size:10px}
+  .ticket-people small{font-size:8.5px}
+  .detail-meta{gap:3px}
+  .description{margin-top:7px;padding:7px 9px;font-size:10.5px;line-height:1.45}
+  .attachments{margin-top:5px;gap:4px}
+  .attachments a{padding:3px 6px;font-size:9px}
+  .timeline{margin-top:8px}
+  .timeline h2,.reply h2,.modal-head h2{font-size:13px;margin-bottom:5px}
+  .timeline article{grid-template-columns:22px minmax(0,1fr);gap:5px;margin:5px 0}
+  .avatar{width:21px;height:21px;font-size:8.5px}
+  .bubble{padding:6px 8px;font-size:10.5px;border-radius:3px 9px 9px}
+  .bubble header{font-size:9px;gap:5px}
+  .bubble p{margin:4px 0;line-height:1.4}
+  .history-log{margin:6px 0;font-size:9.5px}
+  .history{margin:4px 0;padding:5px 7px;font-size:8.5px}
+  .reply{margin-top:7px;padding:7px;border-radius:9px}
+  .compact-reply,.compact-reply.business-reply,.compact-reply.processor-reply{gap:5px}
+  .compact-reply textarea,.business-reply textarea{min-height:52px;padding:6px 8px;font-size:11px}
+  .compact-reply button{height:29px;padding:4px 9px;font-size:10px}
+  .reply-choice-actions{flex-direction:row;gap:5px}
+  .reply-choice-actions button{width:auto;flex:1}
+  .waiting-note{font-size:9.5px}
+  .modal{width:100%;max-width:none;max-height:92dvh;margin:auto 0 0;border-radius:14px 14px 0 0}
+  .modal form{padding:12px 12px max(12px,env(safe-area-inset-bottom))}
+  .modal-head{margin-bottom:8px}
+  .modal-head h2{font-size:15px}
+  .modal .form-grid{grid-template-columns:1fr 1fr;gap:7px}
+  .modal .field.wide{grid-column:1/-1}
+  .modal .field span{font-size:10px}
+  .modal .field textarea{min-height:86px}
+  .form-actions{margin-top:7px;gap:5px}
+  .form-actions button{min-height:31px;padding:4px 10px;font-size:10px}
+  .toast{bottom:max(12px,env(safe-area-inset-bottom));width:calc(100% - 24px);padding:9px 11px;text-align:center;font-size:10.5px}
+}
+@media(max-width:390px){
+  .tickets tr{grid-template-columns:auto minmax(0,1fr);gap:3px 6px}
+  .tickets td:nth-child(3){grid-column:2/3}
+  .tickets td:nth-child(6){grid-column:2/3}
+  .tickets td:nth-child(7){display:none!important}
+  .reply-choice-actions{flex-direction:column}
+  .reply-choice-actions button{width:100%}
+}

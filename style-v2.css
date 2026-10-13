@@ -1369,3 +1369,29 @@ main.internal-resource-page-shell{width:100%;max-width:none!important;min-height
 .ticket-reminder-banner{display:flex;align-items:center;gap:12px;margin:12px clamp(14px,3vw,36px) 0;padding:12px 16px;border:1px solid #efbbb5;border-radius:12px;background:#fff4f2;color:#9d2e24;text-decoration:none;box-shadow:0 5px 18px rgba(126,39,30,.08)}.ticket-reminder-icon{display:grid;place-items:center;flex:0 0 26px;height:26px;border-radius:50%;background:#d83b32;color:#fff;font-weight:900}.ticket-reminder-copy{display:flex;min-width:0;flex:1;flex-direction:column;gap:2px}.ticket-reminder-copy b{font-size:13px}.ticket-reminder-copy small{overflow:hidden;color:#6e4a45;text-overflow:ellipsis;white-space:nowrap}.ticket-reminder-banner strong{font-size:12px;white-space:nowrap}@media(max-width:700px){.ticket-reminder-banner{margin:9px 10px 0;padding:10px 12px}.ticket-reminder-banner strong{display:none}.ticket-reminder-copy small{white-space:normal}}
 .ticket-resource-page{width:100%;max-width:none!important;margin:0!important;padding:0!important;background:#f5f8f6}.ticket-page-loading,.ticket-page-error{display:flex;min-height:55vh;flex-direction:column;align-items:center;justify-content:center;gap:9px;color:#36594e}.ticket-page-loading span{font-size:12px;color:#788a82}.ticket-page-error{margin:28px;border:1px solid #efbbb5;border-radius:12px;background:#fff;color:#a33329}.ticket-page-error button{margin-top:5px;padding:8px 12px;border:1px solid #cbd9d2;border-radius:8px;background:#fff;color:#285649}
 
+/* Compact mobile shell shared by every internal page. */
+@media(max-width:700px){
+ header{display:grid;grid-template-columns:auto 1fr auto;align-items:center;min-height:46px;height:auto;padding:5px 9px 0;gap:5px;flex-wrap:nowrap}
+ .brand-home{height:34px;gap:6px}
+ .brand-home img{width:31px;height:31px;flex-basis:31px}
+ .brand-home span{display:inline-flex;height:auto;font-size:12px}
+ header nav{grid-column:3;gap:5px;margin-left:auto;font-size:10px;white-space:nowrap}
+ header nav span{display:none}
+ header nav strong{padding:4px 7px;font-size:10px}
+ header nav button{padding:5px 4px;font-size:10px}
+ .resource-links{grid-column:1/-1;order:3;width:calc(100% + 18px);margin:0 -9px;padding:3px 7px 5px;border:0;border-top:1px solid #edf1ee;gap:2px;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+ .resource-links::-webkit-scrollbar{display:none}
+ .resource-links a,.resource-links button{flex:0 0 auto;padding:6px 9px;font-size:10px;line-height:1;white-space:nowrap}
+ .resource-links .ticket-link b{min-width:14px;height:14px;margin-left:3px;font-size:8px}
+ .ticket-reminder-banner{margin:5px 7px 0;padding:7px 9px;gap:7px;border-radius:8px}
+ .ticket-reminder-icon{flex-basis:20px;height:20px;font-size:10px}
+ .ticket-reminder-copy b{font-size:10px}
+ .ticket-reminder-copy small{font-size:9px;line-height:1.25}
+ .ticket-resource-page{min-height:calc(100dvh - 80px)}
+ .ticket-page-error{margin:12px}
+}
+@media(max-width:390px){
+ .brand-home span{display:none}
+ .resource-links a,.resource-links button{padding-left:8px;padding-right:8px}
+}
+

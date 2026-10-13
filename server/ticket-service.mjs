@@ -169,18 +169,31 @@ export class TicketService {
     if (!['message', 'progress', 'resolution'].includes(kind)) fail('回复类型无效');
     if (kind !== 'message') this.requireAssignee(ticket, actor);
     let updated = ticket;
+    const processorReply = ticket.assignee_id === actor.id || this.isSupervisor(actor);
+    if (ticket.status === 'pending' && processorReply) {
+      updated = this.store.put('tickets', { ...ticket, status: 'in_progress', accepted_at: now(), updated_at: now() });
+      this.history(ticket.id, actor, 'status_changed', { from: 'pending', to: 'in_progress' });
+    }
     if (kind === 'progress') {
-      if (!activeStatuses.has(ticket.status)) fail('当前状态不能提交进展', 409);
-      updated = this.store.put('tickets', { ...ticket, status: 'in_progress', accepted_at: ticket.accepted_at || now(), updated_at: now() });
+      if (!activeStatuses.has(updated.status)) fail('当前状态不能提交进展', 409);
+      updated = this.store.put('tickets', { ...updated, status: 'in_progress', accepted_at: updated.accepted_at || now(), updated_at: now() });
       this.history(ticket.id, actor, 'progress_updated');
     } else if (kind === 'resolution') {
-      if (!activeStatuses.has(ticket.status)) fail('当前状态不能提交解决结果', 409);
-      updated = this.store.put('tickets', { ...ticket, status: 'waiting_confirmation', current_deadline: null, resolved_at: now(), updated_at: now() });
-      this.history(ticket.id, actor, 'status_changed', { from: ticket.status, to: 'waiting_confirmation' });
+      if (!activeStatuses.has(updated.status)) fail('当前状态不能提交解决结果', 409);
+      const previousStatus = updated.status;
+      updated = this.store.put('tickets', { ...updated, status: 'waiting_confirmation', current_deadline: null, resolved_at: now(), updated_at: now() });
+      this.history(ticket.id, actor, 'status_changed', { from: previousStatus, to: 'waiting_confirmation' });
       this.notify(ticket.created_by, ticket.id, 'resolution', `${ticket.ticket_no} 已提交解决结果，等待你的确认`, `resolution:${ticket.id}:${updated.resolved_at}`);
     }
     const message = this.store.put('ticket_messages', { id: randomUUID(), ticket_id: ticket.id, kind, text, next_deadline: null, author_id: actor.id, author_email: actor.email, author_name: actor.name, created_at: now() });
-    if (kind === 'message') this.store.put('tickets', { ...ticket, updated_at: now() });
+    if (kind === 'message') updated = this.store.put('tickets', { ...updated, updated_at: now() });
+    if (kind !== 'resolution') {
+      const recipient = actor.id === ticket.created_by ? ticket.assignee_id : processorReply ? ticket.created_by : null;
+      if (recipient && recipient !== actor.id) {
+        const action = kind === 'progress' ? '更新了处理进展' : '发送了新消息';
+        this.notify(recipient, ticket.id, 'reply', `${ticket.ticket_no} ${actor.name || actor.email} ${action}`, `reply:${message.id}`);
+      }
+    }
     this.markTicketNotificationsRead(ticket.id, actor.id);
     return { ticket: updated, message };
   }

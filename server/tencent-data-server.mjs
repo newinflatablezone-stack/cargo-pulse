@@ -119,6 +119,7 @@ function rpc(req, res, name, body, user) {
   if (name === 'ticket_admin_update') return send(res, 200, tickets.adminUpdate(body, user.id));
   if (name === 'ticket_archive') return send(res, 200, tickets.archive(body.ticket_id, user.id));
   if (name === 'ticket_notifications_read') return send(res, 200, tickets.markNotificationsRead(user.id));
+  if (name === 'ticket_notification_snapshot') return send(res, 200, { badge_count: tickets.badge(user.id), notifications: tickets.unreadNotifications(user.id).slice(0, 20) });
   if (name === 'ticket_register_attachment') return send(res, 200, tickets.registerAttachment(body, user.id));
   if (name === 'lookup_customer_tracking') {
     return send(res, 200, lookupCustomerTracking(store, body.p_email));

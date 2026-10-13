@@ -53,10 +53,16 @@ test('进展、解决、确认与退回遵守四状态流程', () => {
   const { service, users, close } = fixture();
   try {
     const ticket = createForIcey(service, users);
-    service.accept(ticket.id, users.icey.id);
-    assert.equal(service.badge(users.icey.id), 0);
     service.reply({ ticket_id: ticket.id, kind: 'message', text: '已向货代查询' }, users.icey.id);
+    assert.equal(service.ticket(ticket.id).status, 'in_progress');
+    assert.equal(service.badge(users.icey.id), 0);
+    assert.equal(service.badge(users.sales.id), 1);
+    assert.match(service.unreadNotifications(users.sales.id)[0].title, /发送了新消息/);
+    service.reply({ ticket_id: ticket.id, kind: 'message', text: '客户正在等待' }, users.sales.id);
+    assert.equal(service.badge(users.icey.id), 1);
+    assert.match(service.unreadNotifications(users.icey.id)[0].title, /发送了新消息/);
     service.reply({ ticket_id: ticket.id, kind: 'progress', text: '已有进展' }, users.icey.id);
+    assert.equal(service.badge(users.icey.id), 0);
     service.reply({ ticket_id: ticket.id, kind: 'resolution', text: '已经解决' }, users.icey.id);
     assert.equal(service.ticket(ticket.id).status, 'waiting_confirmation');
     assert.equal(service.badge(users.sales.id), 1);

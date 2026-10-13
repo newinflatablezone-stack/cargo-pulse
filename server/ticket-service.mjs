@@ -323,7 +323,7 @@ export class TicketService {
       const activityAt = new Date(ticket.updated_at || ticket.created_at).getTime();
       if (!Number.isFinite(activityAt)) continue;
       const elapsed = at - activityAt;
-      const intervalHours = ticket.priority === 'urgent' ? 6 : 12;
+      const intervalHours = ticket.priority === 'urgent' ? 3 : ticket.priority === 'important' ? 6 : 9;
       const intervalMs = intervalHours * 3600000;
       if (elapsed < intervalMs) continue;
       const bucket = Math.floor(elapsed / intervalMs);

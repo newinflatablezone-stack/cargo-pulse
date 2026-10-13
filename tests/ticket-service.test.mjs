@@ -90,31 +90,43 @@ test('主管转交后原负责人立即失去权限，新负责人获得权限',
   } finally { close(); }
 });
 
-test('普通和重要工单每 12 小时、紧急工单每 6 小时循环提醒', () => {
+test('普通每 9 小时、重要每 6 小时、紧急每 3 小时循环提醒', () => {
   const { store, service, users, close } = fixture();
   try {
     const ticket = createForIcey(service, users);
-    const stale = new Date(Date.now() - 12 * 3600000 - 1000).toISOString();
+    const stale = new Date(Date.now() - 9 * 3600000 - 1000).toISOString();
     store.put('tickets', { ...ticket, updated_at: stale });
     assert.equal(service.runReminders().created, 1);
     assert.equal(service.runReminders().created, 0);
-    assert.equal(service.runReminders(Date.now() + 12 * 3600000).created, 1);
+    assert.equal(service.runReminders(Date.now() + 9 * 3600000).created, 1);
     assert.equal(service.badge(users.icey.id), 1);
     assert.equal(service.badge(users.qinzhi.id), 0);
     assert.equal(service.badge(users.supervisor.id), 0);
     service.reply({ ticket_id: ticket.id, kind: 'progress', text: '继续处理' }, users.icey.id);
     assert.equal(service.badge(users.icey.id), 0);
+    store.put('tickets', { ...service.ticket(ticket.id), status: 'closed' });
+
+    const important = service.create({
+      title: '重要物流异常', description: '可能影响交付', category: 'logistics',
+      priority: 'important', assignee_id: users.icey.id
+    }, users.sales.id);
+    service.markNotificationsRead(users.icey.id);
+    store.put('tickets', { ...important, updated_at: new Date(Date.now() - 6 * 3600000 - 1000).toISOString() });
+    assert.equal(service.runReminders().created, 1);
+    assert.equal(service.runReminders().created, 0);
+    assert.equal(service.runReminders(Date.now() + 6 * 3600000).created, 1);
+    store.put('tickets', { ...service.ticket(important.id), status: 'closed' });
 
     const urgent = service.create({
       title: '紧急交付异常', description: '已经影响交付', category: 'delivery',
       priority: 'urgent', assignee_id: users.qinzhi.id
     }, users.sales.id);
     service.markNotificationsRead(users.qinzhi.id);
-    const urgentStale = new Date(Date.now() - 6 * 3600000 - 1000).toISOString();
+    const urgentStale = new Date(Date.now() - 3 * 3600000 - 1000).toISOString();
     store.put('tickets', { ...urgent, updated_at: urgentStale });
     assert.equal(service.runReminders().created, 1);
     assert.equal(service.runReminders().created, 0);
-    assert.equal(service.runReminders(Date.now() + 6 * 3600000).created, 1);
+    assert.equal(service.runReminders(Date.now() + 3 * 3600000).created, 1);
     assert.equal(service.badge(users.qinzhi.id), 1);
   } finally { close(); }
 });
@@ -178,7 +190,7 @@ test('待业务员确认持续提醒提交人，确认解决后停止提醒', ()
     service.reply({ ticket_id: ticket.id, kind: 'resolution', text: '处理完成，请确认' }, users.icey.id);
     service.markNotificationsRead(users.sales.id);
     const waiting = service.ticket(ticket.id);
-    store.put('tickets', { ...waiting, updated_at: new Date(Date.now() - 12 * 3600000 - 1000).toISOString() });
+    store.put('tickets', { ...waiting, updated_at: new Date(Date.now() - 9 * 3600000 - 1000).toISOString() });
     assert.equal(service.runReminders().created, 1);
     assert.equal(service.badge(users.sales.id), 1);
     service.decide({ ticket_id: ticket.id, action: 'close' }, users.sales.id);

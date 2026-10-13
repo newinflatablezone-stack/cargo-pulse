@@ -3,7 +3,13 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto
 import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize } from 'node:path';
 import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking } from './tencent-data-core.mjs';
-import { TicketService } from './ticket-service.mjs';
+
+let TicketService;
+try { ({ TicketService } = await import('./ticket-service.mjs')); }
+catch (localModuleError) {
+  try { ({ TicketService } = await import('file:///var/www/cargo-pulse/runtime/ticket-service.mjs')); }
+  catch { throw localModuleError; }
+}
 
 const PORT = Number(process.env.PORT || 8788);
 const DATA_DIR = process.env.CARGO_PULSE_DATA_DIR || '/var/lib/cargo-pulse/data';
@@ -253,5 +259,15 @@ const server = http.createServer((req, res) => {
     else res.destroy(caught);
   });
 });
+
+// Deadline reminders run on the server and never depend on a browser being open.
+// The separate systemd timer may also run on upgraded hosts; notification keys
+// make both paths idempotent.
+const runTicketReminders = () => {
+  try { tickets.runReminders(); }
+  catch (caught) { console.error('Ticket reminder check failed:', caught); }
+};
+setTimeout(runTicketReminders, 10_000).unref();
+setInterval(runTicketReminders, 5 * 60_000).unref();
 
 server.listen(PORT, '127.0.0.1', () => console.log(`Cargo Pulse Tencent data service listening on 127.0.0.1:${PORT}`));

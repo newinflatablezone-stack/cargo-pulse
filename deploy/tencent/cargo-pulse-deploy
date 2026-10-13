@@ -56,9 +56,47 @@ fi
 if systemctl cat cargo-pulse-data.service >/dev/null 2>&1 && [ -s "$RELEASE_DIR/server/tencent-data-server.mjs" ]; then
   install -m 644 "$RELEASE_DIR/server/tencent-data-core.mjs" /opt/cargo-pulse-runtime/tencent-data-core.mjs
   install -m 644 "$RELEASE_DIR/server/tencent-data-server.mjs" /opt/cargo-pulse-runtime/tencent-data-server.mjs
+  install -m 644 "$RELEASE_DIR/server/ticket-service.mjs" /opt/cargo-pulse-runtime/ticket-service.mjs
+  install -m 644 "$RELEASE_DIR/scripts/ticket-reminders.mjs" /opt/cargo-pulse-runtime/ticket-reminders.mjs
+  if ! systemctl cat cargo-pulse-ticket-reminders.timer >/dev/null 2>&1; then
+    NODE_BIN="$(command -v node)"
+    if [ "$NODE_BIN" = /snap/bin/node ] && [ -x /snap/node/current/bin/node ]; then NODE_BIN=/snap/node/current/bin/node; fi
+    cat > /etc/systemd/system/cargo-pulse-ticket-reminders.service <<EOF
+[Unit]
+Description=Cargo Pulse ticket overdue reminders
+After=cargo-pulse-data.service
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+EnvironmentFile=/etc/cargo-pulse/local-data.env
+ExecStart=$NODE_BIN /opt/cargo-pulse-runtime/ticket-reminders.mjs
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/cargo-pulse/data
+EOF
+    cat > /etc/systemd/system/cargo-pulse-ticket-reminders.timer <<'EOF'
+[Unit]
+Description=Check Cargo Pulse ticket deadlines every five minutes
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=5m
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+    systemctl daemon-reload
+    systemctl enable --now cargo-pulse-ticket-reminders.timer
+  fi
   install -m 644 "$RELEASE_DIR/scripts/migrate-supabase-to-tencent.mjs" /opt/cargo-pulse-runtime/migrate-supabase-to-tencent.mjs
   systemctl reset-failed cargo-pulse-data.service 2>/dev/null || true
   systemctl restart cargo-pulse-data.service
+  systemctl start cargo-pulse-ticket-reminders.service 2>/dev/null || true
   data_healthy=''
   for _ in {1..20}; do
     if curl -fsS http://127.0.0.1:8788/health >/dev/null; then data_healthy=1; break; fi

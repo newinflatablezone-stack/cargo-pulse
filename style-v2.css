@@ -1362,3 +1362,5 @@ main.internal-resource-page-shell{width:100%;max-width:none!important;min-height
 
 .duty-prepaid-filter select,.forwarder-paid-filter select{border-color:#c8d6ce;background:#f8faf8}.forwarder-paid-filter select{color:#254e42}
 
+.resource-links .ticket-link{position:relative}.resource-links .ticket-link b{display:inline-grid;place-items:center;min-width:17px;height:17px;margin-left:5px;padding:0 4px;border-radius:99px;background:#d73b32;color:#fff;font-size:10px;line-height:1}
+

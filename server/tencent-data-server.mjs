@@ -3,6 +3,7 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto
 import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize } from 'node:path';
 import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking } from './tencent-data-core.mjs';
+import { TicketService } from './ticket-service.mjs';
 
 const PORT = Number(process.env.PORT || 8788);
 const DATA_DIR = process.env.CARGO_PULSE_DATA_DIR || '/var/lib/cargo-pulse/data';
@@ -15,6 +16,7 @@ await mkdir(DATA_DIR, { recursive: true });
 await mkdir(UPLOAD_DIR, { recursive: true });
 const store = new TencentDataStore(DB_FILE);
 const DATA_REVISION = createHash('sha256').update(await readFile(new URL('./tencent-data-core.mjs', import.meta.url))).digest('hex');
+const tickets = new TicketService(store);
 
 const send = (res, status, value, headers = {}) => {
   const body = value == null ? '' : JSON.stringify(value);
@@ -35,10 +37,10 @@ const requireUser = req => {
   if (!user) throw Object.assign(Error('登录已失效'), { status: 401 });
   return user;
 };
-const safeUploadPath = raw => {
+const safeUploadPath = (raw, root = UPLOAD_DIR) => {
   const cleaned = normalize('/' + decodeURIComponent(raw)).replace(/^[/\\]+/, '');
   if (cleaned.includes('..')) throw Object.assign(Error('非法文件路径'), { status: 400 });
-  return join(UPLOAD_DIR, cleaned);
+  return join(root, cleaned);
 };
 const objectSignature = (raw, expires) => createHmac('sha256', IMPORT_SECRET).update(`${raw}\n${expires}`).digest('base64url');
 
@@ -90,11 +92,22 @@ async function authRoute(req, res, url) {
 }
 
 function rpc(req, res, name, body, user) {
+  if (name === 'ticket_bootstrap') return send(res, 200, tickets.bootstrap(user.id));
+  if (name === 'ticket_detail') return send(res, 200, tickets.detail(body.ticket_id, user.id));
+  if (name === 'ticket_create') return send(res, 200, tickets.create(body, user.id));
+  if (name === 'ticket_accept') return send(res, 200, tickets.accept(body.ticket_id, user.id));
+  if (name === 'ticket_reply') return send(res, 200, tickets.reply(body, user.id));
+  if (name === 'ticket_decide') return send(res, 200, tickets.decide(body, user.id));
+  if (name === 'ticket_admin_update') return send(res, 200, tickets.adminUpdate(body, user.id));
+  if (name === 'ticket_archive') return send(res, 200, tickets.archive(body.ticket_id, user.id));
+  if (name === 'ticket_settings_update') return send(res, 200, tickets.updateSettings(body, user.id));
+  if (name === 'ticket_notifications_read') return send(res, 200, tickets.markNotificationsRead(user.id));
+  if (name === 'ticket_register_attachment') return send(res, 200, tickets.registerAttachment(body, user.id));
   if (name === 'lookup_customer_tracking') {
     return send(res, 200, lookupCustomerTracking(store, body.p_email));
   }
   if (!user) throw Object.assign(Error('请先登录'), { status: 401 });
-  if (name === 'home_bootstrap') return send(res, 200, store.homeSnapshot(user.id));
+  if (name === 'home_bootstrap') return send(res, 200, { ...store.homeSnapshot(user.id), ticket_badge_count: tickets.badge(user.id) });
   if (name === 'list_visible_orders') return send(res, 200, store.all('orders').filter(row => !row.deleted_at || store.isSupervisor(user.id)));
   if (!store.isFollower(user.id)) throw Object.assign(Error('没有操作权限'), { status: 403 });
   const order = store.all('orders').find(row => row.id === body.target_order_id);
@@ -141,6 +154,22 @@ async function storageRoute(req, res, url, user) {
   if (!user) throw Object.assign(Error('请先登录'), { status: 401 });
   const signPrefix = '/storage/v1/object/sign/order-images/';
   const objectPrefix = '/storage/v1/object/order-images/';
+  const ticketSignPrefix = '/storage/v1/object/sign/ticket-files/';
+  const ticketObjectPrefix = '/storage/v1/object/ticket-files/';
+  if (url.pathname.startsWith(ticketSignPrefix)) {
+    const raw = url.pathname.slice(ticketSignPrefix.length);
+    if (!tickets.canAccessFile(decodeURIComponent(raw), user.id)) throw Object.assign(Error('没有查看附件的权限'), { status: 403 });
+    const expires = Math.floor(Date.now() / 1000) + Math.min(3600, Number((await readBody(req)).expiresIn || 3600));
+    const token = objectSignature(`ticket:${raw}`, expires);
+    return send(res, 200, { signedURL: `/object/ticket-files/${raw}?expires=${expires}&token=${encodeURIComponent(token)}` });
+  }
+  if (url.pathname.startsWith(ticketObjectPrefix)) {
+    const raw = decodeURIComponent(url.pathname.slice(ticketObjectPrefix.length));
+    const ticketId = raw.split('/')[0];
+    tickets.requireTicket(ticketId, tickets.actor(user.id));
+    const file = safeUploadPath(raw, join(UPLOAD_DIR, 'tickets'));
+    if (req.method === 'POST') { const body = await readBody(req, 25 * 1024 * 1024); await mkdir(dirname(file), { recursive: true }); await writeFile(file, body); return send(res, 200, { Key: raw }); }
+  }
   if (url.pathname.startsWith(signPrefix)) {
     const raw = url.pathname.slice(signPrefix.length);
     const expires = Math.floor(Date.now() / 1000) + Math.min(3600, Number((await readBody(req)).expiresIn || 3600));
@@ -167,6 +196,16 @@ async function serveObject(req, res, url) {
   const info = await stat(file); res.writeHead(200, { 'Content-Length': info.size, 'Cache-Control': 'private, max-age=3600' }); res.end(await readFile(file));
 }
 
+async function serveTicketObject(req, res, url) {
+  const raw = url.pathname.slice('/storage/v1/object/ticket-files/'.length);
+  const expires = Number(url.searchParams.get('expires') || 0), supplied = String(url.searchParams.get('token') || '');
+  const expected = objectSignature(`ticket:${raw}`, expires);
+  const valid = expires > Math.floor(Date.now() / 1000) && supplied.length === expected.length && timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
+  if (!valid) throw Object.assign(Error('附件链接已失效'), { status: 403 });
+  const file = safeUploadPath(raw, join(UPLOAD_DIR, 'tickets'));
+  const info = await stat(file); res.writeHead(200, { 'Content-Length': info.size, 'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(raw.split('/').pop() || 'attachment')}`, 'Cache-Control': 'private, max-age=3600' }); res.end(await readFile(file));
+}
+
 async function handleRequest(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -191,6 +230,7 @@ async function handleRequest(req, res) {
       return send(res, 200, { ok: true, size: body.length });
     }
     if (url.pathname.startsWith('/storage/v1/object/order-images/') && req.method === 'GET') return await serveObject(req, res, url);
+    if (url.pathname.startsWith('/storage/v1/object/ticket-files/') && req.method === 'GET') return await serveTicketObject(req, res, url);
     const user = isPublicRequest(url.pathname) ? store.session(bearer(req)) : requireUser(req);
     if (url.pathname.startsWith('/storage/v1/')) return await storageRoute(req, res, url, user);
     const rpcMatch = /^\/rest\/v1\/rpc\/([a-z0-9_]+)$/.exec(url.pathname);

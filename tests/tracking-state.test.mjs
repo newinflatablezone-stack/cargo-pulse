@@ -88,7 +88,7 @@ test('实际回退流程撤销上一轮运输单号，不会自动恢复为正�
   store.put('order_events',{id:'ocean',order_id:order.id,step_key:'ocean_transit',started_at:'2026-10-10T00:00:00Z',deadline_at:'2026-10-26T00:00:00Z',completed_at:'2026-10-26T00:00:00Z',note:'tracking:OLD-OCEAN'});
   store.put('order_events',{id:'overseas',order_id:order.id,step_key:'overseas_customs',started_at:order.step_started_at,completed_at:null});
   const ctx={flowFor,resetNumberStageNote,shipmentFeatureReady:false,ROLLBACK_COUNT_PATTERN:/\s*\[rollback-count:(\d+)\]/g,api:async(path,options={})=>{const url=new URL(path,'http://local');return store.mutate(url.pathname.split('/').at(-1),options.method||'GET',url,options.body?JSON.parse(options.body):{},user.id)},repairStuckRollback:async()=>{throw Error('Unexpected repair')}};
-  const start=source.indexOf('async function rollbackOrder('),end=source.indexOf('\n}\n',start)+3;
+  const start=source.indexOf('async function rollbackOrder('),lfEnd=source.indexOf('\n}\n',start),crlfEnd=source.indexOf('\r\n}\r\n',start),end=lfEnd>=0?lfEnd+3:crlfEnd+5;
   runInNewContext(['stableStepKey','rollbackCountFromRows','noteWithRollbackCount'].map(getFunction).join('\n')+'\n'+source.slice(start,end),ctx);
   await ctx.rollbackOrder(order);
   const rolled=store.all('orders')[0],events=store.all('order_events');

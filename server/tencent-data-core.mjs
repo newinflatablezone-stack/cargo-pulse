@@ -3,8 +3,12 @@ import { DatabaseSync } from 'node:sqlite';
 
 export const TABLES = [
   'profiles', 'app_settings', 'partners', 'orders', 'order_events', 'order_images',
-  'order_factories', 'order_shipments', 'order_shipment_events', 'internal_resource_tables'
+  'order_factories', 'order_shipments', 'order_shipment_events', 'internal_resource_tables',
+  'tickets', 'ticket_messages', 'ticket_attachments', 'ticket_history',
+  'ticket_notifications', 'ticket_reminder_logs'
 ];
+
+const PROTECTED_TICKET_TABLES = new Set(['tickets', 'ticket_messages', 'ticket_attachments', 'ticket_history', 'ticket_notifications', 'ticket_reminder_logs']);
 
 const PUBLIC_RPC = new Set(['lookup_customer_tracking']);
 const SUPERVISOR_EMAIL = '505863160@qq.com';
@@ -75,6 +79,7 @@ export class TencentDataStore {
       pragma journal_mode=WAL;
       pragma synchronous=NORMAL;
       pragma foreign_keys=ON;
+      pragma busy_timeout=5000;
       create table if not exists records (
         table_name text not null,
         record_id text not null,
@@ -207,6 +212,7 @@ export class TencentDataStore {
   }
 
   mutate(table, method, url, body, userId, prefer = '') {
+    if (PROTECTED_TICKET_TABLES.has(table)) throw Object.assign(Error('工单数据必须通过专用接口访问'), { status: 403 });
     const follower = this.isFollower(userId);
     const supervisor = this.isSupervisor(userId);
     if (method !== 'GET' && !follower && !(table === 'profiles' && supervisor)) throw Object.assign(Error('没有修改权限'), { status: 403 });

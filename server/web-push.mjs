@@ -68,6 +68,7 @@ export class WebPushService {
       statusCounts[key] = (statusCounts[key] || 0) + 1;
     }
     const pending = notifications.filter(row => !row.push_completed_at);
+    const workerFailures = pending.filter(row => row.push_worker_error);
     return {
       subscriptions: subscriptions.length,
       healthy_subscriptions: subscriptions.filter(row => !row.last_error).length,
@@ -76,6 +77,9 @@ export class WebPushService {
       pending_notifications: pending.length,
       pending_never_attempted: pending.filter(row => !Number(row.push_attempts || 0)).length,
       pending_attempted: pending.filter(row => Number(row.push_attempts || 0) > 0).length,
+      worker_failures: workerFailures.length,
+      last_worker_exit_code: workerFailures.map(row => row.push_worker_exit_code).filter(value => value !== undefined).at(-1) ?? null,
+      last_worker_error: workerFailures.map(row => row.push_worker_error).filter(Boolean).at(-1) || null,
       completed_notifications: notifications.filter(row => row.push_completed_at).length,
       delivery_receipts: deliveries.length,
       last_delivery_at: deliveries.map(row => row.created_at).filter(Boolean).sort().at(-1) || null,

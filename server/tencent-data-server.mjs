@@ -49,11 +49,27 @@ const pushWorkerPath = fileURLToPath(import.meta.url.includes('/opt/cargo-pulse-
   : new URL('../scripts/ticket-reminders.mjs', import.meta.url));
 const launchPushWorker = notification => {
   try {
+    let stderr = '';
     const child = spawn(process.execPath, [pushWorkerPath], {
       env: { ...process.env, CARGO_PULSE_PUSH_NOTIFICATION_ID: notification.id },
-      stdio: 'ignore', windowsHide: true
+      stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true
     });
+    child.stderr?.setEncoding('utf8');
+    child.stderr?.on('data', chunk => { stderr = (stderr + chunk).slice(-1200); });
     child.once('error', caught => console.error('Could not start isolated Web Push worker:', caught));
+    child.once('exit', code => {
+      if (code === 0) return;
+      const current = store.all('ticket_notifications').find(row => row.id === notification.id);
+      if (!current) return;
+      const message = String(stderr || `worker exited with code ${code}`).replace(/https?:\/\/\S+/g, '[url]').slice(0, 500);
+      store.put('ticket_notifications', {
+        ...current,
+        push_worker_exit_code: code,
+        push_worker_error: message,
+        push_worker_failed_at: new Date().toISOString()
+      });
+      console.error('Isolated Web Push worker failed:', message);
+    });
     child.unref();
   } catch (caught) {
     console.error('Could not launch isolated Web Push worker:', caught);
@@ -73,6 +89,13 @@ try {
   pushInitError = caught;
   console.error('Web Push disabled; core data service remains available:', caught);
 }
+// Recover notifications created immediately before a restart/deployment and
+// also provide an observable result when the isolated worker cannot launch.
+setTimeout(() => {
+  for (const notification of store.all('ticket_notifications').filter(row => row.push_pending_at && !row.push_completed_at).slice(0, 20)) {
+    launchPushWorker(notification);
+  }
+}, 1500).unref();
 const pushStatus = userId => push
   ? push.status(userId)
   : { available: false, public_key: null, subscriptions: 0 };

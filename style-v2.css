@@ -1399,3 +1399,11 @@ main.internal-resource-page-shell{width:100%;max-width:none!important;min-height
 .orders .order-card{content-visibility:auto;contain-intrinsic-size:auto 210px}
 @media(max-width:700px){.orders .order-card{contain-intrinsic-size:auto 265px}}
 
+.destination-risk-warning{margin:0;padding:14px 16px;border:1px solid #e8a39a;border-radius:12px;background:#fff5f2;color:#7d2b22}
+.destination-risk-warning[hidden]{display:none}
+.destination-risk-warning strong{display:block;margin-bottom:4px;font-size:15px;color:#b22d20}
+.destination-risk-warning p{margin:0 0 10px;line-height:1.55}
+.destination-risk-warning label{display:flex!important;align-items:center;gap:8px;margin:0!important;font-weight:700}
+.destination-risk-warning input[type="checkbox"]{width:17px!important;height:17px!important;margin:0;flex:0 0 auto}
+.destination-risk-badge{display:inline-flex;margin-left:8px;padding:3px 7px;border-radius:999px;background:#fff0ed;color:#b22d20;font-size:12px}
+@media(max-width:700px){.destination-risk-warning{padding:12px}.destination-risk-warning p{font-size:13px}.destination-risk-warning label{font-size:13px}}

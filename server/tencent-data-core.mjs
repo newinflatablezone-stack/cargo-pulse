@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
+import { classifyDestination, normalizeDestination } from './destination-risk.mjs';
 
 export const TABLES = [
   'profiles', 'app_settings', 'partners', 'orders', 'order_events', 'order_images',
@@ -257,7 +258,10 @@ export class TencentDataStore {
         const row = { ...value };
         if (!row.id && !['app_settings', 'internal_resource_tables'].includes(table)) row.id = randomUUID();
         if (!row.created_at) row.created_at = now();
-        if (table === 'orders' && !row.created_by) row.created_by = userId;
+        if (table === 'orders') {
+          if (!row.created_by) row.created_by = userId;
+          Object.assign(row, this.normalizeOrderDestination(row, userId));
+        }
         if (table === 'order_images' && !row.uploaded_by) row.uploaded_by = userId;
         return this.put(table, row);
       });
@@ -271,9 +275,38 @@ export class TencentDataStore {
     if (method === 'GET' && table === 'profiles' && !supervisor) matchesRows = matchesRows.filter(row => row.id === userId);
     if (method === 'GET' && table === 'app_settings' && !supervisor) matchesRows = matchesRows.filter(row => !String(row.key || '').endsWith('_invite'));
     if (method === 'GET' && table === 'orders' && !supervisor) matchesRows = matchesRows.filter(row => !row.deleted_at);
-    if (method === 'PATCH') return matchesRows.map(row => project(this.put(table, { ...row, ...body }), url.searchParams.get('select')));
+    if (method === 'PATCH') return matchesRows.map(row => {
+      let next = { ...row, ...body };
+      if (table === 'orders') next = this.normalizeOrderDestination(next, userId, row);
+      return project(this.put(table, next), url.searchParams.get('select'));
+    });
     if (method === 'DELETE') { this.remove(table, matchesRows.map(row => row.id ?? row.key ?? row.resource_key)); return matchesRows.map(row => project(row, url.searchParams.get('select'))); }
     return matchesRows;
+  }
+
+  normalizeOrderDestination(row, userId, previous = null) {
+    const destination = classifyDestination(row.destination_country);
+    if (!destination.input) return row;
+    if (destination.mainstream) return {
+      ...row,
+      destination_country: destination.canonical,
+      destination_risk: 'mainstream',
+      destination_risk_acknowledged: false,
+      destination_risk_acknowledged_at: null,
+      destination_risk_acknowledged_by: null
+    };
+    const acknowledged = row.destination_risk_acknowledged === true || String(row.destination_risk_acknowledged) === 'true';
+    if (!acknowledged) throw Object.assign(Error('该目的地属于非主流地址，请核查运费、关税和清关信息并确认'), { status: 400 });
+    const sameAcknowledgement = previous?.destination_risk_acknowledged === true &&
+      normalizeDestination(previous.destination_country) === normalizeDestination(destination.input);
+    return {
+      ...row,
+      destination_country: destination.input,
+      destination_risk: 'non_mainstream',
+      destination_risk_acknowledged: true,
+      destination_risk_acknowledged_at: sameAcknowledgement ? previous.destination_risk_acknowledged_at : now(),
+      destination_risk_acknowledged_by: sameAcknowledgement ? previous.destination_risk_acknowledged_by : this.accountById(userId)?.email || userId
+    };
   }
 
   importRows(table, rows) {

@@ -55,6 +55,7 @@ if systemctl cat cargo-pulse-images.service >/dev/null 2>&1 && [ -s "$RELEASE_DI
 fi
 if systemctl cat cargo-pulse-data.service >/dev/null 2>&1 && [ -s "$RELEASE_DIR/server/tencent-data-server.mjs" ]; then
   install -m 644 "$RELEASE_DIR/server/tencent-data-core.mjs" /opt/cargo-pulse-runtime/tencent-data-core.mjs
+  install -m 644 "$RELEASE_DIR/server/destination-risk.mjs" /opt/cargo-pulse-runtime/destination-risk.mjs
   install -m 644 "$RELEASE_DIR/server/tencent-data-server.mjs" /opt/cargo-pulse-runtime/tencent-data-server.mjs
   install -m 644 "$RELEASE_DIR/server/ticket-service.mjs" /opt/cargo-pulse-runtime/ticket-service.mjs
   # The push transport is bundled with its protocol dependencies so the

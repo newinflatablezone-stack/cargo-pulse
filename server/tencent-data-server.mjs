@@ -44,9 +44,9 @@ const DATA_REVISION = createHash('sha256').update(await readFile(new URL('./tenc
 const tickets = new TicketService(store);
 let push = null;
 let pushInitError = null;
-const pushWorkerPath = fileURLToPath(import.meta.url.includes('/opt/cargo-pulse-runtime/')
-  ? new URL('./ticket-reminders.mjs', import.meta.url)
-  : new URL('../scripts/ticket-reminders.mjs', import.meta.url));
+const pushWorkerPath = process.env.CARGO_PULSE_PUSH_WORKER || (import.meta.url.includes('/opt/cargo-pulse-runtime/')
+  ? '/var/www/cargo-pulse/runtime/ticket-push-worker.mjs'
+  : fileURLToPath(new URL('../dist/runtime/ticket-push-worker.mjs', import.meta.url)));
 const launchPushWorker = notification => {
   try {
     let stderr = '';
@@ -96,6 +96,9 @@ setTimeout(() => {
     launchPushWorker(notification);
   }
 }, 1500).unref();
+// Run reminder creation and retry delivery out-of-process as well. This keeps
+// background delivery independent of an older/missing systemd timer install.
+setInterval(() => launchPushWorker({ id: '' }), 5 * 60_000).unref();
 const pushStatus = userId => push
   ? push.status(userId)
   : { available: false, public_key: null, subscriptions: 0 };

@@ -10,3 +10,14 @@ await build({
     js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);"
   }
 });
+
+await build({
+  entryPoints: ['server/ticket-push-worker.mjs'],
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  outfile: 'dist/runtime/ticket-push-worker.mjs',
+  banner: {
+    js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);"
+  }
+});

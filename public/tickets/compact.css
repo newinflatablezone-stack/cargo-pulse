@@ -51,6 +51,8 @@ main{max-width:1280px;padding:16px}
 .compact-reply{display:grid;grid-template-columns:110px 1fr 190px auto;align-items:end;gap:6px}
 .compact-reply textarea{min-height:48px;resize:vertical}
 .compact-reply button{height:30px;padding:5px 11px;font-size:11px}
+.compact-reply.business-reply{grid-template-columns:minmax(400px,1fr) 190px auto}
+.business-reply textarea{width:100%;min-height:72px}
 .compact-reply.processor-reply{grid-template-columns:minmax(260px,1fr) 190px auto}
 .processor-reply textarea{grid-column:1/-1}
 .reply-choice-actions{display:flex;justify-content:flex-end;gap:7px;grid-column:1/-1}
@@ -67,6 +69,6 @@ main{max-width:1280px;padding:16px}
   .filters{grid-template-columns:1fr 1fr}.filters input{grid-column:1/-1}
   .tickets{min-width:0}.tickets tr{margin:6px 0;padding:6px}.tickets td{padding:3px;font-size:10px}
   .tickets td:before{font-size:9px}.detail-head h1{font-size:15px}.ticket-people{margin-top:6px}
-  .compact-reply,.compact-reply.processor-reply{grid-template-columns:1fr}.compact-reply textarea{min-height:60px}
+  .compact-reply,.compact-reply.business-reply,.compact-reply.processor-reply{grid-template-columns:1fr}.compact-reply textarea{min-height:60px}
   .reply-choice-actions{flex-direction:column}.reply-choice-actions button{width:100%}
 }

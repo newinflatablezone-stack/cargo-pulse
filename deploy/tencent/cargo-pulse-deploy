@@ -57,7 +57,9 @@ if systemctl cat cargo-pulse-data.service >/dev/null 2>&1 && [ -s "$RELEASE_DIR/
   install -m 644 "$RELEASE_DIR/server/tencent-data-core.mjs" /opt/cargo-pulse-runtime/tencent-data-core.mjs
   install -m 644 "$RELEASE_DIR/server/tencent-data-server.mjs" /opt/cargo-pulse-runtime/tencent-data-server.mjs
   install -m 644 "$RELEASE_DIR/server/ticket-service.mjs" /opt/cargo-pulse-runtime/ticket-service.mjs
-  install -m 644 "$RELEASE_DIR/server/web-push.mjs" /opt/cargo-pulse-runtime/web-push.mjs
+  # The push transport is bundled with its protocol dependencies so the
+  # long-running data service never relies on the temporary release node_modules.
+  install -m 644 "$RELEASE_DIR/dist/runtime/web-push.mjs" /opt/cargo-pulse-runtime/web-push.mjs
   install -m 644 "$RELEASE_DIR/scripts/ticket-reminders.mjs" /opt/cargo-pulse-runtime/ticket-reminders.mjs
   if ! systemctl cat cargo-pulse-ticket-reminders.timer >/dev/null 2>&1; then
     NODE_BIN="$(command -v node)"

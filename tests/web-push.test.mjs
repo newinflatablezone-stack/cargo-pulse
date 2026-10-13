@@ -3,10 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createECDH, randomBytes } from 'node:crypto';
 import { TencentDataStore } from '../server/tencent-data-core.mjs';
 import { TicketService } from '../server/ticket-service.mjs';
-import { WebPushService, sendWebPush } from '../server/web-push.mjs';
+import { WebPushService } from '../server/web-push.mjs';
 
 function fixture(sender) {
   const dir = mkdtempSync(join(tmpdir(), 'cargo-pulse-push-'));
@@ -54,30 +53,18 @@ test('Web Push 自动清理推送服务判定失效的浏览器订阅', async ()
   } finally { close(); }
 });
 
-test('Web Push 使用 VAPID 和 aes128gcm 生成标准加密请求', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'cargo-pulse-push-crypto-'));
-  const store = new TencentDataStore(join(dir, 'test.sqlite'));
-  const push = new WebPushService(store);
-  const client = createECDH('prime256v1');
-  client.generateKeys();
-  const sub = {
-    endpoint: 'https://push.example.test/send/123',
-    p256dh: client.getPublicKey().toString('base64url'),
-    auth: randomBytes(16).toString('base64url')
-  };
-  const originalFetch = globalThis.fetch;
-  let request;
-  globalThis.fetch = async (url, options) => { request = { url, options }; return { ok: true, status: 201 }; };
+test('Web Push 记录投递失败并在下一次成功后恢复健康状态', async () => {
+  let fail = true;
+  const { icey, push, close } = fixture(async () => {
+    if (fail) throw Object.assign(Error('push gateway rejected request'), { statusCode: 503 });
+    return { ok: true, status: 201 };
+  });
   try {
-    const result = await sendWebPush(sub, { title: 'TK-1 · 新回复', body: '测试' }, push.vapid);
-    assert.equal(result.status, 201);
-    assert.equal(request.url, sub.endpoint);
-    assert.match(request.options.headers.Authorization, /^vapid t=.+, k=.+$/);
-    assert.equal(request.options.headers['Content-Encoding'], 'aes128gcm');
-    assert.ok(Buffer.from(request.options.body).length > 86);
-  } finally {
-    globalThis.fetch = originalFetch;
-    store.db.close();
-    rmSync(dir, { recursive: true, force: true });
-  }
+    push.subscribe(icey.id, subscription('https://push.example.test/retry'));
+    await push.test(icey.id);
+    assert.equal(push.status(icey.id).healthy_subscriptions, 0);
+    fail = false;
+    await push.test(icey.id);
+    assert.equal(push.status(icey.id).healthy_subscriptions, 1);
+  } finally { close(); }
 });

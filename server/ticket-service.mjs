@@ -5,6 +5,12 @@ export const TICKET_FOLLOWERS = new Map([
   ['2548462886@qq.com', 'ICEY'],
   ['1544264271@qq.com', '秦枝']
 ]);
+export const TICKET_BUSINESS_NAMES = new Map([
+  ['sales@inflatable-zone.com', 'Ella'],
+  ['sherry@inflatable-zone.com', 'Sherry'],
+  ['demi@inflatable-zone.com', 'Demi'],
+  ['rayna@inflatable-zone.com', 'Rayna']
+]);
 export const TICKET_TABLES = [
   'tickets', 'ticket_messages', 'ticket_attachments', 'ticket_history',
   'ticket_notifications', 'ticket_reminder_logs', 'push_subscriptions', 'push_delivery_logs'
@@ -13,6 +19,10 @@ export const TICKET_TABLES = [
 const now = () => new Date().toISOString();
 const fail = (message, status = 400) => { throw Object.assign(Error(message), { status }); };
 const emailOf = value => String(value || '').trim().toLowerCase();
+const displayName = (email, fallback = '') => {
+  const normalized = emailOf(email);
+  return TICKET_FOLLOWERS.get(normalized) || TICKET_BUSINESS_NAMES.get(normalized) || fallback || normalized;
+};
 const priorityRank = { urgent: 0, important: 1, normal: 2 };
 const reminderHours = { urgent: 3, important: 6, normal: 9 };
 const activeStatuses = new Set(['pending', 'in_progress']);
@@ -31,7 +41,7 @@ export class TicketService {
       id: userId,
       email,
       role: email === SUPERVISOR_EMAIL ? 'supervisor' : TICKET_FOLLOWERS.has(email) ? 'follower' : profile.role,
-      name: email === SUPERVISOR_EMAIL ? '主管' : TICKET_FOLLOWERS.get(email) || profile.name || email
+      name: email === SUPERVISOR_EMAIL ? '主管' : displayName(email, profile.name)
     };
   }
 
@@ -86,6 +96,8 @@ export class TicketService {
     const isOverdue = unresolvedStatuses.has(ticket.status) && elapsed >= intervalHours * 3600000;
     return {
       ...ticket,
+      creator_name: displayName(ticket.creator_email, ticket.creator_name),
+      assignee_name: displayName(ticket.assignee_email, ticket.assignee_name),
       ...this.responseStats(ticket, messages),
       reminder_interval_hours: intervalHours,
       is_overdue: isOverdue,
@@ -193,12 +205,12 @@ export class TicketService {
     // Opening the ticket is the read receipt. Resolution/reminder state is
     // independent and can create a new notification later when required.
     this.markTicketNotificationsRead(ticket.id, actor.id);
-    const messages = this.store.all('ticket_messages').filter(row => row.ticket_id === ticket.id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+    const messages = this.store.all('ticket_messages').filter(row => row.ticket_id === ticket.id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).map(row => ({ ...row, author_name: displayName(row.author_email, row.author_name) }));
     return {
       ticket: this.enrichTicket(ticket, messages),
       messages,
-      attachments: this.store.all('ticket_attachments').filter(row => row.ticket_id === ticket.id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))),
-      history: this.store.all('ticket_history').filter(row => row.ticket_id === ticket.id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+      attachments: this.store.all('ticket_attachments').filter(row => row.ticket_id === ticket.id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).map(row => ({ ...row, uploader_name: displayName(row.uploader_email, row.uploader_name) })),
+      history: this.store.all('ticket_history').filter(row => row.ticket_id === ticket.id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).map(row => ({ ...row, actor_name: displayName(row.actor_email, row.actor_name) }))
     };
   }
 

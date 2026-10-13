@@ -11,6 +11,10 @@ function fixture() {
   const store = new TencentDataStore(join(dir, 'test.sqlite'));
   const users = {
     sales: store.upsertAccount({ email: 'sales@example.com', password: '12345678', role: 'business' }),
+    ella: store.upsertAccount({ email: 'sales@inflatable-zone.com', password: '12345678', role: 'business' }),
+    sherry: store.upsertAccount({ email: 'sherry@inflatable-zone.com', password: '12345678', role: 'business' }),
+    demi: store.upsertAccount({ email: 'demi@inflatable-zone.com', password: '12345678', role: 'business' }),
+    rayna: store.upsertAccount({ email: 'rayna@inflatable-zone.com', password: '12345678', role: 'business' }),
     otherSales: store.upsertAccount({ email: 'other@example.com', password: '12345678', role: 'business' }),
     icey: store.upsertAccount({ email: '2548462886@qq.com', password: '12345678', role: 'business' }),
     qinzhi: store.upsertAccount({ email: '1544264271@qq.com', password: '12345678', role: 'business' }),
@@ -39,6 +43,27 @@ test('新建工单不需要标题并自动使用问题描述第一行作为摘�
     assert.equal(ticket.description, '客户反馈货物未更新\n请尽快核实');
     assert.equal(ticket.order_no, null);
     assert.equal(ticket.category, 'other');
+  } finally { close(); }
+});
+
+test('指定业务员在工单、聊天、记录和通知中显示姓名而不是邮箱', () => {
+  const { service, users, close } = fixture();
+  try {
+    assert.equal(service.actor(users.ella.id).name, 'Ella');
+    assert.equal(service.actor(users.sherry.id).name, 'Sherry');
+    assert.equal(service.actor(users.demi.id).name, 'Demi');
+    assert.equal(service.actor(users.rayna.id).name, 'Rayna');
+    const ticket = service.create({
+      description: '请确认交货时间', priority: 'normal', assignee_id: users.icey.id
+    }, users.ella.id);
+    assert.equal(ticket.creator_name, 'Ella');
+    assert.equal(service.bootstrap(users.icey.id).tickets[0].creator_name, 'Ella');
+    service.accept(ticket.id, users.icey.id);
+    service.reply({ ticket_id: ticket.id, kind: 'message', text: '客户补充了信息' }, users.ella.id);
+    assert.match(service.unreadNotifications(users.icey.id)[0].title, /Ella 发送了新消息/);
+    const detail = service.detail(ticket.id, users.icey.id);
+    assert.equal(detail.messages.at(-1).author_name, 'Ella');
+    assert.equal(detail.history[0].actor_name, 'Ella');
   } finally { close(); }
 });
 

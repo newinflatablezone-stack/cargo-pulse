@@ -111,6 +111,7 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
 
     const health = await fetch(`${baseUrl}/health`);
     assert.equal(health.status, 200);
+    assert.equal((await health.json()).web_push, true);
     assert.equal(child.exitCode, null);
 
     const accepted = await fetch(`${baseUrl}/auth/v1/token?grant_type=password`, {

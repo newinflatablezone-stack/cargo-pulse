@@ -32,6 +32,25 @@ ensureInvite('business_invite');
 ensureInvite('follower_invite');
 const DATA_REVISION = createHash('sha256').update(await readFile(new URL('./tencent-data-core.mjs', import.meta.url))).digest('hex');
 const tickets = new TicketService(store);
+let push = null;
+let pushInitError = null;
+try {
+  const { WebPushService } = await import('./web-push.mjs');
+  push = new WebPushService(store);
+  tickets.setNotificationHandler(notification => push.queueTicketNotification(notification, tickets));
+} catch (caught) {
+  // Web Push is an optional delivery channel. A crypto/runtime/configuration
+  // problem must never take down authentication, orders, or the ticket API.
+  pushInitError = caught;
+  console.error('Web Push disabled; core data service remains available:', caught);
+}
+const pushStatus = userId => push
+  ? push.status(userId)
+  : { available: false, public_key: null, subscriptions: 0 };
+const requirePush = () => {
+  if (!push) throw Object.assign(Error('桌面通知服务暂不可用'), { status: 503, cause: pushInitError });
+  return push;
+};
 
 const send = (res, status, value, headers = {}) => {
   const body = value == null ? '' : JSON.stringify(value);
@@ -110,7 +129,7 @@ async function authRoute(req, res, url) {
 }
 
 async function rpc(req, res, name, body, user) {
-  if (name === 'ticket_bootstrap') return send(res, 200, tickets.bootstrap(user.id));
+  if (name === 'ticket_bootstrap') return send(res, 200, { ...tickets.bootstrap(user.id), push: pushStatus(user.id) });
   if (name === 'ticket_detail') return send(res, 200, tickets.detail(body.ticket_id, user.id));
   if (name === 'ticket_create') return send(res, 200, tickets.create(body, user.id));
   if (name === 'ticket_accept') return send(res, 200, tickets.accept(body.ticket_id, user.id));
@@ -126,6 +145,9 @@ async function rpc(req, res, name, body, user) {
   if (name === 'ticket_archive') return send(res, 200, tickets.archive(body.ticket_id, user.id));
   if (name === 'ticket_notifications_read') return send(res, 200, tickets.markNotificationsRead(user.id));
   if (name === 'ticket_notification_snapshot') return send(res, 200, { badge_count: tickets.badge(user.id), notifications: tickets.unreadNotifications(user.id).slice(0, 20) });
+  if (name === 'ticket_push_subscribe') return send(res, 200, requirePush().subscribe(user.id, body.subscription || body));
+  if (name === 'ticket_push_unsubscribe') return send(res, 200, requirePush().unsubscribe(user.id, body.endpoint));
+  if (name === 'ticket_push_test') return send(res, 200, await requirePush().test(user.id));
   if (name === 'ticket_register_attachment') return send(res, 200, tickets.registerAttachment(body, user.id));
   if (name === 'lookup_customer_tracking') {
     return send(res, 200, lookupCustomerTracking(store, body.p_email));
@@ -255,7 +277,7 @@ async function serveTicketObject(req, res, url) {
 async function handleRequest(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    if (url.pathname === '/health') return send(res, 200, { ok: true, orders: store.count('orders') });
+    if (url.pathname === '/health') return send(res, 200, { ok: true, orders: store.count('orders'), web_push: Boolean(push) });
     // Await every asynchronous route here so its rejection stays inside this
     // request's error boundary. Returning the promise directly would let a
     // normal 4xx error become an unhandled rejection and terminate Node.

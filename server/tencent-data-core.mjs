@@ -5,10 +5,10 @@ export const TABLES = [
   'profiles', 'app_settings', 'partners', 'orders', 'order_events', 'order_images',
   'order_factories', 'order_shipments', 'order_shipment_events', 'internal_resource_tables',
   'tickets', 'ticket_messages', 'ticket_attachments', 'ticket_history',
-  'ticket_notifications', 'ticket_reminder_logs'
+  'ticket_notifications', 'ticket_reminder_logs', 'push_subscriptions', 'push_delivery_logs'
 ];
 
-const PROTECTED_TICKET_TABLES = new Set(['tickets', 'ticket_messages', 'ticket_attachments', 'ticket_history', 'ticket_notifications', 'ticket_reminder_logs']);
+const PROTECTED_TICKET_TABLES = new Set(['tickets', 'ticket_messages', 'ticket_attachments', 'ticket_history', 'ticket_notifications', 'ticket_reminder_logs', 'push_subscriptions', 'push_delivery_logs']);
 
 const PUBLIC_RPC = new Set(['lookup_customer_tracking']);
 const SUPERVISOR_EMAIL = '505863160@qq.com';
@@ -160,6 +160,12 @@ export class TencentDataStore {
     if (!token) return null;
     const row = this.db.prepare('select * from sessions where token_hash=? and kind=? and expires_at>?').get(tokenHash(token), kind, Math.floor(Date.now() / 1000));
     return row && this.isUserActive(row.user_id) ? this.accountById(row.user_id) : null;
+  }
+
+  meta(key) { return this.db.prepare('select value from meta where key=?').get(String(key))?.value ?? null; }
+  setMeta(key, value) {
+    this.db.prepare('insert into meta(key,value) values(?,?) on conflict(key) do update set value=excluded.value').run(String(key), String(value));
+    return String(value);
   }
 
   revokeUserSessions(userId) { this.db.prepare('delete from sessions where user_id=?').run(userId); }

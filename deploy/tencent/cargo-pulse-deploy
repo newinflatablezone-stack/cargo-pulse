@@ -57,6 +57,7 @@ if systemctl cat cargo-pulse-data.service >/dev/null 2>&1 && [ -s "$RELEASE_DIR/
   install -m 644 "$RELEASE_DIR/server/tencent-data-core.mjs" /opt/cargo-pulse-runtime/tencent-data-core.mjs
   install -m 644 "$RELEASE_DIR/server/tencent-data-server.mjs" /opt/cargo-pulse-runtime/tencent-data-server.mjs
   install -m 644 "$RELEASE_DIR/server/ticket-service.mjs" /opt/cargo-pulse-runtime/ticket-service.mjs
+  install -m 644 "$RELEASE_DIR/server/web-push.mjs" /opt/cargo-pulse-runtime/web-push.mjs
   install -m 644 "$RELEASE_DIR/scripts/ticket-reminders.mjs" /opt/cargo-pulse-runtime/ticket-reminders.mjs
   if ! systemctl cat cargo-pulse-ticket-reminders.timer >/dev/null 2>&1; then
     NODE_BIN="$(command -v node)"
@@ -99,7 +100,7 @@ EOF
   systemctl start cargo-pulse-ticket-reminders.service 2>/dev/null || true
   data_healthy=''
   for _ in {1..20}; do
-    if curl -fsS http://127.0.0.1:8788/health >/dev/null; then data_healthy=1; break; fi
+    if data_healthy="$(curl -fsS http://127.0.0.1:8788/health)"; then break; fi
     sleep 0.5
   done
   if [ -z "$data_healthy" ]; then
@@ -109,6 +110,7 @@ EOF
     journalctl -u cargo-pulse-data.service -n 100 --no-pager >&2 || true
     exit 1
   fi
+  printf '%s\n' "$data_healthy" > "$APP_ROOT/api/push-status"
 elif [ -s "$RELEASE_DIR/deploy/tencent/install-local-data.sh" ]; then
   SOURCE="$RELEASE_DIR" bash "$RELEASE_DIR/deploy/tencent/install-local-data.sh"
 fi

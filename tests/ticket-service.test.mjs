@@ -35,8 +35,9 @@ test('ICEY 与秦枝的工单在服务端严格隔离，主管可查看全部', 
     assert.equal(service.actor(users.icey.id).role, 'follower');
     assert.equal(service.bootstrap(users.icey.id).tickets.length, 1);
     assert.equal(service.bootstrap(users.icey.id).notifications[0].type, 'assigned');
-    assert.equal(service.bootstrap(users.icey.id).settings.important, 12);
-    assert.equal(service.bootstrap(users.icey.id).settings.urgent, 6);
+    assert.equal(service.bootstrap(users.icey.id).settings.normal, 9);
+    assert.equal(service.bootstrap(users.icey.id).settings.important, 6);
+    assert.equal(service.bootstrap(users.icey.id).settings.urgent, 3);
     assert.equal(service.homeReminder(users.icey.id).count, 1);
     assert.equal(service.bootstrap(users.qinzhi.id).tickets.length, 0);
     assert.equal(service.homeReminder(users.qinzhi.id).count, 0);
@@ -128,6 +129,23 @@ test('普通每 9 小时、重要每 6 小时、紧急每 3 小时循环提醒',
     assert.equal(service.runReminders().created, 0);
     assert.equal(service.runReminders(Date.now() + 3 * 3600000).created, 1);
     assert.equal(service.badge(users.qinzhi.id), 1);
+  } finally { close(); }
+});
+
+test('工单汇总标记已超时，按等级阈值计算且已解决不计入', () => {
+  const { store, service, users, close } = fixture();
+  try {
+    const important = createForIcey(service, users);
+    store.put('tickets', { ...important, updated_at: new Date(Date.now() - 6 * 3600000 - 1000).toISOString() });
+    let summary = service.bootstrap(users.supervisor.id).tickets.find(row => row.id === important.id);
+    assert.equal(summary.reminder_interval_hours, 6);
+    assert.equal(summary.is_overdue, true);
+    assert.ok(summary.overdue_seconds >= 1);
+
+    store.put('tickets', { ...service.ticket(important.id), status: 'closed' });
+    summary = service.bootstrap(users.supervisor.id).tickets.find(row => row.id === important.id);
+    assert.equal(summary.is_overdue, false);
+    assert.equal(summary.overdue_seconds, 0);
   } finally { close(); }
 });
 

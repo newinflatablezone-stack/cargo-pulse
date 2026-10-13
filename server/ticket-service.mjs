@@ -14,6 +14,7 @@ const now = () => new Date().toISOString();
 const fail = (message, status = 400) => { throw Object.assign(Error(message), { status }); };
 const emailOf = value => String(value || '').trim().toLowerCase();
 const priorityRank = { urgent: 0, important: 1, normal: 2 };
+const reminderHours = { urgent: 3, important: 6, normal: 9 };
 const activeStatuses = new Set(['pending', 'in_progress']);
 const unresolvedStatuses = new Set(['pending', 'in_progress', 'waiting_confirmation']);
 
@@ -77,7 +78,19 @@ export class TicketService {
     };
   }
 
-  enrichTicket(ticket, messages) { return { ...ticket, ...this.responseStats(ticket, messages) }; }
+  enrichTicket(ticket, messages, at = Date.now()) {
+    const intervalHours = reminderHours[ticket.priority] || reminderHours.normal;
+    const activityAt = new Date(ticket.updated_at || ticket.created_at).getTime();
+    const elapsed = Number.isFinite(activityAt) ? at - activityAt : 0;
+    const isOverdue = unresolvedStatuses.has(ticket.status) && elapsed >= intervalHours * 3600000;
+    return {
+      ...ticket,
+      ...this.responseStats(ticket, messages),
+      reminder_interval_hours: intervalHours,
+      is_overdue: isOverdue,
+      overdue_seconds: isOverdue ? Math.floor((elapsed - intervalHours * 3600000) / 1000) : 0
+    };
+  }
 
   visibleTickets(actor) {
     const messages = this.store.all('ticket_messages');
@@ -109,7 +122,7 @@ export class TicketService {
       followers: this.followers(),
       // Keep this shape temporarily so a browser with the previous cached UI
       // cannot crash while the new deadline-free bundle is being picked up.
-      settings: { normal: 12, important: 12, urgent: 6 },
+      settings: { ...reminderHours },
       tickets: this.visibleTickets(actor),
       notifications,
       badge_count: this.badge(userId)
@@ -323,7 +336,7 @@ export class TicketService {
       const activityAt = new Date(ticket.updated_at || ticket.created_at).getTime();
       if (!Number.isFinite(activityAt)) continue;
       const elapsed = at - activityAt;
-      const intervalHours = ticket.priority === 'urgent' ? 3 : ticket.priority === 'important' ? 6 : 9;
+      const intervalHours = reminderHours[ticket.priority] || reminderHours.normal;
       const intervalMs = intervalHours * 3600000;
       if (elapsed < intervalMs) continue;
       const bucket = Math.floor(elapsed / intervalMs);

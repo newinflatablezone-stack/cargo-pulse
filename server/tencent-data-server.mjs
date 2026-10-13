@@ -133,6 +133,15 @@ function rpc(req, res, name, body, user) {
     });
   }
   if (name === 'list_visible_orders') return send(res, 200, store.all('orders').filter(row => !row.deleted_at || store.isSupervisor(user.id)));
+  if (name === 'impersonate_user') {
+    if (!store.isSupervisor(user.id)) throw Object.assign(Error('仅主管可以切换账号'), { status: 403 });
+    const targetProfile = store.profile(body.target_user_id);
+    const targetAccount = targetProfile && store.accountById(targetProfile.id);
+    if (!targetAccount) throw Object.assign(Error('用户不存在'), { status: 404 });
+    if (!store.isUserActive(targetProfile.id)) throw Object.assign(Error('停用账号不能登录'), { status: 400 });
+    if (targetProfile.id === user.id) throw Object.assign(Error('当前已经是主管账号'), { status: 400 });
+    return send(res, 200, { ...store.issueSession(targetAccount), impersonated_by: { id: user.id, email: user.email } });
+  }
   if (!store.isFollower(user.id)) throw Object.assign(Error('没有操作权限'), { status: 403 });
   const order = store.all('orders').find(row => row.id === body.target_order_id);
   if (['soft_delete_order', 'restore_deleted_order', 'permanently_delete_order'].includes(name) && !order) throw Object.assign(Error('订单不存在'), { status: 404 });

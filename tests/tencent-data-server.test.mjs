@@ -35,6 +35,8 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
   const port = await freePort();
   const store = new TencentDataStore(join(dataDir, 'test.sqlite'));
   store.put('app_settings', { key: 'business_invite', value: 'business-test-invite' });
+  store.upsertAccount({ email: '505863160@qq.com', password: 'supervisor-password', role: 'follower' });
+  const impersonationTarget = store.upsertAccount({ email: 'target@example.com', password: 'target-password', role: 'business' });
   store.put('orders', { id: 'tracking-order', order_no: 'TRACK-1', customer_info: 'Customer customer@example.com', current_step: 'ocean_transit' });
   store.put('order_events', { id: 'tracking-event', order_id: 'tracking-order', step_key: 'ocean_transit', note: 'tracking:SHIP123' });
   store.db.close();
@@ -82,6 +84,22 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
     assert.deepEqual((await visibleProfiles.json()).map(row => row.email), ['supervisor@example.com']);
     const hiddenInvites = await fetch(`${baseUrl}/rest/v1/app_settings?key=in.(business_invite,follower_invite)&select=*`, { headers: authenticatedHeaders });
     assert.deepEqual(await hiddenInvites.json(), []);
+    const deniedImpersonation = await fetch(`${baseUrl}/rest/v1/rpc/impersonate_user`, {
+      method: 'POST', headers: { ...authenticatedHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ target_user_id: impersonationTarget.id })
+    });
+    assert.equal(deniedImpersonation.status, 403);
+
+    const supervisorLogin = await fetch(`${baseUrl}/auth/v1/token?grant_type=password`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: '505863160@qq.com', password: 'supervisor-password' })
+    });
+    const supervisorSession = await supervisorLogin.json();
+    const impersonation = await fetch(`${baseUrl}/rest/v1/rpc/impersonate_user`, {
+      method: 'POST', headers: { Authorization: `Bearer ${supervisorSession.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ target_user_id: impersonationTarget.id })
+    });
+    assert.equal(impersonation.status, 200);
+    const impersonatedSession = await impersonation.json();
+    assert.equal(impersonatedSession.user.email, 'target@example.com');
+    assert.equal(impersonatedSession.impersonated_by.email, '505863160@qq.com');
 
     const rejected = await fetch(`${baseUrl}/auth/v1/token?grant_type=password`, {
       method: 'POST',

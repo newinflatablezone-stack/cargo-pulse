@@ -119,6 +119,23 @@ test('普通和重要工单每 12 小时、紧急工单每 6 小时循环提醒'
   } finally { close(); }
 });
 
+test('打开工单即视为已读，只清除该工单提醒', () => {
+  const { service, users, close } = fixture();
+  try {
+    const first = createForIcey(service, users);
+    const second = service.create({
+      title: '第二张工单', description: '用于验证逐单已读', category: 'logistics',
+      priority: 'normal', assignee_id: users.icey.id
+    }, users.sales.id);
+    assert.equal(service.badge(users.icey.id), 2);
+    service.detail(first.id, users.icey.id);
+    assert.equal(service.badge(users.icey.id), 1);
+    assert.equal(service.unreadNotifications(users.icey.id)[0].ticket_id, second.id);
+    service.detail(second.id, users.icey.id);
+    assert.equal(service.badge(users.icey.id), 0);
+  } finally { close(); }
+});
+
 test('待业务员确认持续提醒提交人，确认解决后停止提醒', () => {
   const { store, service, users, close } = fixture();
   try {

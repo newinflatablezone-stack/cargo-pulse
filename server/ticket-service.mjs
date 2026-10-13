@@ -143,6 +143,9 @@ export class TicketService {
 
   detail(ticketId, userId) {
     const actor = this.actor(userId), ticket = this.requireTicket(ticketId, actor);
+    // Opening the ticket is the read receipt. Resolution/reminder state is
+    // independent and can create a new notification later when required.
+    this.markTicketNotificationsRead(ticket.id, actor.id);
     return {
       ticket,
       messages: this.store.all('ticket_messages').filter(row => row.ticket_id === ticket.id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))),

@@ -28,6 +28,18 @@ function createForIcey(service, users) {
   }, users.sales.id);
 }
 
+test('新建工单不需要标题并自动使用问题描述第一行作为摘要', () => {
+  const { service, users, close } = fixture();
+  try {
+    const ticket = service.create({
+      description: '客户反馈货物未更新\n请尽快核实', category: 'logistics',
+      priority: 'normal', assignee_id: users.icey.id
+    }, users.sales.id);
+    assert.equal(ticket.title, '客户反馈货物未更新');
+    assert.equal(ticket.description, '客户反馈货物未更新\n请尽快核实');
+  } finally { close(); }
+});
+
 test('ICEY 与秦枝的工单在服务端严格隔离，主管可查看全部', () => {
   const { store, service, users, close } = fixture();
   try {

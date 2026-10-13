@@ -156,8 +156,9 @@ export class TicketService {
   create(body, userId) {
     const actor = this.actor(userId);
     if (actor.role !== 'business' && !this.isSupervisor(actor)) fail('只有业务员或主管可以创建工单', 403);
-    const title = String(body.title || '').trim(), description = String(body.description || '').trim();
-    if (!title || !description) fail('请填写标题和问题描述');
+    const description = String(body.description || '').trim();
+    if (!description) fail('请填写问题描述');
+    const title = (String(body.title || '').trim() || description.split(/\r?\n/).find(line => line.trim())?.trim() || '问题跟进').slice(0, 160);
     if (!['production', 'logistics', 'delivery', 'after_sales', 'other'].includes(body.category)) fail('问题分类无效');
     if (!['normal', 'important', 'urgent'].includes(body.priority)) fail('优先级无效');
     const follower = this.followers().find(item => item.id === body.assignee_id && item.id);

@@ -113,7 +113,14 @@ function rpc(req, res, name, body, user) {
     return send(res, 200, lookupCustomerTracking(store, body.p_email));
   }
   if (!user) throw Object.assign(Error('请先登录'), { status: 401 });
-  if (name === 'home_bootstrap') return send(res, 200, { ...store.homeSnapshot(user.id), ticket_badge_count: tickets.badge(user.id) });
+  if (name === 'home_bootstrap') {
+    const ticketReminder = tickets.homeReminder(user.id);
+    return send(res, 200, {
+      ...store.homeSnapshot(user.id),
+      ticket_badge_count: ticketReminder.count,
+      ticket_notifications: ticketReminder.notifications
+    });
+  }
   if (name === 'list_visible_orders') return send(res, 200, store.all('orders').filter(row => !row.deleted_at || store.isSupervisor(user.id)));
   if (!store.isFollower(user.id)) throw Object.assign(Error('没有操作权限'), { status: 403 });
   const order = store.all('orders').find(row => row.id === body.target_order_id);

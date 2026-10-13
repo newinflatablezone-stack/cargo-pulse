@@ -100,9 +100,30 @@ export class TicketService {
     }).length;
   }
 
+  unreadNotifications(userId) {
+    const actor = this.actor(userId);
+    return this.store.all('ticket_notifications')
+      .filter(row => row.user_id === actor.id && !row.read_at)
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  }
+
+  homeReminder(userId) {
+    const actor = this.actor(userId);
+    const notifications = this.unreadNotifications(userId);
+    const actionTickets = this.visibleTickets(actor).filter(ticket => {
+      if (actor.role === 'business') return ticket.status === 'waiting_confirmation' || ['orange', 'red'].includes(ticket.overdue.level);
+      return ['orange', 'red'].includes(ticket.overdue.level);
+    });
+    const ticketIds = new Set([
+      ...notifications.map(row => row.ticket_id).filter(Boolean),
+      ...actionTickets.map(ticket => ticket.id)
+    ]);
+    return { count: ticketIds.size, notifications: notifications.slice(0, 20) };
+  }
+
   bootstrap(userId) {
     const actor = this.actor(userId);
-    const notifications = this.store.all('ticket_notifications').filter(row => row.user_id === actor.id && !row.read_at).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    const notifications = this.unreadNotifications(userId);
     return {
       actor,
       followers: this.followers(),

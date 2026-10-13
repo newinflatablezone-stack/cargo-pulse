@@ -86,7 +86,7 @@ export class TicketService {
       followers: this.followers(),
       // Keep this shape temporarily so a browser with the previous cached UI
       // cannot crash while the new deadline-free bundle is being picked up.
-      settings: { normal: 24, important: 24, urgent: 24 },
+      settings: { normal: 12, important: 12, urgent: 6 },
       tickets: this.visibleTickets(actor),
       notifications,
       badge_count: this.badge(userId)
@@ -167,16 +167,19 @@ export class TicketService {
     if (!text) fail('请填写回复内容');
     if (ticket.status === 'closed') fail('已关闭工单不能继续回复', 409);
     if (!['message', 'progress', 'resolution'].includes(kind)) fail('回复类型无效');
+    const processorReply = ticket.assignee_id === actor.id || this.isSupervisor(actor);
+    const creatorReply = ticket.created_by === actor.id;
+    if (!processorReply && !creatorReply) fail('没有回复该工单的权限', 403);
+    if (processorReply && kind === 'message') fail('请选择“继续处理”或“已处理，提交确认”');
+    if (!processorReply && kind !== 'message') fail('业务员只能补充消息');
+    if (ticket.status === 'waiting_confirmation' && kind === 'message') fail('请确认已解决或退回处理', 409);
     if (kind !== 'message') this.requireAssignee(ticket, actor);
     let updated = ticket;
-    const processorReply = ticket.assignee_id === actor.id || this.isSupervisor(actor);
-    if (ticket.status === 'pending' && processorReply) {
-      updated = this.store.put('tickets', { ...ticket, status: 'in_progress', accepted_at: now(), updated_at: now() });
-      this.history(ticket.id, actor, 'status_changed', { from: 'pending', to: 'in_progress' });
-    }
     if (kind === 'progress') {
       if (!activeStatuses.has(updated.status)) fail('当前状态不能提交进展', 409);
+      const previousStatus = updated.status;
       updated = this.store.put('tickets', { ...updated, status: 'in_progress', accepted_at: updated.accepted_at || now(), updated_at: now() });
+      if (previousStatus !== 'in_progress') this.history(ticket.id, actor, 'status_changed', { from: previousStatus, to: 'in_progress' });
       this.history(ticket.id, actor, 'progress_updated');
     } else if (kind === 'resolution') {
       if (!activeStatuses.has(updated.status)) fail('当前状态不能提交解决结果', 409);
@@ -279,11 +282,13 @@ export class TicketService {
       const activityAt = new Date(ticket.updated_at || ticket.created_at).getTime();
       if (!Number.isFinite(activityAt)) continue;
       const elapsed = at - activityAt;
-      if (elapsed < 24 * 3600000) continue;
-      const bucket = Math.floor(elapsed / (24 * 3600000));
+      const intervalHours = ticket.priority === 'urgent' ? 6 : 12;
+      const intervalMs = intervalHours * 3600000;
+      if (elapsed < intervalMs) continue;
+      const bucket = Math.floor(elapsed / intervalMs);
       const recipient = ticket.status === 'waiting_confirmation' ? ticket.created_by : ticket.assignee_id;
       const action = ticket.status === 'waiting_confirmation' ? '等待你确认是否已解决' : '仍未解决，请及时处理';
-      if (this.notify(recipient, ticket.id, 'unresolved', `${ticket.ticket_no} ${action}`, `unresolved:${ticket.id}:${recipient}:${ticket.updated_at || ticket.created_at}:${bucket}`)) created += 1;
+      if (this.notify(recipient, ticket.id, 'unresolved', `${ticket.ticket_no} ${action}`, `unresolved:${ticket.id}:${recipient}:${ticket.updated_at || ticket.created_at}:${intervalHours}:${bucket}`)) created += 1;
     }
     return { created };
   }

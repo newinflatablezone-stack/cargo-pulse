@@ -115,6 +115,7 @@ function rpc(req, res, name, body, user) {
   if (name === 'ticket_create') return send(res, 200, tickets.create(body, user.id));
   if (name === 'ticket_accept') return send(res, 200, tickets.accept(body.ticket_id, user.id));
   if (name === 'ticket_reply') return send(res, 200, tickets.reply(body, user.id));
+  if (name === 'ticket_message_delete') return send(res, 200, tickets.deleteMessage(body.message_id, user.id));
   if (name === 'ticket_decide') return send(res, 200, tickets.decide(body, user.id));
   if (name === 'ticket_admin_update') return send(res, 200, tickets.adminUpdate(body, user.id));
   if (name === 'ticket_archive') return send(res, 200, tickets.archive(body.ticket_id, user.id));

@@ -228,6 +228,20 @@ export class TicketService {
     return { ticket: updated, message };
   }
 
+  deleteMessage(messageId, userId) {
+    const actor = this.actor(userId);
+    if (!this.isSupervisor(actor)) fail('仅管理员可以删除聊天记录', 403);
+    const message = this.store.all('ticket_messages').find(row => row.id === messageId);
+    if (!message) fail('聊天记录不存在', 404);
+    const ticket = this.requireTicket(message.ticket_id, actor);
+    if (message.kind === 'created') fail('工单原始问题不能作为聊天删除', 409);
+    const attachmentIds = this.store.all('ticket_attachments').filter(row => row.message_id === message.id).map(row => row.id);
+    if (attachmentIds.length) this.store.remove('ticket_attachments', attachmentIds);
+    this.store.remove('ticket_messages', [message.id]);
+    this.history(ticket.id, actor, 'message_deleted', { message_id: message.id, kind: message.kind, author_email: message.author_email });
+    return { ok: true, ticket_id: ticket.id };
+  }
+
   decide(body, userId) {
     const actor = this.actor(userId), ticket = this.requireTicket(body.ticket_id, actor);
     if (ticket.created_by !== actor.id && !this.isSupervisor(actor)) fail('只有提交人可以确认处理结果', 403);

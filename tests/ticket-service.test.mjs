@@ -155,6 +155,22 @@ test('每张工单按业务员等待到跟单有效回复计算平均回复时�
   } finally { close(); }
 });
 
+test('只有管理员可以删除聊天记录，原始问题不可删除', () => {
+  const { store, service, users, close } = fixture();
+  try {
+    const ticket = createForIcey(service, users);
+    const reply = service.reply({ ticket_id: ticket.id, kind: 'progress', text: '可删除的回复' }, users.icey.id).message;
+    service.registerAttachment({ ticket_id: ticket.id, message_id: reply.id, object_path: `${ticket.id}/reply.pdf`, file_name: 'reply.pdf' }, users.icey.id);
+    assert.throws(() => service.deleteMessage(reply.id, users.sales.id), /仅管理员/);
+    assert.throws(() => service.deleteMessage(reply.id, users.icey.id), /仅管理员/);
+    assert.equal(service.deleteMessage(reply.id, users.supervisor.id).ok, true);
+    assert.equal(store.all('ticket_messages').some(row => row.id === reply.id), false);
+    assert.equal(store.all('ticket_attachments').some(row => row.message_id === reply.id), false);
+    const created = store.all('ticket_messages').find(row => row.ticket_id === ticket.id && row.kind === 'created');
+    assert.throws(() => service.deleteMessage(created.id, users.supervisor.id), /原始问题/);
+  } finally { close(); }
+});
+
 test('待业务员确认持续提醒提交人，确认解决后停止提醒', () => {
   const { store, service, users, close } = fixture();
   try {

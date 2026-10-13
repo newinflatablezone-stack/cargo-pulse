@@ -96,3 +96,18 @@ test('工单通知失败后保留在持久队列并自动重试到所有设备',
     assert.equal(sends, 4);
   } finally { close(); }
 });
+
+test('推送诊断汇总订阅、待发送事件与成功回执且不暴露订阅地址', async () => {
+  const { sales, icey, tickets, push, close } = fixture(async () => ({ ok: true, status: 201 }));
+  try {
+    push.subscribe(icey.id, subscription('https://push.example.test/private-endpoint'));
+    tickets.setNotificationHandler(notification => push.queueTicketNotification(notification, tickets));
+    tickets.create({ description: '诊断真实推送链路', priority: 'normal', assignee_id: icey.id }, sales.id);
+    await push.flush();
+    const diagnostics = push.diagnostics();
+    assert.equal(diagnostics.subscriptions, 1);
+    assert.equal(diagnostics.completed_notifications, 1);
+    assert.equal(diagnostics.delivery_receipts, 1);
+    assert.equal(JSON.stringify(diagnostics).includes('private-endpoint'), false);
+  } finally { close(); }
+});

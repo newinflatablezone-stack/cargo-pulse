@@ -58,6 +58,31 @@ export class WebPushService {
     };
   }
 
+  diagnostics() {
+    const subscriptions = this.store.all('push_subscriptions');
+    const notifications = this.store.all('ticket_notifications').filter(row => row.push_pending_at);
+    const deliveries = this.store.all('push_delivery_logs');
+    const statusCounts = {};
+    for (const row of subscriptions) {
+      const key = String(row.last_status ?? (row.last_error ? 'error' : 'never'));
+      statusCounts[key] = (statusCounts[key] || 0) + 1;
+    }
+    const pending = notifications.filter(row => !row.push_completed_at);
+    return {
+      subscriptions: subscriptions.length,
+      healthy_subscriptions: subscriptions.filter(row => !row.last_error).length,
+      subscription_statuses: statusCounts,
+      queued_notifications: notifications.length,
+      pending_notifications: pending.length,
+      pending_never_attempted: pending.filter(row => !Number(row.push_attempts || 0)).length,
+      pending_attempted: pending.filter(row => Number(row.push_attempts || 0) > 0).length,
+      completed_notifications: notifications.filter(row => row.push_completed_at).length,
+      delivery_receipts: deliveries.length,
+      last_delivery_at: deliveries.map(row => row.created_at).filter(Boolean).sort().at(-1) || null,
+      last_attempt_at: notifications.map(row => row.push_last_attempt_at).filter(Boolean).sort().at(-1) || null
+    };
+  }
+
   subscribe(userId, body) {
     const endpoint = String(body.endpoint || '').trim();
     const p256dh = String(body.keys?.p256dh || body.p256dh || '');

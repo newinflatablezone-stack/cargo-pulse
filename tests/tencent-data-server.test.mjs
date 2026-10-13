@@ -116,7 +116,9 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
 
     const pushHealth = await fetch(`${baseUrl}/rest/v1/rpc/push_health`, { method: 'POST', body: '{}' });
     assert.equal(pushHealth.status, 200);
-    assert.deepEqual(await pushHealth.json(), { ok: true, web_push: true, error: null });
+    const pushHealthBody = await pushHealth.json();
+    assert.deepEqual({ ok: pushHealthBody.ok, web_push: pushHealthBody.web_push, error: pushHealthBody.error }, { ok: true, web_push: true, error: null });
+    assert.equal(pushHealthBody.diagnostics.subscriptions, 0);
 
     const accepted = await fetch(`${baseUrl}/auth/v1/token?grant_type=password`, {
       method: 'POST',

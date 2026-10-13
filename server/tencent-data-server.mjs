@@ -161,7 +161,8 @@ async function rpc(req, res, name, body, user) {
   if (name === 'push_health') return send(res, 200, {
     ok: true,
     web_push: Boolean(push),
-    error: pushInitError ? String(pushInitError.message || pushInitError).slice(0, 300) : null
+    error: pushInitError ? String(pushInitError.message || pushInitError).slice(0, 300) : null,
+    diagnostics: push ? push.diagnostics() : null
   });
   if (name === 'ticket_bootstrap') return send(res, 200, { ...tickets.bootstrap(user.id), push: pushStatus(user.id) });
   if (name === 'ticket_detail') return send(res, 200, tickets.detail(body.ticket_id, user.id));

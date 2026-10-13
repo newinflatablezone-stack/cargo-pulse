@@ -89,13 +89,10 @@ try {
   pushInitError = caught;
   console.error('Web Push disabled; core data service remains available:', caught);
 }
-// Recover notifications created immediately before a restart/deployment and
-// also provide an observable result when the isolated worker cannot launch.
-setTimeout(() => {
-  for (const notification of store.all('ticket_notifications').filter(row => row.push_pending_at && !row.push_completed_at).slice(0, 20)) {
-    launchPushWorker(notification);
-  }
-}, 1500).unref();
+// Recover notifications created immediately before a restart/deployment in
+// one worker. Starting one process per pending item causes concurrent SQLite
+// writers and can leave one item untouched during deployment startup.
+setTimeout(() => launchPushWorker({ id: '' }), 1500).unref();
 // Run reminder creation and retry delivery out-of-process as well. This keeps
 // background delivery independent of an older/missing systemd timer install.
 setInterval(() => launchPushWorker({ id: '' }), 5 * 60_000).unref();

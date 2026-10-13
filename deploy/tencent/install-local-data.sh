@@ -12,7 +12,7 @@ if [ ! -s "$SOURCE/server/tencent-data-server.mjs" ]; then
   TEMP_SOURCE="$(mktemp -d)"
   trap 'rm -rf -- "$TEMP_SOURCE"' EXIT
   git -C /opt/cargo-pulse archive origin/main \
-    server/tencent-data-core.mjs server/tencent-data-server.mjs server/ticket-service.mjs server/web-push.mjs \
+    server/tencent-data-core.mjs server/tencent-data-server.mjs server/ticket-service.mjs \
     scripts/migrate-supabase-to-tencent.mjs scripts/backup-tencent-data.mjs scripts/ticket-reminders.mjs \
     deploy/tencent/cargo-pulse-deploy | tar -xf - -C "$TEMP_SOURCE"
   SOURCE="$TEMP_SOURCE"
@@ -25,7 +25,6 @@ cp -n "$CONFIG_DIR/config.json" "$CONFIG_DIR/legacy-config.json"
 install -m 644 "$SOURCE/server/tencent-data-core.mjs" "$RUNTIME/tencent-data-core.mjs"
 install -m 644 "$SOURCE/server/tencent-data-server.mjs" "$RUNTIME/tencent-data-server.mjs"
 install -m 644 "$SOURCE/server/ticket-service.mjs" "$RUNTIME/ticket-service.mjs"
-install -m 644 "$SOURCE/server/web-push.mjs" "$RUNTIME/web-push.mjs"
 install -m 644 "$SOURCE/scripts/migrate-supabase-to-tencent.mjs" "$RUNTIME/migrate-supabase-to-tencent.mjs"
 install -m 644 "$SOURCE/scripts/backup-tencent-data.mjs" "$RUNTIME/backup-tencent-data.mjs"
 install -m 644 "$SOURCE/scripts/ticket-reminders.mjs" "$RUNTIME/ticket-reminders.mjs"
@@ -34,7 +33,6 @@ for file in \
   "$RUNTIME/tencent-data-core.mjs" \
   "$RUNTIME/tencent-data-server.mjs" \
   "$RUNTIME/ticket-service.mjs" \
-  "$RUNTIME/web-push.mjs" \
   "$RUNTIME/migrate-supabase-to-tencent.mjs" \
   "$RUNTIME/backup-tencent-data.mjs" \
   "$RUNTIME/ticket-reminders.mjs"; do

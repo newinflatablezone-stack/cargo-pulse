@@ -3,7 +3,6 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto
 import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize } from 'node:path';
 import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking } from './tencent-data-core.mjs';
-import { WebPushService } from './web-push.mjs';
 
 let TicketService;
 try { ({ TicketService } = await import('./ticket-service.mjs')); }
@@ -33,8 +32,6 @@ ensureInvite('business_invite');
 ensureInvite('follower_invite');
 const DATA_REVISION = createHash('sha256').update(await readFile(new URL('./tencent-data-core.mjs', import.meta.url))).digest('hex');
 const tickets = new TicketService(store);
-const push = new WebPushService(store);
-tickets.setNotificationHandler(notification => push.queueTicketNotification(notification, tickets));
 
 const send = (res, status, value, headers = {}) => {
   const body = value == null ? '' : JSON.stringify(value);
@@ -113,7 +110,7 @@ async function authRoute(req, res, url) {
 }
 
 async function rpc(req, res, name, body, user) {
-  if (name === 'ticket_bootstrap') return send(res, 200, { ...tickets.bootstrap(user.id), push: push.status(user.id) });
+  if (name === 'ticket_bootstrap') return send(res, 200, tickets.bootstrap(user.id));
   if (name === 'ticket_detail') return send(res, 200, tickets.detail(body.ticket_id, user.id));
   if (name === 'ticket_create') return send(res, 200, tickets.create(body, user.id));
   if (name === 'ticket_accept') return send(res, 200, tickets.accept(body.ticket_id, user.id));
@@ -129,9 +126,6 @@ async function rpc(req, res, name, body, user) {
   if (name === 'ticket_archive') return send(res, 200, tickets.archive(body.ticket_id, user.id));
   if (name === 'ticket_notifications_read') return send(res, 200, tickets.markNotificationsRead(user.id));
   if (name === 'ticket_notification_snapshot') return send(res, 200, { badge_count: tickets.badge(user.id), notifications: tickets.unreadNotifications(user.id).slice(0, 20) });
-  if (name === 'ticket_push_subscribe') return send(res, 200, push.subscribe(user.id, body.subscription || body));
-  if (name === 'ticket_push_unsubscribe') return send(res, 200, push.unsubscribe(user.id, body.endpoint));
-  if (name === 'ticket_push_test') return send(res, 200, await push.test(user.id));
   if (name === 'ticket_register_attachment') return send(res, 200, tickets.registerAttachment(body, user.id));
   if (name === 'lookup_customer_tracking') {
     return send(res, 200, lookupCustomerTracking(store, body.p_email));

@@ -7,7 +7,7 @@ export const TICKET_FOLLOWERS = new Map([
 ]);
 export const TICKET_TABLES = [
   'tickets', 'ticket_messages', 'ticket_attachments', 'ticket_history',
-  'ticket_notifications', 'ticket_reminder_logs', 'push_subscriptions', 'push_delivery_logs'
+  'ticket_notifications', 'ticket_reminder_logs'
 ];
 
 const now = () => new Date().toISOString();
@@ -19,8 +19,7 @@ const activeStatuses = new Set(['pending', 'in_progress']);
 const unresolvedStatuses = new Set(['pending', 'in_progress', 'waiting_confirmation']);
 
 export class TicketService {
-  constructor(store) { this.store = store; this.notificationHandler = null; }
-  setNotificationHandler(handler) { this.notificationHandler = handler; return this; }
+  constructor(store) { this.store = store; }
 
   actor(userId) {
     const account = this.store.accountById(userId);
@@ -144,15 +143,7 @@ export class TicketService {
   notify(userId, ticketId, type, title, dedupeKey = '') {
     if (!userId) return null;
     if (dedupeKey && this.store.all('ticket_notifications').some(row => row.dedupe_key === dedupeKey && row.user_id === userId)) return null;
-    const notification = this.store.put('ticket_notifications', { id: randomUUID(), user_id: userId, ticket_id: ticketId, type, title, dedupe_key: dedupeKey || null, read_at: null, created_at: now() });
-    if (this.notificationHandler) {
-      try {
-        this.notificationHandler(notification);
-      } catch (error) {
-        console.error('Ticket notification handler failed:', error);
-      }
-    }
-    return notification;
+    return this.store.put('ticket_notifications', { id: randomUUID(), user_id: userId, ticket_id: ticketId, type, title, dedupe_key: dedupeKey || null, read_at: null, created_at: now() });
   }
 
   markTicketNotificationsRead(ticketId, userId) {
@@ -271,7 +262,7 @@ export class TicketService {
     if (!this.isSupervisor(actor)) fail('仅管理员可以删除工单', 403);
     const ticket = this.requireTicket(ticketId, actor);
     const attachments = this.store.all('ticket_attachments').filter(row => row.ticket_id === ticket.id);
-    for (const table of ['ticket_messages', 'ticket_attachments', 'ticket_history', 'ticket_notifications', 'ticket_reminder_logs', 'push_delivery_logs']) {
+    for (const table of ['ticket_messages', 'ticket_attachments', 'ticket_history', 'ticket_notifications', 'ticket_reminder_logs']) {
       const ids = this.store.all(table).filter(row => row.ticket_id === ticket.id).map(row => row.id);
       if (ids.length) this.store.remove(table, ids);
     }
@@ -362,14 +353,9 @@ export class TicketService {
       const elapsed = at - activityAt;
       const intervalHours = reminderHours[ticket.priority] || reminderHours.normal;
       const intervalMs = intervalHours * 3600000;
-      const recipient = ticket.status === 'waiting_confirmation' ? ticket.created_by : ticket.assignee_id;
-      if (elapsed >= intervalMs - 3600000 && elapsed < intervalMs) {
-        const action = ticket.status === 'waiting_confirmation' ? '即将到期，请确认是否已解决' : '即将到期，请及时处理';
-        if (this.notify(recipient, ticket.id, 'due_soon', `${ticket.ticket_no} ${action}`, `due-soon:${ticket.id}:${recipient}:${ticket.updated_at || ticket.created_at}:${intervalHours}`)) created += 1;
-        continue;
-      }
       if (elapsed < intervalMs) continue;
       const bucket = Math.floor(elapsed / intervalMs);
+      const recipient = ticket.status === 'waiting_confirmation' ? ticket.created_by : ticket.assignee_id;
       const action = ticket.status === 'waiting_confirmation' ? '等待你确认是否已解决' : '仍未解决，请及时处理';
       if (this.notify(recipient, ticket.id, 'unresolved', `${ticket.ticket_no} ${action}`, `unresolved:${ticket.id}:${recipient}:${ticket.updated_at || ticket.created_at}:${intervalHours}:${bucket}`)) created += 1;
     }

@@ -163,18 +163,6 @@ test('工单汇总标记已超时，按等级阈值计算且已解决不计入',
   } finally { close(); }
 });
 
-test('工单距离等级时限一小时内生成一次即将到期提醒', () => {
-  const { store, service, users, close } = fixture();
-  try {
-    const ticket = createForIcey(service, users);
-    store.put('tickets', { ...ticket, updated_at: new Date(Date.now() - 5 * 3600000 - 1000).toISOString() });
-    assert.equal(service.runReminders().created, 1);
-    assert.equal(service.runReminders().created, 0);
-    const notice = service.unreadNotifications(users.icey.id).find(row => row.ticket_id === ticket.id && row.type === 'due_soon');
-    assert.ok(notice);
-  } finally { close(); }
-});
-
 test('打开工单即视为已读，只清除该工单提醒', () => {
   const { service, users, close } = fixture();
   try {

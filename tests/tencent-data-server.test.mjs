@@ -34,6 +34,7 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
   const dataDir = mkdtempSync(join(tmpdir(), 'cargo-pulse-server-'));
   const port = await freePort();
   const store = new TencentDataStore(join(dataDir, 'test.sqlite'));
+  store.put('app_settings', { key: 'business_invite', value: 'business-test-invite' });
   store.put('orders', { id: 'tracking-order', order_no: 'TRACK-1', customer_info: 'Customer customer@example.com', current_step: 'ocean_transit' });
   store.put('order_events', { id: 'tracking-event', order_id: 'tracking-order', step_key: 'ocean_transit', note: 'tracking:SHIP123' });
   store.db.close();
@@ -61,12 +62,26 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
     assert.equal(trackingResult.order.order_no, 'TRACK-1');
     assert.equal(trackingResult.events[0].tracking_no, 'SHIP123');
     assert.deepEqual(trackingResult.shipments, []);
-    const signup = await fetch(`${baseUrl}/auth/v1/signup`, {
+    const openSignup = await fetch(`${baseUrl}/auth/v1/signup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: 'supervisor@example.com', password: 'correct-password' })
     });
+    assert.equal(openSignup.status, 403);
+    assert.deepEqual(await openSignup.json(), { message: '注册链接无效，请联系主管获取最新邀请链接' });
+
+    const signup = await fetch(`${baseUrl}/auth/v1/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'supervisor@example.com', password: 'correct-password', data: { registration_role: 'business', registration_invite: 'business-test-invite' } })
+    });
     assert.equal(signup.status, 200);
+    const signupSession = await signup.json();
+    const authenticatedHeaders = { Authorization: `Bearer ${signupSession.access_token}` };
+    const visibleProfiles = await fetch(`${baseUrl}/rest/v1/profiles?select=*`, { headers: authenticatedHeaders });
+    assert.deepEqual((await visibleProfiles.json()).map(row => row.email), ['supervisor@example.com']);
+    const hiddenInvites = await fetch(`${baseUrl}/rest/v1/app_settings?key=in.(business_invite,follower_invite)&select=*`, { headers: authenticatedHeaders });
+    assert.deepEqual(await hiddenInvites.json(), []);
 
     const rejected = await fetch(`${baseUrl}/auth/v1/token?grant_type=password`, {
       method: 'POST',

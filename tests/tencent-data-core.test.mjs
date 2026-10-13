@@ -33,6 +33,20 @@ test('尚无本地密码的迁移账号返回未匹配而不是抛出异常', ()
   } finally { close(); }
 });
 
+test('主管停用账号后立即撤销会话并禁止再次登录', () => {
+  const { store, close } = fixture();
+  try {
+    const user = store.upsertAccount({ email: 'untrusted@example.com', password: 'password123', role: 'business' });
+    const session = store.login(user.email, 'password123');
+    assert.ok(store.session(session.access_token));
+    store.setUserActive(user.id, false);
+    assert.equal(store.session(session.access_token), null);
+    assert.equal(store.login(user.email, 'password123'), null);
+    store.setUserActive(user.id, true);
+    assert.ok(store.login(user.email, 'password123'));
+  } finally { close(); }
+});
+
 test('兼容首页使用的 PostgREST 筛选、排序和字段选择', () => {
   const { store, close } = fixture();
   try {
@@ -70,6 +84,7 @@ test('首页快照一次返回首屏资料并隐藏普通账号的回收站订�
     assert.equal(snapshot.active_events.length, 1);
     assert.equal(snapshot.tracking_events.length, 1);
     assert.equal(snapshot.images.length, 1);
+    assert.deepEqual(snapshot.profiles.map(row => row.id), [user.id]);
   } finally { close(); }
 });
 

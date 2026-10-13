@@ -146,6 +146,7 @@ export class TencentDataStore {
   }
 
   issueSession(user) {
+    if (!this.isUserActive(user.id)) throw Object.assign(Error('账号已被停用'), { status: 403 });
     const access = randomBytes(32).toString('base64url');
     const refresh = randomBytes(48).toString('base64url');
     const epoch = Math.floor(Date.now() / 1000);
@@ -158,14 +159,24 @@ export class TencentDataStore {
   session(token, kind = 'access') {
     if (!token) return null;
     const row = this.db.prepare('select * from sessions where token_hash=? and kind=? and expires_at>?').get(tokenHash(token), kind, Math.floor(Date.now() / 1000));
-    return row ? this.accountById(row.user_id) : null;
+    return row && this.isUserActive(row.user_id) ? this.accountById(row.user_id) : null;
   }
 
   revokeUserSessions(userId) { this.db.prepare('delete from sessions where user_id=?').run(userId); }
 
+  setUserActive(userId, active) {
+    const profile = this.profile(userId);
+    if (!profile) throw Object.assign(Error('用户不存在'), { status: 404 });
+    const next = this.put('profiles', { ...profile, disabled_at: active ? null : now() });
+    if (!active) this.revokeUserSessions(userId);
+    return next;
+  }
+
+  isUserActive(userId) { return !this.profile(userId)?.disabled_at; }
+
   login(email, password) {
     const account = this.accountByEmail(email);
-    if (!account || !passwordMatches(password, account.password_hash)) return null;
+    if (!account || !this.isUserActive(account.id) || !passwordMatches(password, account.password_hash)) return null;
     return this.issueSession(account);
   }
 
@@ -185,7 +196,7 @@ export class TencentDataStore {
     return {
       profile: this.profile(userId) || null,
       orders: this.all('orders').filter(row => supervisor || !row.deleted_at),
-      profiles: this.all('profiles'),
+      profiles: supervisor ? this.all('profiles') : this.all('profiles').filter(row => row.id === userId),
       partners: this.all('partners').filter(row => row.active !== false),
       images: this.all('order_images').filter(row => String(row.object_path || '').includes('/delivery-proof-')),
       tracking_events: this.all('order_events').filter(row => String(row.note || '').startsWith('tracking:')),
@@ -234,6 +245,8 @@ export class TencentDataStore {
     const mutationUrl = new URL(url);
     if (method !== 'GET') mutationUrl.searchParams.delete('select');
     let matchesRows = this.query(table, mutationUrl);
+    if (method === 'GET' && table === 'profiles' && !supervisor) matchesRows = matchesRows.filter(row => row.id === userId);
+    if (method === 'GET' && table === 'app_settings' && !supervisor) matchesRows = matchesRows.filter(row => !String(row.key || '').endsWith('_invite'));
     if (method === 'GET' && table === 'orders' && !supervisor) matchesRows = matchesRows.filter(row => !row.deleted_at);
     if (method === 'PATCH') return matchesRows.map(row => project(this.put(table, { ...row, ...body }), url.searchParams.get('select')));
     if (method === 'DELETE') { this.remove(table, matchesRows.map(row => row.id ?? row.key ?? row.resource_key)); return matchesRows.map(row => project(row, url.searchParams.get('select'))); }

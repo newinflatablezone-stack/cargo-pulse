@@ -21,6 +21,15 @@ const LEGACY_KEY = process.env.LEGACY_SUPABASE_KEY || '';
 await mkdir(DATA_DIR, { recursive: true });
 await mkdir(UPLOAD_DIR, { recursive: true });
 const store = new TencentDataStore(DB_FILE);
+const ensureInvite = key => {
+  const existing = store.all('app_settings').find(row => row.key === key);
+  if (existing?.value) return existing.value;
+  const value = randomUUID().replaceAll('-', '');
+  store.put('app_settings', { key, value, created_at: new Date().toISOString() });
+  return value;
+};
+ensureInvite('business_invite');
+ensureInvite('follower_invite');
 const DATA_REVISION = createHash('sha256').update(await readFile(new URL('./tencent-data-core.mjs', import.meta.url))).digest('hex');
 const tickets = new TicketService(store);
 
@@ -59,8 +68,11 @@ async function authRoute(req, res, url) {
   if (url.pathname.endsWith('/signup')) {
     if (!body.email || String(body.password || '').length < 6) throw Object.assign(Error('邮箱或密码不符合要求'), { status: 400 });
     if (store.accountByEmail(body.email)) throw Object.assign(Error('账号已经存在'), { status: 409 });
-    const setting = store.all('app_settings').find(row => row.key === 'follower_invite');
-    const role = body.data?.follower_invite && body.data.follower_invite === setting?.value ? 'follower' : 'business';
+    const requestedRole = body.data?.registration_role === 'follower' || !body.data?.registration_role && body.data?.follower_invite ? 'follower' : 'business';
+    const suppliedInvite = String(body.data?.registration_invite || body.data?.follower_invite || '');
+    const setting = store.all('app_settings').find(row => row.key === `${requestedRole}_invite`);
+    if (!suppliedInvite || suppliedInvite !== setting?.value) throw Object.assign(Error('注册链接无效，请联系主管获取最新邀请链接'), { status: 403 });
+    const role = requestedRole;
     const user = store.upsertAccount({ email: body.email, password: body.password, role });
     return send(res, 200, store.issueSession(user));
   }
@@ -139,6 +151,12 @@ function rpc(req, res, name, body, user) {
     if (!store.isSupervisor(user.id)) throw Object.assign(Error('仅主管可以分配角色'), { status: 403 });
     const profile = store.profile(body.target_user_id); if (!profile) throw Object.assign(Error('用户不存在'), { status: 404 });
     store.put('profiles', { ...profile, role: body.target_role });
+  } else if (name === 'set_user_active') {
+    if (!store.isSupervisor(user.id)) throw Object.assign(Error('仅主管可以停用账号'), { status: 403 });
+    const target = store.profile(body.target_user_id); if (!target) throw Object.assign(Error('用户不存在'), { status: 404 });
+    const protectedEmails = new Set(['505863160@qq.com', '2548462886@qq.com', '1544264271@qq.com']);
+    if (protectedEmails.has(String(target.email || '').toLowerCase())) throw Object.assign(Error('主管和指定跟单账号不能停用'), { status: 400 });
+    store.setUserActive(target.id, Boolean(body.active));
   } else if (name === 'transition_order_stage') {
     if (!order || order.deleted_at) throw Object.assign(Error('订单不存在'), { status: 404 });
     if (order.current_step === 'completed') throw Object.assign(Error('已完成订单不能继续推进'), { status: 409 });

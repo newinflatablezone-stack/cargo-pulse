@@ -1,7 +1,15 @@
 import { join } from 'node:path';
-import { TencentDataStore } from '../server/tencent-data-core.mjs';
-import { TicketService } from '../server/ticket-service.mjs';
-import { WebPushService } from '../server/web-push.mjs';
+let TencentDataStore, TicketService, WebPushService;
+try {
+  ({ TencentDataStore } = await import('../server/tencent-data-core.mjs'));
+  ({ TicketService } = await import('../server/ticket-service.mjs'));
+  ({ WebPushService } = await import('../server/web-push.mjs'));
+} catch {
+  ({ TencentDataStore } = await import('./tencent-data-core.mjs'));
+  ({ TicketService } = await import('./ticket-service.mjs'));
+  try { ({ WebPushService } = await import('./web-push.mjs')); }
+  catch { ({ WebPushService } = await import('file:///var/www/cargo-pulse/runtime/web-push.mjs')); }
+}
 
 const dataDir = process.env.CARGO_PULSE_DATA_DIR || '/var/lib/cargo-pulse/data';
 const database = process.env.CARGO_PULSE_DB || join(dataDir, 'cargo-pulse.sqlite');

@@ -35,7 +35,9 @@ const tickets = new TicketService(store);
 let push = null;
 let pushInitError = null;
 try {
-  const { WebPushService } = await import('./web-push.mjs');
+  let WebPushService;
+  try { ({ WebPushService } = await import('./web-push.mjs')); }
+  catch { ({ WebPushService } = await import('file:///var/www/cargo-pulse/runtime/web-push.mjs')); }
   push = new WebPushService(store);
   tickets.setNotificationHandler(notification => push.queueTicketNotification(notification, tickets));
 } catch (caught) {
@@ -129,6 +131,7 @@ async function authRoute(req, res, url) {
 }
 
 async function rpc(req, res, name, body, user) {
+  if (name === 'push_health') return send(res, 200, { ok: true, web_push: Boolean(push) });
   if (name === 'ticket_bootstrap') return send(res, 200, { ...tickets.bootstrap(user.id), push: pushStatus(user.id) });
   if (name === 'ticket_detail') return send(res, 200, tickets.detail(body.ticket_id, user.id));
   if (name === 'ticket_create') return send(res, 200, tickets.create(body, user.id));

@@ -12,13 +12,46 @@ const rpc=(name,body={})=>api('/rest/v1/rpc/'+name,{method:'POST',body:JSON.stri
 const fmt=value=>value?new Date(value).toLocaleString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
 const responseTime=ticket=>{if(ticket.average_response_seconds==null)return'尚未回复';const seconds=Number(ticket.average_response_seconds);if(!Number.isFinite(seconds))return'尚未回复';if(seconds<60)return'<1分钟';const minutes=Math.round(seconds/60),days=Math.floor(minutes/1440),hours=Math.floor(minutes%1440/60),rest=minutes%60;if(days)return`${days}天${hours?hours+'小时':''}`;if(hours)return`${hours}小时${rest?rest+'分钟':''}`;return`${minutes}分钟`};
 const pushKey=value=>{const padded=String(value||'').padEnd(Math.ceil(String(value||'').length/4)*4,'='),raw=atob(padded.replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(raw,char=>char.charCodeAt(0))};
+const isMobileDevice=()=>/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||matchMedia('(pointer:coarse)').matches;
+const isIOSDevice=()=>/iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const isStandaloneApp=()=>matchMedia('(display-mode:standalone)').matches||navigator.standalone===true;
+const deviceName=()=>isMobileDevice()?'手机':'电脑';
+const pushButtonLabel=()=>data?.push?.browser_ready?`${deviceName()}通知已开启`:('Notification'in window&&Notification.permission==='denied'?`${deviceName()}通知已关闭`:`一键开启${deviceName()}通知`);
 const isSupervisor=()=>data?.actor?.role==='supervisor';
 const isBusiness=()=>data?.actor?.role==='business';
 const isAssigned=ticket=>ticket.assignee_id===data?.actor?.id;
 function toast(message,duration=2600){const node=document.createElement('div');node.className='toast';node.textContent=message;document.body.append(node);setTimeout(()=>node.remove(),duration)}
 const samePushKey=(left,right)=>left&&right&&left.length===right.length&&left.every((value,index)=>value===right[index]);
 let pushStage='准备通知';
-async function syncPush({force=false,test=false}={}){if(!data.push?.available||!data.push?.public_key)throw Error('桌面通知服务暂不可用，其他功能不受影响');if(!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in window))throw Error('当前浏览器不支持桌面通知');pushStage='请求浏览器通知权限';const permission=Notification.permission==='default'&&force?await Notification.requestPermission():Notification.permission;if(permission!=='granted'){data.push.browser_ready=false;if(force)throw Error('请在这台电脑的浏览器设置中允许本站通知');return false}pushStage='激活后台通知组件';await navigator.serviceWorker.register('/push-sw.js',{scope:'/'});const registration=await navigator.serviceWorker.ready,desiredKey=pushKey(data.push.public_key);if(test){pushStage='显示本机测试通知';await registration.showNotification('Cargo Pulse · 本机通知测试',{body:'浏览器与 Windows 通知显示正常',icon:'/brand-logo.png',tag:'ticket-local-test'})}pushStage='创建浏览器推送订阅';let subscription=await registration.pushManager.getSubscription(),currentKey=subscription?.options?.applicationServerKey?new Uint8Array(subscription.options.applicationServerKey):null;if(subscription&&(force||!samePushKey(currentKey,desiredKey))){await subscription.unsubscribe();subscription=null}if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:desiredKey});pushStage='保存推送订阅';data.push={...(await rpc('ticket_push_subscribe',{subscription:subscription.toJSON()})),browser_ready:true};if(test){pushStage='发送服务器测试推送';const result=await rpc('ticket_push_test');if(!result.sent)throw Error('本机通知正常，但服务器推送网关没有接受测试消息');render();toast('本机测试和服务器推送均已发送，请查看电脑右下角',8000)}else render();return true}
+async function syncPush({force=false,test=false}={}){
+  const mobile=isMobileDevice(),device=mobile?'手机':'电脑';
+  if(!data.push?.available||!data.push?.public_key)throw Error(`${device}通知服务暂不可用，其他功能不受影响`);
+  if(isIOSDevice()&&!isStandaloneApp()){
+    data.push.browser_ready=false;
+    if(force)throw Error('iPhone/iPad 请先用 Safari 打开本站，点“分享”→“添加到主屏幕”，再从桌面 Cargo Pulse 图标打开并一键开启通知');
+    return false;
+  }
+  if(!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in window))throw Error(isIOSDevice()?'此设备不支持后台通知；iPhone/iPad 需要 iOS 16.4 以上，并从主屏幕图标打开':'当前浏览器不支持通知，请使用最新版 Chrome、Edge 或 Safari');
+  pushStage=`请求${device}通知权限`;
+  const permission=Notification.permission==='default'&&force?await Notification.requestPermission():Notification.permission;
+  if(permission!=='granted'){
+    data.push.browser_ready=false;
+    if(force)throw Error(mobile?'请在手机系统设置及当前浏览器的网站设置中允许 Cargo Pulse 通知':'请在这台电脑的浏览器设置中允许本站通知');
+    return false;
+  }
+  pushStage='激活后台通知组件';
+  await navigator.serviceWorker.register('/push-sw.js',{scope:'/'});
+  const registration=await navigator.serviceWorker.ready,desiredKey=pushKey(data.push.public_key);
+  if(test){pushStage=`显示${device}测试通知`;await registration.showNotification(`Cargo Pulse · ${device}通知测试`,{body:`${device}通知显示正常`,icon:'/brand-logo.png',badge:'/brand-logo.png',tag:'ticket-local-test'})}
+  pushStage='创建浏览器推送订阅';
+  let subscription=await registration.pushManager.getSubscription(),currentKey=subscription?.options?.applicationServerKey?new Uint8Array(subscription.options.applicationServerKey):null;
+  if(subscription&&(force||!samePushKey(currentKey,desiredKey))){await subscription.unsubscribe();subscription=null}
+  if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:desiredKey});
+  pushStage='保存推送订阅';
+  data.push={...(await rpc('ticket_push_subscribe',{subscription:subscription.toJSON()})),browser_ready:true};
+  if(test){pushStage='发送服务器测试推送';const result=await rpc('ticket_push_test');if(!result.sent)throw Error(`${device}本机通知正常，但服务器推送网关没有接受测试消息`);render();toast(`${device}通知已开启，测试消息已发送`,8000)}else render();
+  return true
+}
 const enablePush=()=>Promise.race([syncPush({force:true,test:true}),new Promise((_,reject)=>setTimeout(()=>reject(Error(`开启通知失败：${pushStage}超时`)),20000))]);
 document.addEventListener('click',event=>{if(event.target.id==='adjustTicket')document.querySelector('#adminDialog')?.showModal();if(event.target.closest('#adminDialog .close,#adminDialog .cancel'))document.querySelector('#adminDialog')?.close()});
 document.addEventListener('click',async event=>{const button=event.target.closest?.('[data-message-delete]');if(!button)return;if(!confirm('确定删除这条聊天记录吗？'))return;button.disabled=true;try{await rpc('ticket_message_delete',{message_id:button.dataset.messageDelete});const id=new URLSearchParams(location.search).get('id');if(id)await loadDetail(id)}catch(error){button.disabled=false;toast(error.message)}});
@@ -40,7 +73,7 @@ function visibleTickets(){return (data?.tickets||[]).filter(ticket=>{
   return true;
 })}
 
-function header(){const pushLabel=data?.push?.browser_ready?'通知已开启':('Notification'in window&&Notification.permission==='denied'?'通知被浏览器关闭':'开启电脑通知');return `<header><a class="brand" href="/"><img src="/brand-logo.png" alt=""><span>Cargo Pulse</span></a><a class="button ticket-nav" href="/tickets/">问题跟进${data?.badge_count?`<b>${data.badge_count}</b>`:''}</a><nav><span class="user-email">${esc(data?.actor?.email||'')}</span><span class="role">${data?.actor?.role==='supervisor'?'主管':data?.actor?.role==='follower'?'跟单':'业务员'}</span><button id="enablePush">${pushLabel}</button><a class="button" href="/">返回订单中心</a></nav></header>`}
+function header(){return `<header><a class="brand" href="/"><img src="/brand-logo.png" alt=""><span>Cargo Pulse</span></a><a class="button ticket-nav" href="/tickets/">问题跟进${data?.badge_count?`<b>${data.badge_count}</b>`:''}</a><nav><span class="user-email">${esc(data?.actor?.email||'')}</span><span class="role">${data?.actor?.role==='supervisor'?'主管':data?.actor?.role==='follower'?'跟单':'业务员'}</span><button id="enablePush">${pushButtonLabel()}</button><a class="button" href="/">返回订单中心</a></nav></header>`}
 function notifications(){if(!noticeOpen)return '';const rows=data.notifications||[];return `<aside class="notifications"><div class="notice-head"><b>站内通知</b>${rows.length?'<button id="readNotices">全部已读</button>':''}</div>${rows.length?rows.map(row=>`<article data-notice-ticket="${row.ticket_id}">${esc(row.title)}<small>${fmt(row.created_at)}</small></article>`).join(''):'<div class="empty">没有未读通知</div>'}</aside>`}
 
 function listPage(){const all=data.tickets||[],rows=visibleTickets(),count=status=>all.filter(ticket=>ticket.status===status).length,overdueCount=all.filter(ticket=>ticket.is_overdue).length;return `${header()}<main><section class="page-head"><h1>问题跟进</h1><div class="head-actions">${isBusiness()||isSupervisor()?'<button class="primary" id="createTicket">＋ 新建</button>':''}<button id="manualReload">刷新</button></div></section><section class="stats status-stats">${Object.entries(labels.status).map(([key,value])=>`<button class="stat status-${key} ${activeView===key?'active':''}" data-view="${key}"><span>${value}</span><b>${count(key)}</b></button>`).join('')}</section><section class="panel"><div class="filters"><input id="search" value="${esc(query)}" placeholder="搜索工单、标题或订单号"><select id="quickView"><option value="all">全部可见</option><option value="submitted" ${activeView==='submitted'?'selected':''}>我提交的</option><option value="assigned" ${activeView==='assigned'?'selected':''}>分配给我</option><option value="confirm" ${activeView==='confirm'?'selected':''}>待我确认</option></select><select id="categoryFilter"><option value="all">全部分类</option>${Object.entries(labels.category).map(([key,value])=>`<option value="${key}" ${categoryFilter===key?'selected':''}>${value}</option>`).join('')}</select><select id="assigneeFilter"><option value="all">全部负责人</option>${data.followers.map(row=>`<option value="${row.id||''}" ${assigneeFilter===row.id?'selected':''}>${row.name}</option>`).join('')}</select><select id="timelinessFilter"><option value="all">全部时效</option><option value="overdue" ${timelinessFilter==='overdue'?'selected':''}>已超时（${overdueCount}）</option></select></div><div class="table-wrap"><table class="tickets"><thead><tr><th>工单</th><th>订单</th><th>类型</th><th>状态</th><th>平均回复</th><th>提交 → 负责人</th><th>更新</th></tr></thead><tbody>${rows.map(ticket=>`<tr data-ticket="${ticket.id}"><td class="title-cell" data-label="工单"><b>${esc(ticket.title)}</b><small>${esc(ticket.ticket_no)}</small></td><td data-label="订单">${esc(ticket.order_no||'—')}</td><td data-label="类型"><span class="tag">${labels.category[ticket.category]}</span> ${badge(ticket)}</td><td data-label="状态"><span class="status-tag status-${ticket.status}">${labels.status[ticket.status]}</span>${ticket.is_overdue?'<span class="tag due-red">已超时</span>':''}</td><td data-label="平均回复">${responseTime(ticket)}</td><td data-label="人员">${esc(ticket.creator_name||ticket.creator_email)} → ${esc(ticket.assignee_name)}</td><td data-label="更新">${fmt(ticket.updated_at)}</td></tr>`).join('')}</tbody></table>${rows.length?'':'<div class="empty">没有工单</div>'}</div></section></main><dialog class="modal" id="createDialog"></dialog>`}

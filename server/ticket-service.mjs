@@ -84,6 +84,9 @@ export class TicketService {
     return {
       actor,
       followers: this.followers(),
+      // Keep this shape temporarily so a browser with the previous cached UI
+      // cannot crash while the new deadline-free bundle is being picked up.
+      settings: { normal: 24, important: 24, urgent: 24 },
       tickets: this.visibleTickets(actor),
       notifications,
       badge_count: this.badge(userId)

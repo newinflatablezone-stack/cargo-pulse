@@ -35,6 +35,7 @@ test('ICEY 与秦枝的工单在服务端严格隔离，主管可查看全部', 
     assert.equal(service.actor(users.icey.id).role, 'follower');
     assert.equal(service.bootstrap(users.icey.id).tickets.length, 1);
     assert.equal(service.bootstrap(users.icey.id).notifications[0].type, 'assigned');
+    assert.equal(service.bootstrap(users.icey.id).settings.important, 24);
     assert.equal(service.homeReminder(users.icey.id).count, 1);
     assert.equal(service.bootstrap(users.qinzhi.id).tickets.length, 0);
     assert.equal(service.homeReminder(users.qinzhi.id).count, 0);

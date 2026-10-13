@@ -213,6 +213,24 @@ test('只有管理员可以删除聊天记录，原始问题不可删除', () =>
   } finally { close(); }
 });
 
+test('只有管理员可以删除整个工单并清理全部关联记录', () => {
+  const { store, service, users, close } = fixture();
+  try {
+    const ticket = createForIcey(service, users);
+    const reply = service.reply({ ticket_id: ticket.id, kind: 'progress', text: '处理中' }, users.icey.id).message;
+    service.registerAttachment({ ticket_id: ticket.id, message_id: reply.id, object_path: `${ticket.id}/proof.pdf`, file_name: 'proof.pdf' }, users.icey.id);
+    service.runReminders(Date.now() + 24 * 3600000);
+    assert.throws(() => service.deleteTicket(ticket.id, users.sales.id), /仅管理员/);
+    assert.throws(() => service.deleteTicket(ticket.id, users.icey.id), /仅管理员/);
+    const result = service.deleteTicket(ticket.id, users.supervisor.id);
+    assert.deepEqual(result.object_paths, [`${ticket.id}/proof.pdf`]);
+    assert.equal(service.ticket(ticket.id), undefined);
+    for (const table of ['ticket_messages', 'ticket_attachments', 'ticket_history', 'ticket_notifications', 'ticket_reminder_logs']) {
+      assert.equal(store.all(table).some(row => row.ticket_id === ticket.id), false);
+    }
+  } finally { close(); }
+});
+
 test('待业务员确认持续提醒提交人，确认解决后停止提醒', () => {
   const { store, service, users, close } = fixture();
   try {

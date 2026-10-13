@@ -256,6 +256,19 @@ export class TicketService {
     return { ok: true, ticket_id: ticket.id };
   }
 
+  deleteTicket(ticketId, userId) {
+    const actor = this.actor(userId);
+    if (!this.isSupervisor(actor)) fail('仅管理员可以删除工单', 403);
+    const ticket = this.requireTicket(ticketId, actor);
+    const attachments = this.store.all('ticket_attachments').filter(row => row.ticket_id === ticket.id);
+    for (const table of ['ticket_messages', 'ticket_attachments', 'ticket_history', 'ticket_notifications', 'ticket_reminder_logs']) {
+      const ids = this.store.all(table).filter(row => row.ticket_id === ticket.id).map(row => row.id);
+      if (ids.length) this.store.remove(table, ids);
+    }
+    this.store.remove('tickets', [ticket.id]);
+    return { ok: true, ticket_id: ticket.id, object_paths: attachments.map(row => row.object_path).filter(Boolean) };
+  }
+
   decide(body, userId) {
     const actor = this.actor(userId), ticket = this.requireTicket(body.ticket_id, actor);
     if (ticket.created_by !== actor.id && !this.isSupervisor(actor)) fail('只有提交人可以确认处理结果', 403);

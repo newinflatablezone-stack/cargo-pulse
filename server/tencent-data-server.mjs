@@ -1,6 +1,8 @@
 import http from 'node:http';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { dirname, join, normalize } from 'node:path';
 import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking } from './tencent-data-core.mjs';
 
@@ -42,12 +44,29 @@ const DATA_REVISION = createHash('sha256').update(await readFile(new URL('./tenc
 const tickets = new TicketService(store);
 let push = null;
 let pushInitError = null;
+const pushWorkerPath = fileURLToPath(import.meta.url.includes('/opt/cargo-pulse-runtime/')
+  ? new URL('./ticket-reminders.mjs', import.meta.url)
+  : new URL('../scripts/ticket-reminders.mjs', import.meta.url));
+const launchPushWorker = notification => {
+  try {
+    const child = spawn(process.execPath, [pushWorkerPath], {
+      env: { ...process.env, CARGO_PULSE_PUSH_NOTIFICATION_ID: notification.id },
+      stdio: 'ignore', windowsHide: true
+    });
+    child.once('error', caught => console.error('Could not start isolated Web Push worker:', caught));
+    child.unref();
+  } catch (caught) {
+    console.error('Could not launch isolated Web Push worker:', caught);
+  }
+};
 try {
   let WebPushService;
   try { ({ WebPushService } = await import('./web-push.mjs')); }
   catch { ({ WebPushService } = await import('file:///var/www/cargo-pulse/runtime/web-push.mjs')); }
   push = new WebPushService(store);
-  tickets.setNotificationHandler(notification => push.queueTicketNotification(notification, tickets));
+  // Push providers run outside the primary data process. A provider/library
+  // failure can no longer interrupt login, orders or ticket APIs.
+  tickets.setNotificationHandler(launchPushWorker);
 } catch (caught) {
   // Web Push is an optional delivery channel. A crypto/runtime/configuration
   // problem must never take down authentication, orders, or the ticket API.
@@ -160,14 +179,7 @@ async function rpc(req, res, name, body, user) {
   if (name === 'ticket_archive') return send(res, 200, tickets.archive(body.ticket_id, user.id));
   if (name === 'ticket_notifications_read') return send(res, 200, tickets.markNotificationsRead(user.id));
   if (name === 'ticket_notification_snapshot') return send(res, 200, tickets.notificationSnapshot(user.id));
-  if (name === 'ticket_push_subscribe') {
-    const service = requirePush();
-    const status = service.subscribe(user.id, body.subscription || body);
-    // If an event happened while this browser subscription was unavailable,
-    // retry it as soon as the device reconnects instead of waiting for a timer.
-    await service.retryPendingTicketNotifications(tickets, { userId: user.id, limit: 20 });
-    return send(res, 200, { ...status, ...service.status(user.id) });
-  }
+  if (name === 'ticket_push_subscribe') return send(res, 200, requirePush().subscribe(user.id, body.subscription || body));
   if (name === 'ticket_push_unsubscribe') return send(res, 200, requirePush().unsubscribe(user.id, body.endpoint));
   if (name === 'ticket_push_test') return send(res, 200, await requirePush().test(user.id));
   if (name === 'ticket_register_attachment') return send(res, 200, tickets.registerAttachment(body, user.id));
@@ -353,20 +365,7 @@ const server = http.createServer((req, res) => {
   });
 });
 
-// Deadline reminders run on the server and never depend on a browser being open.
-// The separate systemd timer may also run on upgraded hosts; notification keys
-// make both paths idempotent.
-const runTicketReminders = () => {
-  try { tickets.runReminders(); }
-  catch (caught) { console.error('Ticket reminder check failed:', caught); }
-};
-const retryTicketPush = () => {
-  if (!push) return;
-  void push.retryPendingTicketNotifications(tickets).catch(caught => console.error('Ticket push retry failed:', caught));
-};
-setTimeout(runTicketReminders, 10_000).unref();
-setInterval(runTicketReminders, 5 * 60_000).unref();
-setTimeout(retryTicketPush, 5_000).unref();
-setInterval(retryTicketPush, 15_000).unref();
+// Deadline reminders and retry delivery run in the dedicated systemd worker.
+// Keeping those provider calls out of this process protects the core API.
 
 server.listen(PORT, '127.0.0.1', () => console.log(`Cargo Pulse Tencent data service listening on 127.0.0.1:${PORT}`));

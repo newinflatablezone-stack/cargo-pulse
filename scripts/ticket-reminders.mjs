@@ -17,10 +17,18 @@ const store = new TencentDataStore(database);
 try {
   const tickets = new TicketService(store);
   const push = new WebPushService(store);
-  tickets.setNotificationHandler(notification => push.queueTicketNotification(notification, tickets));
-  const result = tickets.runReminders();
-  await push.flush();
-  console.log(`Ticket reminders complete: ${result.created} notification(s) created.`);
+  const notificationId = String(process.env.CARGO_PULSE_PUSH_NOTIFICATION_ID || '');
+  if (notificationId) {
+    const notification = store.all('ticket_notifications').find(row => row.id === notificationId);
+    if (notification) await push.queueTicketNotification(notification, tickets);
+    console.log(`Ticket push worker complete: ${notification ? notification.id : 'notification-not-found'}.`);
+  } else {
+    tickets.setNotificationHandler(notification => push.queueTicketNotification(notification, tickets));
+    const result = tickets.runReminders();
+    await push.flush();
+    const retry = await push.retryPendingTicketNotifications(tickets);
+    console.log(`Ticket reminders complete: ${result.created} created, ${retry.attempted} retried, ${retry.sent} sent.`);
+  }
 } finally {
   store.db.close();
 }

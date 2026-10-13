@@ -1,0 +1,65 @@
+:root{font-size:12px}
+body{font-size:12px}
+header{height:58px;padding:0 max(16px,3vw);gap:14px}
+.brand{gap:8px;font-size:15px}
+.brand img{width:38px;height:38px}
+header nav{gap:7px;font-size:11px}
+.role,header nav button,header nav .button,.ticket-nav{padding:6px 9px;font-size:11px}
+main{max-width:1280px;padding:16px}
+.page-head{margin-bottom:9px}
+.page-head h1{font-size:18px}
+.head-actions button,.page-head>.button{padding:6px 9px;font-size:11px}
+.status-stats{gap:5px;margin-bottom:8px}
+.status-stats .stat{min-width:82px;padding:6px 9px;border-radius:7px}
+.status-stats .stat span{font-size:11px}
+.status-stats .stat b{font-size:14px}
+.status-pending{color:#725e20;border-color:#e4ce72;background:#fffbed}
+.status-in_progress{color:#176e95;border-color:#8ec9df;background:#eef9fd}
+.status-waiting_confirmation{color:#8a5314;border-color:#eab36e;background:#fff6ea}
+.status-closed{color:#267057;border-color:#9bcbb9;background:#eff8f4}
+.status-tag{display:inline-flex;padding:3px 7px;border:1px solid;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap}
+.panel{padding:8px;border-radius:9px}
+.filters{grid-template-columns:minmax(210px,2fr) repeat(3,minmax(100px,1fr));gap:5px;margin-bottom:7px}
+.filters input,.filters select,.field input,.field select,.field textarea{padding:6px 8px;border-radius:6px;font-size:11px}
+.tickets{min-width:800px;font-size:11px}
+.tickets th{padding:6px 8px;font-size:10px}
+.tickets td{padding:6px 8px}
+.title-cell b{font-size:12px}
+.title-cell small{font-size:9px;color:#7b8b84}
+.tag{padding:2px 6px;font-size:9px}
+.empty{padding:28px 12px}
+.detail-panel{padding:11px}
+.detail-head{gap:8px}
+.detail-head h1{margin:1px 0 5px;font-size:17px}
+.ticket-number{font-size:9px}
+.ticket-people{font-size:11px}
+.ticket-people small{font-size:9px}
+.detail-meta{gap:4px}
+.description{margin-top:9px;padding:8px 10px;border-left-width:3px;font-size:11px;line-height:1.45}
+.attachments{margin-top:6px}
+.attachments a{padding:4px 7px;font-size:10px}
+.timeline{margin-top:10px}
+.timeline h2,.reply h2,.modal-head h2{margin:0 0 7px;font-size:14px}
+.timeline article{grid-template-columns:26px 1fr;gap:6px;margin:6px 0}
+.avatar{width:24px;height:24px;font-size:10px}
+.bubble{padding:7px 9px;font-size:11px}
+.bubble header{font-size:10px}
+.bubble p{margin:5px 0;line-height:1.4}
+.history-log{margin:7px 0;font-size:10px}
+.history{margin:4px 0;padding:5px 7px;font-size:9px}
+.reply{margin-top:8px;padding:8px}
+.compact-reply{display:grid;grid-template-columns:110px 1fr 190px auto;align-items:end;gap:6px}
+.compact-reply textarea{min-height:48px;resize:vertical}
+.compact-reply button{height:30px;padding:5px 11px;font-size:11px}
+.compact-modal{max-width:520px}
+.modal form{padding:14px}
+.form-actions{margin-top:9px}
+.form-actions button{padding:6px 10px;font-size:11px}
+@media(max-width:800px){
+  header{min-height:54px;padding:8px 10px}.brand img{width:36px;height:36px}main{padding:9px}
+  .status-stats{grid-template-columns:repeat(4,1fr)}.status-stats .stat{padding:6px 3px}
+  .filters{grid-template-columns:1fr 1fr}.filters input{grid-column:1/-1}
+  .tickets{min-width:0}.tickets tr{margin:6px 0;padding:6px}.tickets td{padding:3px;font-size:10px}
+  .tickets td:before{font-size:9px}.detail-head h1{font-size:15px}.ticket-people{margin-top:6px}
+  .compact-reply{grid-template-columns:1fr}.compact-reply textarea{min-height:60px}
+}

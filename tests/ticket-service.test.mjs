@@ -24,8 +24,7 @@ const future = hours => new Date(Date.now() + hours * 3600000).toISOString();
 function createForIcey(service, users) {
   return service.create({
     title: '货物状态异常', description: '客户反馈交付时间有变化', order_no: '#9001',
-    category: 'delivery', priority: 'important', assignee_id: users.icey.id,
-    first_deadline: future(12)
+    category: 'delivery', priority: 'important', assignee_id: users.icey.id
   }, users.sales.id);
 }
 
@@ -49,24 +48,23 @@ test('ICEY 与秦枝的工单在服务端严格隔离，主管可查看全部', 
   } finally { close(); }
 });
 
-test('进展、解决、确认关闭与退回流程遵守截止时间规则', () => {
+test('进展、解决、确认与退回遵守四状态流程', () => {
   const { service, users, close } = fixture();
   try {
     const ticket = createForIcey(service, users);
     service.accept(ticket.id, users.icey.id);
-    const before = service.ticket(ticket.id).current_deadline;
+    assert.equal(service.badge(users.icey.id), 0);
     service.reply({ ticket_id: ticket.id, kind: 'message', text: '已向货代查询' }, users.icey.id);
-    assert.equal(service.ticket(ticket.id).current_deadline, before);
-    assert.throws(() => service.reply({ ticket_id: ticket.id, kind: 'progress', text: '等待反馈' }, users.icey.id), /下一次反馈时间无效/);
-    service.reply({ ticket_id: ticket.id, kind: 'progress', text: '已有进展', next_deadline: future(8) }, users.icey.id);
+    service.reply({ ticket_id: ticket.id, kind: 'progress', text: '已有进展' }, users.icey.id);
     service.reply({ ticket_id: ticket.id, kind: 'resolution', text: '已经解决' }, users.icey.id);
     assert.equal(service.ticket(ticket.id).status, 'waiting_confirmation');
+    assert.equal(service.badge(users.sales.id), 1);
     assert.throws(() => service.decide({ ticket_id: ticket.id, action: 'close' }, users.icey.id), /只有提交人/);
-    assert.throws(() => service.decide({ ticket_id: ticket.id, action: 'reopen', reason: '仍有问题' }, users.sales.id), /新的反馈截止时间无效/);
-    service.decide({ ticket_id: ticket.id, action: 'reopen', reason: '仍有问题', next_deadline: future(6) }, users.sales.id);
+    service.decide({ ticket_id: ticket.id, action: 'reopen', reason: '仍有问题' }, users.sales.id);
     assert.equal(service.ticket(ticket.id).status, 'in_progress');
     service.reply({ ticket_id: ticket.id, kind: 'resolution', text: '再次解决' }, users.icey.id);
     assert.equal(service.decide({ ticket_id: ticket.id, action: 'close' }, users.sales.id).status, 'closed');
+    assert.equal(service.badge(users.sales.id), 0);
   } finally { close(); }
 });
 
@@ -82,17 +80,20 @@ test('主管转交后原负责人立即失去权限，新负责人获得权限',
   } finally { close(); }
 });
 
-test('超期提醒按轮次去重并仅计入当前负责人的红点', () => {
+test('未解决工单每 24 小时提醒一次，处理后红点消失', () => {
   const { store, service, users, close } = fixture();
   try {
     const ticket = createForIcey(service, users);
-    const overdue = new Date(Date.now() - 50 * 3600000).toISOString();
-    store.put('tickets', { ...ticket, current_deadline: overdue });
-    assert.equal(service.runReminders().created, 2);
+    const stale = new Date(Date.now() - 50 * 3600000).toISOString();
+    store.put('tickets', { ...ticket, updated_at: stale });
+    assert.equal(service.runReminders().created, 1);
     assert.equal(service.runReminders().created, 0);
+    assert.equal(service.runReminders(Date.now() + 24 * 3600000).created, 1);
     assert.equal(service.badge(users.icey.id), 1);
     assert.equal(service.badge(users.qinzhi.id), 0);
-    assert.equal(service.badge(users.supervisor.id), 1);
+    assert.equal(service.badge(users.supervisor.id), 0);
+    service.accept(ticket.id, users.icey.id);
+    assert.equal(service.badge(users.icey.id), 0);
   } finally { close(); }
 });
 

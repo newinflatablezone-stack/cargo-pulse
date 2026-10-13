@@ -112,6 +112,17 @@ EOF
     journalctl -u cargo-pulse-data.service -n 100 --no-pager >&2 || true
     exit 1
   fi
+  # The service starts its push retry and reminder jobs a few seconds after
+  # listening. Verify it remains alive after those jobs have actually run,
+  # rather than declaring a deployment healthy during the startup window.
+  sleep 12
+  if ! data_healthy="$(curl -fsS http://127.0.0.1:8788/health)"; then
+    rm -f "$APP_ROOT/api/version"
+    echo '腾讯云本地数据服务在后台任务启动后退出：' >&2
+    systemctl status cargo-pulse-data.service --no-pager -l >&2 || true
+    journalctl -u cargo-pulse-data.service -n 100 --no-pager >&2 || true
+    exit 1
+  fi
   printf '%s\n' "$data_healthy" > "$APP_ROOT/api/push-status"
 elif [ -s "$RELEASE_DIR/deploy/tencent/install-local-data.sh" ]; then
   SOURCE="$RELEASE_DIR" bash "$RELEASE_DIR/deploy/tencent/install-local-data.sh"

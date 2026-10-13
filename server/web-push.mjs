@@ -77,14 +77,28 @@ export class WebPushService {
   }
 
   queueTicketNotification(notification, tickets) {
-    const task = this.sendTicketNotification(notification, tickets)
-      .then(result => this.recordTicketDelivery(notification, result))
-      .catch(error => this.recordTicketDelivery(notification, {
-        sent: 0, delivered: 0, pending: 1,
-        error: String(error?.body || error?.message || error).slice(0, 500)
-      }));
+    // Never let a push provider or a concurrent SQLite write terminate the
+    // core data process. Push is retried from the durable notification row;
+    // orders, login and tickets must stay available even when delivery fails.
+    const task = (async () => {
+      let result;
+      try { result = await this.sendTicketNotification(notification, tickets); }
+      catch (error) {
+        result = {
+          sent: 0, delivered: 0, pending: 1,
+          error: String(error?.body || error?.message || error).slice(0, 500)
+        };
+      }
+      try { return this.recordTicketDelivery(notification, result); }
+      catch (error) {
+        console.error('Web Push delivery state could not be saved:', String(error?.message || error));
+        return result;
+      }
+    })();
     this.pending.add(task);
-    task.finally(() => this.pending.delete(task));
+    // Supplying both handlers prevents the Promise returned by finally() from
+    // becoming an unhandled rejection under Node's strict default behavior.
+    void task.then(() => this.pending.delete(task), () => this.pending.delete(task));
     return task;
   }
 

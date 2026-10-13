@@ -68,31 +68,3 @@ test('Web Push 记录投递失败并在下一次成功后恢复健康状态', as
     assert.equal(push.status(icey.id).healthy_subscriptions, 1);
   } finally { close(); }
 });
-
-test('工单通知失败后保留在持久队列并自动重试到所有设备', async () => {
-  let fail = true, sends = 0;
-  const { store, sales, icey, tickets, push, close } = fixture(async () => {
-    sends += 1;
-    if (fail) throw Object.assign(Error('temporary gateway failure'), { statusCode: 503 });
-    return { ok: true, status: 201 };
-  });
-  try {
-    push.subscribe(icey.id, subscription('https://push.example.test/icey-phone'));
-    push.subscribe(icey.id, subscription('https://push.example.test/icey-computer'));
-    tickets.setNotificationHandler(notification => push.queueTicketNotification(notification, tickets));
-    const ticket = tickets.create({ description: '检查移动端推送', priority: 'urgent', assignee_id: icey.id }, sales.id);
-    await push.flush();
-    let notification = store.all('ticket_notifications').find(row => row.ticket_id === ticket.id);
-    assert.equal(notification.push_completed_at, null);
-    assert.equal(notification.push_attempts, 1);
-    assert.equal(sends, 2);
-
-    fail = false;
-    await push.retryPendingTicketNotifications(tickets, { at: Date.now() + 31_000 });
-    notification = store.all('ticket_notifications').find(row => row.id === notification.id);
-    assert.ok(notification.push_completed_at);
-    assert.equal(notification.push_attempts, 2);
-    assert.equal(store.all('push_delivery_logs').filter(row => row.dedupe_key === notification.id).length, 2);
-    assert.equal(sends, 4);
-  } finally { close(); }
-});

@@ -1,8 +1,6 @@
 import http from 'node:http';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import { spawn } from 'node:child_process';
 import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import { dirname, join, normalize } from 'node:path';
 import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking } from './tencent-data-core.mjs';
 
@@ -44,35 +42,18 @@ const DATA_REVISION = createHash('sha256').update(await readFile(new URL('./tenc
 const tickets = new TicketService(store);
 let push = null;
 let pushInitError = null;
-const pushWorkerPath = process.env.CARGO_PULSE_PUSH_WORKER || (import.meta.url.includes('/opt/cargo-pulse-runtime/')
-  ? '/var/www/cargo-pulse/runtime/ticket-push-worker.mjs'
-  : fileURLToPath(new URL('../dist/runtime/ticket-push-worker.mjs', import.meta.url)));
-const launchPushWorker = notification => {
+let pushSweepRunning = false;
+const runPushSweep = async () => {
+  if (!push || pushSweepRunning) return;
+  pushSweepRunning = true;
   try {
-    let stderr = '';
-    const child = spawn(process.execPath, [pushWorkerPath], {
-      env: { ...process.env, CARGO_PULSE_PUSH_NOTIFICATION_ID: notification.id },
-      stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true
-    });
-    child.stderr?.setEncoding('utf8');
-    child.stderr?.on('data', chunk => { stderr = (stderr + chunk).slice(-1200); });
-    child.once('error', caught => console.error('Could not start isolated Web Push worker:', caught));
-    child.once('exit', code => {
-      if (code === 0) return;
-      const current = store.all('ticket_notifications').find(row => row.id === notification.id);
-      if (!current) return;
-      const message = String(stderr || `worker exited with code ${code}`).replace(/https?:\/\/\S+/g, '[url]').slice(0, 500);
-      store.put('ticket_notifications', {
-        ...current,
-        push_worker_exit_code: code,
-        push_worker_error: message,
-        push_worker_failed_at: new Date().toISOString()
-      });
-      console.error('Isolated Web Push worker failed:', message);
-    });
-    child.unref();
+    tickets.runReminders();
+    await push.flush();
+    await push.retryPendingTicketNotifications(tickets);
   } catch (caught) {
-    console.error('Could not launch isolated Web Push worker:', caught);
+    console.error('Web Push sweep failed; core service remains available:', caught);
+  } finally {
+    pushSweepRunning = false;
   }
 };
 try {
@@ -80,22 +61,20 @@ try {
   try { ({ WebPushService } = await import('./web-push.mjs')); }
   catch { ({ WebPushService } = await import('file:///var/www/cargo-pulse/runtime/web-push.mjs')); }
   push = new WebPushService(store);
-  // Push providers run outside the primary data process. A provider/library
-  // failure can no longer interrupt login, orders or ticket APIs.
-  tickets.setNotificationHandler(launchPushWorker);
+  // Delivery failures are caught and persisted by WebPushService. Keeping the
+  // queue in this process avoids stale cross-process SQLite caches while the
+  // process-level rejection guard still protects login, orders and tickets.
+  tickets.setNotificationHandler(notification => push.queueTicketNotification(notification, tickets));
 } catch (caught) {
   // Web Push is an optional delivery channel. A crypto/runtime/configuration
   // problem must never take down authentication, orders, or the ticket API.
   pushInitError = caught;
   console.error('Web Push disabled; core data service remains available:', caught);
 }
-// Recover notifications created immediately before a restart/deployment in
-// one worker. Starting one process per pending item causes concurrent SQLite
-// writers and can leave one item untouched during deployment startup.
-setTimeout(() => launchPushWorker({ id: '' }), 1500).unref();
-// Run reminder creation and retry delivery out-of-process as well. This keeps
-// background delivery independent of an older/missing systemd timer install.
-setInterval(() => launchPushWorker({ id: '' }), 5 * 60_000).unref();
+// Recover events created immediately before a restart and keep reminders
+// independent of page visits or the legacy systemd timer installation.
+setTimeout(() => { void runPushSweep(); }, 1500).unref();
+setInterval(() => { void runPushSweep(); }, 5 * 60_000).unref();
 const pushStatus = userId => push
   ? push.status(userId)
   : { available: false, public_key: null, subscriptions: 0 };

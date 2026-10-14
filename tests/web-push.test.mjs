@@ -123,6 +123,8 @@ test('推送诊断汇总订阅、待发送事件与成功回执且不暴露订�
     assert.equal(diagnostics.subscriptions, 1);
     assert.equal(diagnostics.completed_notifications, 1);
     assert.equal(diagnostics.delivery_receipts, 1);
+    assert.deepEqual(diagnostics.subscription_gateways, { 'push.example.test': 1 });
+    assert.equal(diagnostics.in_flight_deliveries, 0);
     assert.equal(JSON.stringify(diagnostics).includes('private-endpoint'), false);
   } finally { close(); }
 });

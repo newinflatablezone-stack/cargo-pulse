@@ -18,15 +18,21 @@ function ensureVapidKeys(store) {
 }
 
 export async function sendWebPush(subscription, payload, vapid) {
-  const response = await webPush.sendNotification({
+  const request = webPush.sendNotification({
     endpoint: subscription.endpoint,
     keys: { p256dh: subscription.p256dh, auth: subscription.auth }
   }, JSON.stringify(payload), {
     TTL: 86400,
     urgency: payload.urgency || 'normal',
     contentEncoding: 'aes128gcm',
-    vapidDetails: vapid
+    vapidDetails: vapid,
+    timeout: 12_000
   });
+  let timer;
+  const response = await Promise.race([
+    request,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(Error('推送网关连接超时')), 15_000); })
+  ]).finally(() => clearTimeout(timer));
   return { status: response.statusCode, ok: response.statusCode >= 200 && response.statusCode < 300 };
 }
 
@@ -63,9 +69,13 @@ export class WebPushService {
     const notifications = this.store.all('ticket_notifications').filter(row => row.push_pending_at);
     const deliveries = this.store.all('push_delivery_logs');
     const statusCounts = {};
+    const gatewayCounts = {};
     for (const row of subscriptions) {
       const key = String(row.last_status ?? (row.last_error ? 'error' : 'never'));
       statusCounts[key] = (statusCounts[key] || 0) + 1;
+      let gateway = 'invalid';
+      try { gateway = new URL(row.endpoint).hostname; } catch {}
+      gatewayCounts[gateway] = (gatewayCounts[gateway] || 0) + 1;
     }
     const pending = notifications.filter(row => !row.push_completed_at);
     const workerFailures = pending.filter(row => row.push_worker_error);
@@ -73,6 +83,8 @@ export class WebPushService {
       subscriptions: subscriptions.length,
       healthy_subscriptions: subscriptions.filter(row => !row.last_error).length,
       subscription_statuses: statusCounts,
+      subscription_gateways: gatewayCounts,
+      in_flight_deliveries: this.pending.size,
       queued_notifications: notifications.length,
       pending_notifications: pending.length,
       pending_never_attempted: pending.filter(row => !Number(row.push_attempts || 0)).length,

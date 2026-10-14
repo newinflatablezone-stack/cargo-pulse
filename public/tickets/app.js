@@ -23,6 +23,7 @@ const isBusiness=()=>data?.actor?.role==='business';
 const isAssigned=ticket=>ticket.assignee_id===data?.actor?.id;
 function toast(message,duration=2600){const node=document.createElement('div');node.className='toast';node.textContent=message;document.body.append(node);setTimeout(()=>node.remove(),duration)}
 const samePushKey=(left,right)=>left&&right&&left.length===right.length&&left.every((value,index)=>value===right[index]);
+function updatePushButton(){const button=document.querySelector('#enablePush');if(button){const label=pushButtonLabel();if(button.textContent!==label)button.textContent=label;button.disabled=false}}
 let pushStage='准备通知';
 async function syncPush({force=false,test=false}={}){
   const mobile=isMobileDevice(),device=mobile?'手机':'电脑';
@@ -50,7 +51,7 @@ async function syncPush({force=false,test=false}={}){
   if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:desiredKey});
   pushStage='保存推送订阅';
   data.push={...(await rpc('ticket_push_subscribe',{subscription:subscription.toJSON()})),browser_ready:true};
-  if(test){pushStage='发送服务器测试推送';const result=await rpc('ticket_push_test');if(!result.sent)throw Error(`${device}本机通知正常，但服务器推送网关没有接受测试消息`);render();toast(`${device}通知已开启，测试消息已发送`,8000)}else render();
+  if(test){pushStage='发送服务器测试推送';const result=await rpc('ticket_push_test');if(!result.sent)throw Error(`${device}本机通知正常，但服务器推送网关没有接受测试消息`);updatePushButton();toast(`${device}通知已开启，测试消息已发送`,8000)}else updatePushButton();
   return true
 }
 const enablePush=()=>Promise.race([syncPush({force:true,test:true}),new Promise((_,reject)=>setTimeout(()=>reject(Error(`开启通知失败：${pushStage}超时`)),20000))]);

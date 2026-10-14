@@ -25,6 +25,7 @@ export async function mountTicketPage(host,options={}){
   const isSupervisor=()=>data?.actor?.role==='supervisor',isBusiness=()=>data?.actor?.role==='business',isAssigned=ticket=>ticket.assignee_id===data?.actor?.id;
   function toast(message,duration=2600){const node=document.createElement('div');node.className='toast';node.textContent=message;root.append(node);setTimeout(()=>node.remove(),duration)}
   const samePushKey=(left,right)=>left&&right&&left.length===right.length&&left.every((value,index)=>value===right[index]);
+  function updatePushButton(){const button=q('#teEnablePush');if(button){const label=pushButtonLabel();if(button.textContent!==label)button.textContent=label;button.disabled=false}}
   let pushStage='准备通知';
   async function syncPush({force=false,test=false}={}){
     const mobile=isMobileDevice(),device=mobile?'手机':'电脑';
@@ -52,7 +53,7 @@ export async function mountTicketPage(host,options={}){
     if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:desiredKey});
     pushStage='保存推送订阅';
     data.push={...(await rpc('ticket_push_subscribe',{subscription:subscription.toJSON()})),browser_ready:true};
-    if(test){pushStage='发送服务器测试推送';const result=await rpc('ticket_push_test');if(!result.sent)throw Error(`${device}本机通知正常，但服务器推送网关没有接受测试消息`);render();toast(`${device}通知已开启，测试消息已发送`,8000)}else render();
+    if(test){pushStage='发送服务器测试推送';const result=await rpc('ticket_push_test');if(!result.sent)throw Error(`${device}本机通知正常，但服务器推送网关没有接受测试消息`);updatePushButton();toast(`${device}通知已开启，测试消息已发送`,8000)}else updatePushButton();
     return true
   }
   const enablePush=()=>Promise.race([syncPush({force:true,test:true}),new Promise((_,reject)=>setTimeout(()=>reject(Error(`开启通知失败：${pushStage}超时`)),20000))]);
@@ -79,5 +80,6 @@ export async function mountTicketPage(host,options={}){
 
   host.applyTicketNotificationSnapshot=snapshot=>{data.notifications=Array.isArray(snapshot.notifications)?snapshot.notifications:[];data.badge_count=Number(snapshot.badge_count||0);const button=q('#teNotices');if(!button)return;let badge=button.querySelector('b');if(data.notifications.length&&!badge){badge=document.createElement('b');button.append(badge)}if(badge)badge.textContent=String(data.notifications.length||'');if(!data.notifications.length)badge?.remove()};
   host.openTicket=ticketId=>route(ticketId);
+  host.syncTicketRoute=(ticketId,openNotices=false)=>{if(activeTicketId===ticketId&&noticeOpen===openNotices)return;activeTicketId=ticketId;noticeOpen=openNotices;render()};
   cfg=JSON.parse(localStorage.getItem('cp_config')||'{}');if(!cfg.url){cfg=await(window.__cpConfigPromise||fetch('/api/config',{cache:'no-store'}).then(response=>response.json()));localStorage.setItem('cp_config',JSON.stringify(cfg))}if(cfg.url==='same-origin')cfg.url=location.origin;if(!session?.access_token)throw Error('登录已失效，请返回订单中心重新登录');await load();
 }

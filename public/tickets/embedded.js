@@ -52,7 +52,7 @@ export async function mountTicketPage(host,options={}){
     if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:desiredKey});
     pushStage='保存推送订阅';
     data.push={...(await rpc('ticket_push_subscribe',{subscription:subscription.toJSON()})),browser_ready:true};
-    if(test){pushStage='验证当前浏览器的服务器推送';const result=await rpc('ticket_push_test',{endpoint:subscription.endpoint});if(result.sent!==1||result.failed||result.removed){data.push.browser_ready=false;updatePushButton();throw Error(`${device}订阅未通过服务器验证，请重新开启通知`)}updatePushButton();toast(`${device}通知已开启，服务器测试消息已发送`,8000)}else updatePushButton();
+    if(test){pushStage='验证当前浏览器的服务器推送';const result=await rpc('ticket_push_test',{endpoint:subscription.endpoint});if(result.sent!==1||result.failed||result.removed){data.push.browser_ready=false;updatePushButton();const gateway=new URL(subscription.endpoint).hostname;throw Error(gateway==='fcm.googleapis.com'?'Chrome 推送网关连接失败，请用 Microsoft Edge 打开本站并开启通知':`${device}订阅未通过服务器验证，请重新开启通知`)}updatePushButton();toast(`${device}通知已开启，服务器测试消息已发送`,8000)}else updatePushButton();
     return true
   }
   const enablePush=()=>syncPush({force:true,test:true});

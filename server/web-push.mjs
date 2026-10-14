@@ -1,8 +1,18 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { Agent as HttpsAgent } from 'node:https';
 import webPush from 'web-push';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 
 const now = () => new Date().toISOString();
 const hash = value => createHash('sha256').update(String(value)).digest('hex');
+const proxyUrl = process.env.WEB_PUSH_PROXY || process.env.HTTPS_PROXY || process.env.https_proxy || '';
+// Push providers publish both IPv4 and IPv6 addresses. The Tencent host has
+// no usable public IPv6 route, so an IPv6-first connection can hang even
+// though the provider is reachable over IPv4. A configured relay still takes
+// precedence for networks where Google FCM is not directly reachable.
+const pushAgent = proxyUrl
+  ? new HttpsProxyAgent(proxyUrl)
+  : new HttpsAgent({ keepAlive: true, family: 4 });
 
 function ensureVapidKeys(store) {
   const envPublic = process.env.WEB_PUSH_VAPID_PUBLIC_KEY;
@@ -26,7 +36,8 @@ export async function sendWebPush(subscription, payload, vapid) {
     urgency: payload.urgency || 'normal',
     contentEncoding: 'aes128gcm',
     vapidDetails: vapid,
-    timeout: 12_000
+    timeout: 12_000,
+    agent: pushAgent
   });
   let timer;
   const response = await Promise.race([

@@ -314,7 +314,7 @@ export class TicketService {
     if (ticket.status !== 'waiting_confirmation') fail('当前工单不在待确认状态', 409);
     if (body.action === 'close') {
       const updated = this.store.put('tickets', { ...ticket, status: 'closed', closed_at: now(), updated_at: now() });
-      this.markTicketNotificationsRead(ticket.id, actor.id);
+      for (const recipient of new Set([actor.id, ticket.created_by, ticket.assignee_id])) this.markTicketNotificationsRead(ticket.id, recipient);
       this.history(ticket.id, actor, 'status_changed', { from: 'waiting_confirmation', to: 'closed' });
       return updated;
     }
@@ -391,16 +391,30 @@ export class TicketService {
       const elapsed = at - activityAt;
       const intervalHours = reminderHours[ticket.priority] || reminderHours.normal;
       const intervalMs = intervalHours * 3600000;
-      const recipient = ticket.status === 'waiting_confirmation' ? ticket.created_by : ticket.assignee_id;
+      const recipients = ticket.status === 'waiting_confirmation'
+        ? [...new Set([ticket.created_by, ticket.assignee_id].filter(Boolean))]
+        : [ticket.assignee_id];
       if (elapsed >= intervalMs - 3600000 && elapsed < intervalMs) {
-        const action = ticket.status === 'waiting_confirmation' ? '即将到期，请确认是否已解决' : '即将到期，请及时处理';
-        if (this.notify(recipient, ticket.id, 'due_soon', `${ticket.ticket_no} ${action}`, `due-soon:${ticket.id}:${recipient}:${ticket.updated_at || ticket.created_at}:${intervalHours}`)) created += 1;
+        for (const recipient of recipients) {
+          const action = ticket.status !== 'waiting_confirmation'
+            ? '即将到期，请及时处理'
+            : recipient === ticket.created_by
+              ? '即将到期，请确认是否已解决'
+              : '等待业务员确认，如处理结果有误请及时跟进';
+          if (this.notify(recipient, ticket.id, 'due_soon', `${ticket.ticket_no} ${action}`, `due-soon:${ticket.id}:${recipient}:${ticket.updated_at || ticket.created_at}:${intervalHours}`)) created += 1;
+        }
         continue;
       }
       if (elapsed < intervalMs) continue;
       const bucket = Math.floor(elapsed / intervalMs);
-      const action = ticket.status === 'waiting_confirmation' ? '等待你确认是否已解决' : '仍未解决，请及时处理';
-      if (this.notify(recipient, ticket.id, 'unresolved', `${ticket.ticket_no} ${action}`, `unresolved:${ticket.id}:${recipient}:${ticket.updated_at || ticket.created_at}:${intervalHours}:${bucket}`)) created += 1;
+      for (const recipient of recipients) {
+        const action = ticket.status !== 'waiting_confirmation'
+          ? '仍未解决，请及时处理'
+          : recipient === ticket.created_by
+            ? '等待你确认是否已解决'
+            : '仍待业务员确认，如处理结果有误请继续跟进';
+        if (this.notify(recipient, ticket.id, 'unresolved', `${ticket.ticket_no} ${action}`, `unresolved:${ticket.id}:${recipient}:${ticket.updated_at || ticket.created_at}:${intervalHours}:${bucket}`)) created += 1;
+      }
     }
     return { created };
   }

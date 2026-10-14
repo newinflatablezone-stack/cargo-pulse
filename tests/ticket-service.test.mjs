@@ -270,18 +270,21 @@ test('只有管理员可以删除整个工单并清理全部关联记录', () =>
   } finally { close(); }
 });
 
-test('待业务员确认持续提醒提交人，确认解决后停止提醒', () => {
+test('待业务员确认持续提醒提交人与负责人，确认解决后双方停止提醒', () => {
   const { store, service, users, close } = fixture();
   try {
     const ticket = createForIcey(service, users);
     service.reply({ ticket_id: ticket.id, kind: 'resolution', text: '处理完成，请确认' }, users.icey.id);
     service.markNotificationsRead(users.sales.id);
+    service.markNotificationsRead(users.icey.id);
     const waiting = service.ticket(ticket.id);
     store.put('tickets', { ...waiting, updated_at: new Date(Date.now() - 9 * 3600000 - 1000).toISOString() });
-    assert.equal(service.runReminders().created, 1);
+    assert.equal(service.runReminders().created, 2);
     assert.equal(service.badge(users.sales.id), 1);
+    assert.equal(service.badge(users.icey.id), 1);
     service.decide({ ticket_id: ticket.id, action: 'close' }, users.sales.id);
     assert.equal(service.badge(users.sales.id), 0);
+    assert.equal(service.badge(users.icey.id), 0);
     assert.equal(service.runReminders(Date.now() + 24 * 3600000).created, 0);
   } finally { close(); }
 });

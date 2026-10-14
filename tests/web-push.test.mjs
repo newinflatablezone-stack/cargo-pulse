@@ -97,6 +97,21 @@ test('工单通知失败后保留在持久队列并自动重试到所有设备',
   } finally { close(); }
 });
 
+test('通知开启测试只验证当前浏览器订阅，不会被同账号其他设备假冒成功', async () => {
+  const sentEndpoints = [];
+  const { icey, push, close } = fixture(async row => {
+    sentEndpoints.push(row.endpoint);
+    return row.endpoint.endsWith('/current') ? { ok: true, status: 201 } : { ok: false, status: 503 };
+  });
+  try {
+    push.subscribe(icey.id, subscription('https://push.example.test/stale'));
+    push.subscribe(icey.id, subscription('https://push.example.test/current'));
+    const result = await push.test(icey.id, 'https://push.example.test/current');
+    assert.equal(result.sent, 1);
+    assert.deepEqual(sentEndpoints, ['https://push.example.test/current']);
+  } finally { close(); }
+});
+
 test('推送诊断汇总订阅、待发送事件与成功回执且不暴露订阅地址', async () => {
   const { sales, icey, tickets, push, close } = fixture(async () => ({ ok: true, status: 201 }));
   try {

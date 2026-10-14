@@ -46,17 +46,16 @@ export async function mountTicketPage(host,options={}){
     pushStage='激活后台通知组件';
     await navigator.serviceWorker.register('/push-sw.js',{scope:'/'});
     const registration=await navigator.serviceWorker.ready,desiredKey=pushKey(data.push.public_key);
-    if(test){pushStage=`显示${device}测试通知`;await registration.showNotification(`Cargo Pulse · ${device}通知测试`,{body:`${device}通知显示正常`,icon:'/brand-logo.png',badge:'/brand-logo.png',tag:'ticket-local-test'})}
     pushStage='创建浏览器推送订阅';
     let subscription=await registration.pushManager.getSubscription(),currentKey=subscription?.options?.applicationServerKey?new Uint8Array(subscription.options.applicationServerKey):null;
-    if(subscription&&(force||!samePushKey(currentKey,desiredKey))){await subscription.unsubscribe();subscription=null}
+    if(subscription&&!samePushKey(currentKey,desiredKey)){await subscription.unsubscribe();subscription=null}
     if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:desiredKey});
     pushStage='保存推送订阅';
     data.push={...(await rpc('ticket_push_subscribe',{subscription:subscription.toJSON()})),browser_ready:true};
-    if(test){pushStage='发送服务器测试推送';const result=await rpc('ticket_push_test');if(!result.sent)throw Error(`${device}本机通知正常，但服务器推送网关没有接受测试消息`);updatePushButton();toast(`${device}通知已开启，测试消息已发送`,8000)}else updatePushButton();
+    if(test){pushStage='验证当前浏览器的服务器推送';const result=await rpc('ticket_push_test',{endpoint:subscription.endpoint});if(result.sent!==1||result.failed||result.removed){data.push.browser_ready=false;updatePushButton();throw Error(`${device}订阅未通过服务器验证，请重新开启通知`)}updatePushButton();toast(`${device}通知已开启，服务器测试消息已发送`,8000)}else updatePushButton();
     return true
   }
-  const enablePush=()=>Promise.race([syncPush({force:true,test:true}),new Promise((_,reject)=>setTimeout(()=>reject(Error(`开启通知失败：${pushStage}超时`)),20000))]);
+  const enablePush=()=>syncPush({force:true,test:true});
   root.addEventListener('click',async event=>{const button=event.target.closest?.('[data-message-delete]');if(!button)return;if(!confirm('确定删除这条聊天记录吗？'))return;button.disabled=true;try{await rpc('ticket_message_delete',{message_id:button.dataset.messageDelete});if(activeTicketId)await loadDetail(activeTicketId)}catch(error){button.disabled=false;toast(error.message)}});
   root.addEventListener('click',async event=>{const button=event.target.closest?.('[data-ticket-delete]');if(!button)return;if(!confirm('确定永久删除整个工单吗？聊天、附件和历史记录都会同时删除，且无法恢复。'))return;button.disabled=true;try{await rpc('ticket_delete',{ticket_id:button.dataset.ticketDelete});await load();route()}catch(error){button.disabled=false;toast(error.message)}});
   function route(ticketId=null){const params=new URLSearchParams({resource:'tickets'});if(ticketId)params.set('ticket',ticketId);history.pushState({},'',location.pathname+'?'+params);activeTicketId=ticketId;render()}

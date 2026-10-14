@@ -182,16 +182,16 @@ export class WebPushService {
     return { attempted: rows.length, sent: results.reduce((sum, row) => sum + Number(row?.sent || 0), 0) };
   }
 
-  async test(userId) {
+  async test(userId, endpoint = '') {
     return this.deliver(userId, {
       title: 'Cargo Pulse · 测试通知', body: '桌面通知已成功开启', event_type: '测试通知',
       url: '/?resource=tickets', tag: `ticket-push-test-${Date.now()}`
-    }, `test:${randomUUID()}`);
+    }, `test:${randomUUID()}`, endpoint);
   }
 
-  async deliver(userId, payload, dedupeKey) {
+  async deliver(userId, payload, dedupeKey, endpoint = '') {
     let sent = 0, removed = 0, failed = 0, delivered = 0;
-    const subscriptions = this.store.all('push_subscriptions').filter(row => row.user_id === userId);
+    const subscriptions = this.store.all('push_subscriptions').filter(row => row.user_id === userId && (!endpoint || row.endpoint === endpoint));
     for (const subscription of subscriptions) {
       const deliveryId = hash(`${dedupeKey}:${subscription.id}`);
       if (this.store.all('push_delivery_logs').some(row => row.id === deliveryId)) { delivered += 1; continue; }

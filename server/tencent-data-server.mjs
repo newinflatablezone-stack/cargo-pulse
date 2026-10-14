@@ -184,7 +184,7 @@ async function rpc(req, res, name, body, user) {
   if (name === 'ticket_notification_snapshot') return send(res, 200, tickets.notificationSnapshot(user.id));
   if (name === 'ticket_push_subscribe') return send(res, 200, requirePush().subscribe(user.id, body.subscription || body));
   if (name === 'ticket_push_unsubscribe') return send(res, 200, requirePush().unsubscribe(user.id, body.endpoint));
-  if (name === 'ticket_push_test') return send(res, 200, await requirePush().test(user.id));
+  if (name === 'ticket_push_test') return send(res, 200, await requirePush().test(user.id, String(body.endpoint || '')));
   if (name === 'ticket_register_attachment') return send(res, 200, tickets.registerAttachment(body, user.id));
   if (name === 'lookup_customer_tracking') {
     return send(res, 200, lookupCustomerTracking(store, body.p_email));

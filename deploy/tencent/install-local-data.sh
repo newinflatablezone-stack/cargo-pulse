@@ -111,37 +111,6 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
-cat > /etc/systemd/system/cargo-pulse-ticket-reminders.service <<EOF
-[Unit]
-Description=Cargo Pulse ticket overdue reminders
-After=cargo-pulse-data.service
-
-[Service]
-Type=oneshot
-User=www-data
-Group=www-data
-EnvironmentFile=$CONFIG_DIR/local-data.env
-ExecStart=$NODE_BIN $RUNTIME/ticket-reminders.mjs
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/var/lib/cargo-pulse/data
-EOF
-
-cat > /etc/systemd/system/cargo-pulse-ticket-reminders.timer <<'EOF'
-[Unit]
-Description=Check Cargo Pulse ticket deadlines every five minutes
-
-[Timer]
-OnBootSec=2m
-OnUnitActiveSec=5m
-AccuracySec=30s
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
-
 python3 - <<'PY'
 from pathlib import Path
 candidates=[]
@@ -206,7 +175,10 @@ chmod 750 /usr/local/sbin/cargo-pulse-activate-local-data
 systemctl daemon-reload
 systemctl enable --now cargo-pulse-data.service
 systemctl enable --now cargo-pulse-data-backup.timer
-systemctl enable --now cargo-pulse-ticket-reminders.timer
+# cargo-pulse-data owns the reminder loop. Stop older installations from
+# running the legacy timer against the same SQLite database.
+systemctl disable --now cargo-pulse-ticket-reminders.timer 2>/dev/null || true
+systemctl stop cargo-pulse-ticket-reminders.service 2>/dev/null || true
 nginx -t
 systemctl reload nginx
 healthy=''

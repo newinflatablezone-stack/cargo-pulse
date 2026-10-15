@@ -3,6 +3,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
+const ticketAppSource = readFileSync(new URL('../public/tickets/app.js', import.meta.url), 'utf8');
+const embeddedTicketSource = readFileSync(new URL('../public/tickets/embedded.js', import.meta.url), 'utf8');
+
+test('待处理工单固定显示红色提醒标记', () => {
+  assert.match(ticketAppSource, /pending:'🔴 待处理'/);
+  assert.match(embeddedTicketSource, /pending:'🔴 待处理'/);
+});
 
 test('工单 Shadow DOM 挂载到可移除子容器，切换其他后台页面不会被旧页面覆盖', () => {
   assert.match(source, /class="ticket-page-host"/);

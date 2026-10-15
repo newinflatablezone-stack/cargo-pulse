@@ -1,5 +1,5 @@
 const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':'&quot;'}[char]));
-const labels={priority:{normal:'普通',important:'重要',urgent:'紧急'},status:{pending:'待处理',in_progress:'处理中',waiting_confirmation:'待确认',closed:'已解决'},category:{production:'生产',logistics:'物流',delivery:'交付',after_sales:'售后',other:'其他'},kind:{created:'创建工单',message:'补充消息',progress:'进展更新',resolution:'解决结果',reopened:'退回处理'}};
+const labels={priority:{normal:'普通',important:'重要',urgent:'紧急'},status:{pending:'🔴 待处理',in_progress:'处理中',waiting_confirmation:'待确认',closed:'已解决'},category:{production:'生产',logistics:'物流',delivery:'交付',after_sales:'售后',other:'其他'},kind:{created:'创建工单',message:'补充消息',progress:'进展更新',resolution:'解决结果',reopened:'退回处理'}};
 const priorityChoice=key=>`${labels.priority[key]}（每${{normal:9,important:6,urgent:3}[key]}小时提醒）`;
 
 export async function mountTicketPage(host,options={}){

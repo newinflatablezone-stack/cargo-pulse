@@ -18,6 +18,7 @@ test('工单列表只显示紧急等级并统一状态标记尺寸', () => {
   assert.match(compactTicketStyle, /\.tickets td:nth-child\(3\)>\.tag:first-child\{display:none\}/);
   assert.match(compactTicketStyle, /content:"等级"/);
   assert.match(compactTicketStyle, /min-width:64px/);
+  assert.match(compactTicketStyle, /\.tickets th:nth-child\(2\),\.tickets td:nth-child\(2\)\{display:none!important\}/);
 });
 
 test('工单 Shadow DOM 挂载到可移除子容器，切换其他后台页面不会被旧页面覆盖', () => {

@@ -82,6 +82,9 @@ main{max-width:1280px;padding:16px}
   .reply-choice-actions{flex-direction:column}.reply-choice-actions button{width:100%}
 }
 
+/* The queue stays focused on the issue itself; order references remain in ticket data/details. */
+.tickets th:nth-child(2),.tickets td:nth-child(2){display:none!important}
+
 /* Mobile workspace: dense controls and information-rich ticket cards. */
 .mobile-list-tools{display:none}
 @media(max-width:700px){

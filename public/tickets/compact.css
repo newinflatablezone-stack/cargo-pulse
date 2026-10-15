@@ -14,10 +14,18 @@ main{max-width:1280px;padding:16px}
 .status-stats .stat span{font-size:11px}
 .status-stats .stat b{font-size:14px}
 .status-pending{color:#725e20;border-color:#e4ce72;background:#fffbed}
+.status-tag.status-pending::before,.status-stats .status-pending span::before{content:"";display:inline-block;width:7px;height:7px;margin-right:4px;border-radius:50%;background:#ed352d;vertical-align:1px}
 .status-in_progress{color:#176e95;border-color:#8ec9df;background:#eef9fd}
 .status-waiting_confirmation{color:#8a5314;border-color:#eab36e;background:#fff6ea}
 .status-closed{color:#267057;border-color:#9bcbb9;background:#eff8f4}
 .status-tag{display:inline-flex;padding:3px 7px;border:1px solid;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap}
+#categoryFilter,#teCategory{display:none}
+.tickets th:nth-child(3){font-size:0}
+.tickets th:nth-child(3)::after{content:"等级";font-size:10px}
+.tickets td:nth-child(3)>.tag:first-child{display:none}
+.tickets td:nth-child(4){white-space:nowrap}
+.tickets td:nth-child(4) .status-tag{min-width:64px;justify-content:center;gap:2px}
+.tickets td:nth-child(4) .due-red{margin-left:4px;padding:2px 5px;border:1px solid #efb8b3;border-radius:8px;background:#fff1ef;font-size:8px}
 .panel{padding:8px;border-radius:9px}
 .filters{grid-template-columns:minmax(210px,2fr) repeat(3,minmax(100px,1fr));gap:5px;margin-bottom:7px}
 .filters input,.filters select,.field input,.field select,.field textarea{padding:6px 8px;border-radius:6px;font-size:11px}

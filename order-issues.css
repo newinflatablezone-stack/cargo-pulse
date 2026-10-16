@@ -5,8 +5,8 @@
 .stats article[data-alert="all"]{display:none}.stats .q-summary:before{background:#f28c28}.stats .q-summary:hover,.stats .q-summary.selected{border-color:#e88a2b}
 
 /* Use the issue summary's orange consistently across issue conversations. */
-.q-order .q-create,.q-thread-actions button,.q-dialog form button[type="submit"]{background:#f28c28;border:1px solid #e7801c;color:#542600;border-radius:8px;padding:10px 15px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;box-shadow:none}
-.q-order .q-create:hover,.q-thread-actions button:hover,.q-dialog form button[type="submit"]:hover{background:#e8811e;border-color:#d46c10;color:#472000}
+.q-order .q-create,.q-thread-actions button,.q-dialog form button[type="submit"]{background:#f28c28;border:1px solid #e7801c;color:#fff;border-radius:8px;padding:10px 15px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;box-shadow:none}
+.q-order .q-create:hover,.q-thread-actions button:hover,.q-dialog form button[type="submit"]:hover{background:#e8811e;border-color:#d46c10;color:#fff}
 .q-order .q-create:focus-visible,.q-thread-actions button:focus-visible,.q-dialog form button[type="submit"]:focus-visible{outline:3px solid #f1b56b;outline-offset:2px}
 .q-order .q-order-head h3{color:#b85a08}
 .q-thread:not(.q-closed){border-color:#f1cfaa}

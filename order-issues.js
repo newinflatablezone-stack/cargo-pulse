@@ -38,7 +38,7 @@ function paintHome() {
   document.querySelectorAll('.order-card[data-order]').forEach(order => {
     order.querySelector('.q-unread-dot')?.remove();
     if (unreadOrders.has(order.dataset.order)) {
-      const dot = document.createElement('span'); dot.className='q-unread-dot';dot.setAttribute('role','img');dot.setAttribute('aria-label','问题有未读消息');dot.title='问题有未读消息';order.append(dot);
+      const dot = document.createElement('span'); dot.className='q-unread-dot';dot.textContent='新消息';dot.setAttribute('aria-label','问题有未读消息');dot.title='问题有未读消息，打开订单查看';(order.querySelector('.card-top')||order).append(dot);
     }
   });
   if (activeOrder?.panel.isConnected && summary) {

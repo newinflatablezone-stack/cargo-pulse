@@ -69,7 +69,7 @@ function overdueDays(o){return overdueDaysFor(effectiveStepDeadline(o))}
 function shipmentDateFromOrder(o){if(o.shipped_at)return new Date(o.shipped_at);if(!o.step_deadline)return null;let days=null;if(o.current_step==='domestic_customs')days=o.sea_region==='europe'?14:10;if(o.current_step==='tracking')days=o.shipping_mode==='overseas_warehouse'&&o.overseas_method==='truck'?5:2;if(days==null)return null;const d=new Date(o.step_deadline);d.setDate(d.getDate()-days);return d}
 function imageRowsForOrder(o){return imagesByOrderId.get(o.id)||[]}
 function proofRecord(o){return imageRowsForOrder(o).find(x=>x.object_path.includes('/delivery-proof-'))}
-function proofApplies(o){return o.current_step==='completed'&&['domestic_sea','overseas_warehouse'].includes(o.shipping_mode)}
+function proofApplies(o){return o.current_step==='completed'&&['domestic_sea','domestic_sea_port','overseas_warehouse'].includes(o.shipping_mode)}
 function needsDeliveryProof(o){return proofApplies(o)&&!proofRecord(o)}
 const TRACKING_NOTE_PREFIX='tracking:';
 function trackingNumberFromNote(note){return String(note||'').startsWith(TRACKING_NOTE_PREFIX)?String(note).slice(TRACKING_NOTE_PREFIX.length).replace(/\s*\[rollback-count:\d+\]/g,'').trim():''}

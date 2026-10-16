@@ -12,8 +12,8 @@ if [ ! -s "$SOURCE/server/tencent-data-server.mjs" ]; then
   TEMP_SOURCE="$(mktemp -d)"
   trap 'rm -rf -- "$TEMP_SOURCE"' EXIT
   git -C /opt/cargo-pulse archive origin/main \
-    server/tencent-data-core.mjs server/tencent-data-server.mjs server/destination-risk.mjs server/ticket-service.mjs server/web-push.mjs \
-    scripts/migrate-supabase-to-tencent.mjs scripts/backup-tencent-data.mjs scripts/ticket-reminders.mjs \
+    server/tencent-data-core.mjs server/tencent-data-server.mjs server/destination-risk.mjs \
+    scripts/migrate-supabase-to-tencent.mjs scripts/backup-tencent-data.mjs \
     deploy/tencent/cargo-pulse-deploy | tar -xf - -C "$TEMP_SOURCE"
   SOURCE="$TEMP_SOURCE"
 fi
@@ -25,21 +25,15 @@ cp -n "$CONFIG_DIR/config.json" "$CONFIG_DIR/legacy-config.json"
 install -m 644 "$SOURCE/server/tencent-data-core.mjs" "$RUNTIME/tencent-data-core.mjs"
 install -m 644 "$SOURCE/server/destination-risk.mjs" "$RUNTIME/destination-risk.mjs"
 install -m 644 "$SOURCE/server/tencent-data-server.mjs" "$RUNTIME/tencent-data-server.mjs"
-install -m 644 "$SOURCE/server/ticket-service.mjs" "$RUNTIME/ticket-service.mjs"
-install -m 644 "$SOURCE/server/web-push.mjs" "$RUNTIME/web-push.mjs"
 install -m 644 "$SOURCE/scripts/migrate-supabase-to-tencent.mjs" "$RUNTIME/migrate-supabase-to-tencent.mjs"
 install -m 644 "$SOURCE/scripts/backup-tencent-data.mjs" "$RUNTIME/backup-tencent-data.mjs"
-install -m 644 "$SOURCE/scripts/ticket-reminders.mjs" "$RUNTIME/ticket-reminders.mjs"
 install -m 755 "$SOURCE/deploy/tencent/cargo-pulse-deploy" /usr/local/bin/cargo-pulse-deploy
 for file in \
   "$RUNTIME/tencent-data-core.mjs" \
   "$RUNTIME/destination-risk.mjs" \
   "$RUNTIME/tencent-data-server.mjs" \
-  "$RUNTIME/ticket-service.mjs" \
-  "$RUNTIME/web-push.mjs" \
   "$RUNTIME/migrate-supabase-to-tencent.mjs" \
-  "$RUNTIME/backup-tencent-data.mjs" \
-  "$RUNTIME/ticket-reminders.mjs"; do
+  "$RUNTIME/backup-tencent-data.mjs"; do
   test -s "$file" || { echo "运行文件安装失败：$file" >&2; exit 1; }
 done
 
@@ -175,10 +169,13 @@ chmod 750 /usr/local/sbin/cargo-pulse-activate-local-data
 systemctl daemon-reload
 systemctl enable --now cargo-pulse-data.service
 systemctl enable --now cargo-pulse-data-backup.timer
-# cargo-pulse-data owns the reminder loop. Stop older installations from
-# running the legacy timer against the same SQLite database.
+# Remove the retired issue-tracking scheduler and runtime while preserving its
+# historical SQLite rows and uploaded files.
 systemctl disable --now cargo-pulse-ticket-reminders.timer 2>/dev/null || true
 systemctl stop cargo-pulse-ticket-reminders.service 2>/dev/null || true
+rm -f /etc/systemd/system/cargo-pulse-ticket-reminders.timer /etc/systemd/system/cargo-pulse-ticket-reminders.service
+rm -f "$RUNTIME/ticket-service.mjs" "$RUNTIME/web-push.mjs" "$RUNTIME/ticket-reminders.mjs" "$RUNTIME/ticket-push-worker.mjs"
+systemctl daemon-reload
 nginx -t
 systemctl reload nginx
 healthy=''

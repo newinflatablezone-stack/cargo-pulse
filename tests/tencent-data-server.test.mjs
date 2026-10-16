@@ -111,14 +111,8 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
 
     const health = await fetch(`${baseUrl}/health`);
     assert.equal(health.status, 200);
-    assert.equal((await health.json()).web_push, true);
+    assert.equal((await health.json()).ok, true);
     assert.equal(child.exitCode, null);
-
-    const pushHealth = await fetch(`${baseUrl}/rest/v1/rpc/push_health`, { method: 'POST', body: '{}' });
-    assert.equal(pushHealth.status, 200);
-    const pushHealthBody = await pushHealth.json();
-    assert.deepEqual({ ok: pushHealthBody.ok, web_push: pushHealthBody.web_push, error: pushHealthBody.error }, { ok: true, web_push: true, error: null });
-    assert.equal(pushHealthBody.diagnostics.subscriptions, 0);
 
     const accepted = await fetch(`${baseUrl}/auth/v1/token?grant_type=password`, {
       method: 'POST',
@@ -126,7 +120,25 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
       body: JSON.stringify({ email: 'supervisor@example.com', password: 'correct-password' })
     });
     assert.equal(accepted.status, 200);
-    assert.ok((await accepted.json()).access_token);
+    const acceptedSession = await accepted.json();
+    assert.ok(acceptedSession.access_token);
+
+    const retiredFeature = await fetch(`${baseUrl}/rest/v1/rpc/ticket_bootstrap`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${supervisorSession.access_token}`, 'Content-Type': 'application/json' },
+      body: '{}'
+    });
+    assert.equal(retiredFeature.status, 404);
+
+    const home = await fetch(`${baseUrl}/rest/v1/rpc/home_core`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${acceptedSession.access_token}`, 'Content-Type': 'application/json' },
+      body: '{}'
+    });
+    const homeBody = await home.json();
+    assert.equal(home.status, 200);
+    assert.equal(Object.hasOwn(homeBody, 'ticket_badge_count'), false);
+    assert.equal(Object.hasOwn(homeBody, 'ticket_notifications'), false);
   } finally {
     child.kill();
     await new Promise(resolveExit => child.once('exit', resolveExit));

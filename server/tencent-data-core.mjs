@@ -19,9 +19,10 @@ export const TABLES = [
   'ticket_notifications', 'ticket_reminder_logs', 'push_subscriptions', 'push_delivery_logs'
 ];
 
-const PROTECTED_TICKET_TABLES = new Set(['tickets', 'ticket_messages', 'ticket_attachments', 'ticket_history', 'ticket_notifications', 'ticket_reminder_logs', 'push_subscriptions', 'push_delivery_logs']);
+// Retain historical rows for backup/recovery, but expose no application API.
+const RETIRED_FEATURE_TABLES = new Set(['tickets', 'ticket_messages', 'ticket_attachments', 'ticket_history', 'ticket_notifications', 'ticket_reminder_logs', 'push_subscriptions', 'push_delivery_logs']);
 
-const PUBLIC_RPC = new Set(['lookup_customer_tracking', 'push_health']);
+const PUBLIC_RPC = new Set(['lookup_customer_tracking']);
 const SUPERVISOR_EMAIL = '505863160@qq.com';
 const now = () => new Date().toISOString();
 const tokenHash = value => createHash('sha256').update(value).digest('hex');
@@ -257,7 +258,7 @@ export class TencentDataStore {
   }
 
   mutate(table, method, url, body, userId, prefer = '') {
-    if (PROTECTED_TICKET_TABLES.has(table)) throw Object.assign(Error('工单数据必须通过专用接口访问'), { status: 403 });
+    if (RETIRED_FEATURE_TABLES.has(table)) throw Object.assign(Error('该历史功能已停用'), { status: 403 });
     const follower = this.isFollower(userId);
     const supervisor = this.isSupervisor(userId);
     if (method !== 'GET' && !follower && !(table === 'profiles' && supervisor)) throw Object.assign(Error('没有修改权限'), { status: 403 });

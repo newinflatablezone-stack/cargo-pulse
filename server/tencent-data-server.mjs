@@ -4,21 +4,6 @@ import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize } from 'node:path';
 import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking } from './tencent-data-core.mjs';
 
-// A rejected third-party push request must never terminate the primary data
-// service. Individual delivery paths already catch and persist failures; this
-// is the process-level safety net for provider/library rejections that occur
-// outside their returned promise chain.
-process.on('unhandledRejection', reason => {
-  console.error('Background task rejection (service kept alive):', reason);
-});
-
-let TicketService;
-try { ({ TicketService } = await import('./ticket-service.mjs')); }
-catch (localModuleError) {
-  try { ({ TicketService } = await import('file:///var/www/cargo-pulse/runtime/ticket-service.mjs')); }
-  catch { throw localModuleError; }
-}
-
 const PORT = Number(process.env.PORT || 8788);
 const DATA_DIR = process.env.CARGO_PULSE_DATA_DIR || '/var/lib/cargo-pulse/data';
 const DB_FILE = process.env.CARGO_PULSE_DB || join(DATA_DIR, 'cargo-pulse.sqlite');
@@ -39,50 +24,6 @@ const ensureInvite = key => {
 ensureInvite('business_invite');
 ensureInvite('follower_invite');
 const DATA_REVISION = createHash('sha256').update(await readFile(new URL('./tencent-data-core.mjs', import.meta.url))).digest('hex');
-const tickets = new TicketService(store);
-let push = null;
-let pushInitError = null;
-let pushSweepRunning = false;
-const runPushSweep = async () => {
-  if (!push || pushSweepRunning) return;
-  pushSweepRunning = true;
-  try {
-    tickets.runReminders();
-    await push.flush();
-    await push.retryPendingTicketNotifications(tickets);
-  } catch (caught) {
-    console.error('Web Push sweep failed; core service remains available:', caught);
-  } finally {
-    pushSweepRunning = false;
-  }
-};
-try {
-  let WebPushService;
-  try { ({ WebPushService } = await import('./web-push.mjs')); }
-  catch { ({ WebPushService } = await import('file:///var/www/cargo-pulse/runtime/web-push.mjs')); }
-  push = new WebPushService(store);
-  // Delivery failures are caught and persisted by WebPushService. Keeping the
-  // queue in this process avoids stale cross-process SQLite caches while the
-  // process-level rejection guard still protects login, orders and tickets.
-  tickets.setNotificationHandler(notification => push.queueTicketNotification(notification, tickets));
-} catch (caught) {
-  // Web Push is an optional delivery channel. A crypto/runtime/configuration
-  // problem must never take down authentication, orders, or the ticket API.
-  pushInitError = caught;
-  console.error('Web Push disabled; core data service remains available:', caught);
-}
-// Recover events created immediately before a restart and keep reminders
-// independent of page visits or the legacy systemd timer installation.
-setTimeout(() => { void runPushSweep(); }, 1500).unref();
-setInterval(() => { void runPushSweep(); }, 5 * 60_000).unref();
-const pushStatus = userId => push
-  ? push.status(userId)
-  : { available: false, public_key: null, subscriptions: 0 };
-const requirePush = () => {
-  if (!push) throw Object.assign(Error('桌面通知服务暂不可用'), { status: 503, cause: pushInitError });
-  return push;
-};
-
 const send = (res, status, value, headers = {}) => {
   const body = value == null ? '' : JSON.stringify(value);
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Cargo-Pulse-Data-Revision': DATA_REVISION, ...headers });
@@ -160,52 +101,12 @@ async function authRoute(req, res, url) {
 }
 
 async function rpc(req, res, name, body, user) {
-  if (name === 'push_health') return send(res, 200, {
-    ok: true,
-    web_push: Boolean(push),
-    error: pushInitError ? String(pushInitError.message || pushInitError).slice(0, 300) : null,
-    diagnostics: push ? push.diagnostics() : null
-  });
-  if (name === 'ticket_bootstrap') return send(res, 200, { ...tickets.bootstrap(user.id), push: pushStatus(user.id) });
-  if (name === 'ticket_detail') return send(res, 200, tickets.detail(body.ticket_id, user.id));
-  if (name === 'ticket_create') return send(res, 200, tickets.create(body, user.id));
-  if (name === 'ticket_accept') return send(res, 200, tickets.accept(body.ticket_id, user.id));
-  if (name === 'ticket_reply') return send(res, 200, tickets.reply(body, user.id));
-  if (name === 'ticket_message_delete') return send(res, 200, tickets.deleteMessage(body.message_id, user.id));
-  if (name === 'ticket_delete') {
-    const result = tickets.deleteTicket(body.ticket_id, user.id);
-    await Promise.all(result.object_paths.map(path => unlink(safeUploadPath(path, join(UPLOAD_DIR, 'tickets'))).catch(() => {})));
-    return send(res, 200, { ok: true, ticket_id: result.ticket_id });
-  }
-  if (name === 'ticket_decide') return send(res, 200, tickets.decide(body, user.id));
-  if (name === 'ticket_admin_update') return send(res, 200, tickets.adminUpdate(body, user.id));
-  if (name === 'ticket_archive') return send(res, 200, tickets.archive(body.ticket_id, user.id));
-  if (name === 'ticket_notifications_read') return send(res, 200, tickets.markNotificationsRead(user.id));
-  if (name === 'ticket_notification_snapshot') return send(res, 200, tickets.notificationSnapshot(user.id));
-  if (name === 'ticket_push_subscribe') return send(res, 200, requirePush().subscribe(user.id, body.subscription || body));
-  if (name === 'ticket_push_unsubscribe') return send(res, 200, requirePush().unsubscribe(user.id, body.endpoint));
-  if (name === 'ticket_push_test') return send(res, 200, await requirePush().test(user.id, String(body.endpoint || '')));
-  if (name === 'ticket_register_attachment') return send(res, 200, tickets.registerAttachment(body, user.id));
   if (name === 'lookup_customer_tracking') {
     return send(res, 200, lookupCustomerTracking(store, body.p_email));
   }
   if (!user) throw Object.assign(Error('请先登录'), { status: 401 });
-  if (name === 'home_bootstrap') {
-    const ticketReminder = tickets.homeReminder(user.id);
-    return send(res, 200, {
-      ...store.homeSnapshot(user.id),
-      ticket_badge_count: ticketReminder.count,
-      ticket_notifications: ticketReminder.notifications
-    });
-  }
-  if (name === 'home_core') {
-    const ticketReminder = tickets.homeReminder(user.id);
-    return send(res, 200, {
-      ...store.homeCoreSnapshot(user.id),
-      ticket_badge_count: ticketReminder.count,
-      ticket_notifications: ticketReminder.notifications
-    });
-  }
+  if (name === 'home_bootstrap') return send(res, 200, store.homeSnapshot(user.id));
+  if (name === 'home_core') return send(res, 200, store.homeCoreSnapshot(user.id));
   if (name === 'home_relations') return send(res, 200, store.homeRelationsSnapshot());
   if (name === 'list_visible_orders') return send(res, 200, store.all('orders').filter(row => !row.deleted_at || store.isSupervisor(user.id)));
   if (name === 'impersonate_user') {
@@ -268,22 +169,6 @@ async function storageRoute(req, res, url, user) {
   if (!user) throw Object.assign(Error('请先登录'), { status: 401 });
   const signPrefix = '/storage/v1/object/sign/order-images/';
   const objectPrefix = '/storage/v1/object/order-images/';
-  const ticketSignPrefix = '/storage/v1/object/sign/ticket-files/';
-  const ticketObjectPrefix = '/storage/v1/object/ticket-files/';
-  if (url.pathname.startsWith(ticketSignPrefix)) {
-    const raw = url.pathname.slice(ticketSignPrefix.length);
-    if (!tickets.canAccessFile(decodeURIComponent(raw), user.id)) throw Object.assign(Error('没有查看附件的权限'), { status: 403 });
-    const expires = Math.floor(Date.now() / 1000) + Math.min(3600, Number((await readBody(req)).expiresIn || 3600));
-    const token = objectSignature(`ticket:${raw}`, expires);
-    return send(res, 200, { signedURL: `/object/ticket-files/${raw}?expires=${expires}&token=${encodeURIComponent(token)}` });
-  }
-  if (url.pathname.startsWith(ticketObjectPrefix)) {
-    const raw = decodeURIComponent(url.pathname.slice(ticketObjectPrefix.length));
-    const ticketId = raw.split('/')[0];
-    tickets.requireTicket(ticketId, tickets.actor(user.id));
-    const file = safeUploadPath(raw, join(UPLOAD_DIR, 'tickets'));
-    if (req.method === 'POST') { const body = await readBody(req, 25 * 1024 * 1024); await mkdir(dirname(file), { recursive: true }); await writeFile(file, body); return send(res, 200, { Key: raw }); }
-  }
   if (url.pathname.startsWith(signPrefix)) {
     const raw = url.pathname.slice(signPrefix.length);
     const expires = Math.floor(Date.now() / 1000) + Math.min(3600, Number((await readBody(req)).expiresIn || 3600));
@@ -310,20 +195,10 @@ async function serveObject(req, res, url) {
   const info = await stat(file); res.writeHead(200, { 'Content-Length': info.size, 'Cache-Control': 'private, max-age=3600' }); res.end(await readFile(file));
 }
 
-async function serveTicketObject(req, res, url) {
-  const raw = url.pathname.slice('/storage/v1/object/ticket-files/'.length);
-  const expires = Number(url.searchParams.get('expires') || 0), supplied = String(url.searchParams.get('token') || '');
-  const expected = objectSignature(`ticket:${raw}`, expires);
-  const valid = expires > Math.floor(Date.now() / 1000) && supplied.length === expected.length && timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
-  if (!valid) throw Object.assign(Error('附件链接已失效'), { status: 403 });
-  const file = safeUploadPath(raw, join(UPLOAD_DIR, 'tickets'));
-  const info = await stat(file); res.writeHead(200, { 'Content-Length': info.size, 'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(raw.split('/').pop() || 'attachment')}`, 'Cache-Control': 'private, max-age=3600' }); res.end(await readFile(file));
-}
-
 async function handleRequest(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    if (url.pathname === '/health') return send(res, 200, { ok: true, orders: store.count('orders'), web_push: Boolean(push) });
+    if (url.pathname === '/health') return send(res, 200, { ok: true, orders: store.count('orders') });
     // Await every asynchronous route here so its rejection stays inside this
     // request's error boundary. Returning the promise directly would let a
     // normal 4xx error become an unhandled rejection and terminate Node.
@@ -344,7 +219,6 @@ async function handleRequest(req, res) {
       return send(res, 200, { ok: true, size: body.length });
     }
     if (url.pathname.startsWith('/storage/v1/object/order-images/') && req.method === 'GET') return await serveObject(req, res, url);
-    if (url.pathname.startsWith('/storage/v1/object/ticket-files/') && req.method === 'GET') return await serveTicketObject(req, res, url);
     const user = isPublicRequest(url.pathname) ? store.session(bearer(req)) : requireUser(req);
     if (url.pathname.startsWith('/storage/v1/')) return await storageRoute(req, res, url, user);
     const rpcMatch = /^\/rest\/v1\/rpc\/([a-z0-9_]+)$/.exec(url.pathname);

@@ -4,20 +4,17 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/build-server-runtime.mjs",
+    "build": "vite build",
     "preview": "vite preview",
     "test": "node --test tests/*.test.mjs"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2",
     "vite": "8.0.13"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",
     "@supabase/supabase-js": "^2.57.4",
     "exceljs": "^4.4.0",
-    "https-proxy-agent": "^7.0.6",
-    "jszip": "^3.10.1",
-    "web-push": "^3.6.7"
+    "jszip": "^3.10.1"
   }
 }

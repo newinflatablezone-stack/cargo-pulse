@@ -57,15 +57,13 @@ if systemctl cat cargo-pulse-data.service >/dev/null 2>&1 && [ -s "$RELEASE_DIR/
   install -m 644 "$RELEASE_DIR/server/tencent-data-core.mjs" /opt/cargo-pulse-runtime/tencent-data-core.mjs
   install -m 644 "$RELEASE_DIR/server/destination-risk.mjs" /opt/cargo-pulse-runtime/destination-risk.mjs
   install -m 644 "$RELEASE_DIR/server/tencent-data-server.mjs" /opt/cargo-pulse-runtime/tencent-data-server.mjs
-  install -m 644 "$RELEASE_DIR/server/ticket-service.mjs" /opt/cargo-pulse-runtime/ticket-service.mjs
-  # The push transport is bundled with its protocol dependencies so the
-  # long-running data service never relies on the temporary release node_modules.
-  install -m 644 "$RELEASE_DIR/dist/runtime/web-push.mjs" /opt/cargo-pulse-runtime/web-push.mjs
-  install -m 644 "$RELEASE_DIR/scripts/ticket-reminders.mjs" /opt/cargo-pulse-runtime/ticket-reminders.mjs
-  # Reminder and push recovery run inside cargo-pulse-data. Disable the legacy
-  # timer so two processes never contend for the same SQLite database.
+  # Remove the retired issue-tracking runtime without touching historical data
+  # or uploaded attachments.
   systemctl disable --now cargo-pulse-ticket-reminders.timer 2>/dev/null || true
   systemctl stop cargo-pulse-ticket-reminders.service 2>/dev/null || true
+  rm -f /etc/systemd/system/cargo-pulse-ticket-reminders.timer /etc/systemd/system/cargo-pulse-ticket-reminders.service
+  rm -f /opt/cargo-pulse-runtime/ticket-service.mjs /opt/cargo-pulse-runtime/web-push.mjs /opt/cargo-pulse-runtime/ticket-reminders.mjs /opt/cargo-pulse-runtime/ticket-push-worker.mjs
+  systemctl daemon-reload
   install -m 644 "$RELEASE_DIR/scripts/migrate-supabase-to-tencent.mjs" /opt/cargo-pulse-runtime/migrate-supabase-to-tencent.mjs
   systemctl reset-failed cargo-pulse-data.service 2>/dev/null || true
   systemctl restart cargo-pulse-data.service
@@ -81,18 +79,7 @@ if systemctl cat cargo-pulse-data.service >/dev/null 2>&1 && [ -s "$RELEASE_DIR/
     journalctl -u cargo-pulse-data.service -n 100 --no-pager >&2 || true
     exit 1
   fi
-  # The service starts its push retry and reminder jobs a few seconds after
-  # listening. Verify it remains alive after those jobs have actually run,
-  # rather than declaring a deployment healthy during the startup window.
-  sleep 12
-  if ! data_healthy="$(curl -fsS http://127.0.0.1:8788/health)"; then
-    rm -f "$APP_ROOT/api/version"
-    echo '腾讯云本地数据服务在后台任务启动后退出：' >&2
-    systemctl status cargo-pulse-data.service --no-pager -l >&2 || true
-    journalctl -u cargo-pulse-data.service -n 100 --no-pager >&2 || true
-    exit 1
-  fi
-  printf '%s\n' "$data_healthy" > "$APP_ROOT/api/push-status"
+  printf '%s\n' "$data_healthy" > "$APP_ROOT/api/data-status"
 elif [ -s "$RELEASE_DIR/deploy/tencent/install-local-data.sh" ]; then
   SOURCE="$RELEASE_DIR" bash "$RELEASE_DIR/deploy/tencent/install-local-data.sh"
 fi

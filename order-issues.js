@@ -27,7 +27,7 @@ function paintHome() {
   let card = stats.querySelector('.q-summary');
   if (!card) {
     card = document.createElement('article');
-    card.className = 'red q-summary';
+    card.className = 'q-summary';
     card.tabIndex = 0; card.setAttribute('role','button');
     card.onclick = () => showSummary();
     card.onkeydown = event => {if (event.key === 'Enter' || event.key === ' ') {event.preventDefault();showSummary();}};

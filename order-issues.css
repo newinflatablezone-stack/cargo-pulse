@@ -3,3 +3,15 @@
 .q-thread-actions button:not(.primary),.q-refresh,.q-close{border:1px solid #cedbd4;border-radius:8px;background:#fff;color:#244d3e;padding:9px 14px;cursor:pointer;font:inherit;font-size:13px}.q-thread-actions button:disabled,.q-close:disabled{opacity:.5;cursor:wait}.q-refresh[hidden]{display:none}
 
 .stats article[data-alert="all"]{display:none}.stats .q-summary:before{background:#f28c28}.stats .q-summary:hover,.stats .q-summary.selected{border-color:#e88a2b}
+
+/* Use the issue summary's orange consistently across issue conversations. */
+.q-order .q-create,.q-thread-actions button,.q-dialog form button[type="submit"]{background:#fff4e8;border:1px solid #f1b56b;color:#b85a08;border-radius:8px;padding:10px 15px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;box-shadow:none}
+.q-order .q-create:hover,.q-thread-actions button:hover,.q-dialog form button[type="submit"]:hover{background:#ffe6c9;border-color:#e88a2b;color:#984700}
+.q-order .q-create:focus-visible,.q-thread-actions button:focus-visible,.q-dialog form button[type="submit"]:focus-visible{outline:3px solid #f1b56b;outline-offset:2px}
+.q-order .q-order-head h3{color:#b85a08}
+.q-thread:not(.q-closed){border-color:#f1cfaa}
+.q-thread:not(.q-closed) .q-thread-head strong{color:#b85a08}
+.q-message.q-mine{background:#fff4e8}
+.q-message.q-system{background:#ffecd5}
+.q-refresh{background:#fff4e8;border-color:#f1b56b;color:#b85a08}
+.q-order .q-create:disabled,.q-thread-actions button:disabled,.q-dialog form button[type="submit"]:disabled{opacity:.5;cursor:wait}

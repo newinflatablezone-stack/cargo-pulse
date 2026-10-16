@@ -105,6 +105,10 @@ async function rpc(req, res, name, body, user) {
     return send(res, 200, lookupCustomerTracking(store, body.p_email));
   }
   if (!user) throw Object.assign(Error('请先登录'), { status: 401 });
+  if (name === 'order_issues') {
+    if (req.method !== 'POST') throw Object.assign(Error('请使用 POST 请求'), { status: 405 });
+    return send(res, 200, store.orderIssues(user.id, body));
+  }
   if (name === 'home_bootstrap') return send(res, 200, store.homeSnapshot(user.id));
   if (name === 'home_core') return send(res, 200, store.homeCoreSnapshot(user.id));
   if (name === 'home_relations') return send(res, 200, store.homeRelationsSnapshot());

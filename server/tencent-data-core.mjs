@@ -13,7 +13,7 @@ const classifyDestination = value => {
 };
 
 export const TABLES = [
-  'profiles', 'app_settings', 'partners', 'orders', 'order_events', 'order_images',
+  'profiles', 'app_settings', 'partners', 'orders', 'order_events', 'order_images', 'order_issues', 'order_issue_reads',
   'order_factories', 'order_shipments', 'order_shipment_events', 'internal_resource_tables',
   'tickets', 'ticket_messages', 'ticket_attachments', 'ticket_history',
   'ticket_notifications', 'ticket_reminder_logs', 'push_subscriptions', 'push_delivery_logs'
@@ -217,6 +217,82 @@ export class TencentDataStore {
   isFollower(userId) { return this.profile(userId)?.role === 'follower'; }
   isSupervisor(userId) { return this.accountById(userId)?.email?.toLowerCase() === SUPERVISOR_EMAIL; }
 
+  issueCanCreate(userId, order) {
+    const profile = this.profile(userId);
+    if (!profile || profile.role !== 'business' || !order || order.deleted_at) return false;
+    const email = String(profile.email || '').toLowerCase();
+    const names = [profile.business_name, profile.display_name, profile.name, email.split('@')[0]];
+    const aliases = { 'sales@inflatable-zone.com': 'Ella', 'sherry@inflatable-zone.com': 'Sherry', 'demi@inflatable-zone.com': 'Demi', 'rayna@inflatable-zone.com': 'Rayna' };
+    names.push(aliases[email]);
+    return order.business_id === userId || order.business_user_id === userId || order.created_by === userId || names.filter(Boolean).some(name => String(name).trim().toLowerCase() === String(order.business_name || '').trim().toLowerCase());
+  }
+
+  orderIssues(userId, input = {}) {
+    const profile = this.profile(userId);
+    const fail = (message, status = 400) => { throw Object.assign(Error(message), { status }); };
+    if (!profile) fail('请先登录', 401);
+    const follower = this.isFollower(userId), action = input.action || 'summary';
+    const orders = new Map(this.all('orders').map(order => [order.id, order]));
+    const visible = issue => (follower || issue.created_by === userId) && orders.has(issue.order_id);
+    const reads = new Map(this.all('order_issue_reads').filter(row => row.user_id === userId).map(row => [row.issue_id, row.sequence]));
+    const decorate = issue => ({ ...issue, unread: (reads.get(issue.id) || 0) < issue.sequence && issue.messages.some(message => message.sequence > (reads.get(issue.id) || 0) && message.author_id !== userId), order_no: orders.get(issue.order_id)?.order_no || '', business_name: orders.get(issue.order_id)?.business_name || '', can_close: issue.created_by === userId && issue.status !== 'closed', can_reply: issue.status !== 'closed' && (follower || issue.created_by === userId), can_remind: follower && issue.status === 'waiting_business' });
+    const all = this.all('order_issues');
+    if (action === 'summary') {
+      const issues = all.filter(issue => visible(issue) && !orders.get(issue.order_id).deleted_at).map(decorate).filter(issue => issue.status !== 'closed' || issue.unread).sort((a,b) => b.updated_at.localeCompare(a.updated_at));
+      return { total: issues.filter(issue => issue.status !== 'closed').length, issues: issues.map(({ messages, ...issue }) => ({ ...issue, subject: messages[0]?.body || '', preview: messages.filter(message => message.kind === 'message').at(-1)?.body || '' })) };
+    }
+    if (action === 'order') {
+      const order = orders.get(input.order_id);
+      if (!order || order.deleted_at) fail('订单不存在', 404);
+      return { can_create: this.issueCanCreate(userId, order), issues: all.filter(issue => issue.order_id === order.id && visible(issue)).map(decorate).sort((a,b) => b.created_at.localeCompare(a.created_at)) };
+    }
+    const timestamp = now();
+    const content = () => {
+      if (typeof input.body !== 'string' || !input.body.trim() || input.body.trim().length > 5000) fail('请填写问题或回复内容，最多 5000 字');
+      return input.body.trim();
+    };
+    if (action === 'create') {
+      const order = orders.get(input.order_id);
+      if (!this.issueCanCreate(userId, order)) fail('只能为自己负责的订单提交问题', 403);
+      if (typeof input.request_id !== 'string' || !/^[a-zA-Z0-9-]{8,80}$/.test(input.request_id)) fail('提交标识无效，请重试');
+      const id = userId + ':' + input.request_id, existing = all.find(issue => issue.id === id);
+      if (existing) return decorate(existing);
+      const body = content();
+      const issue = { id, order_id: order.id, created_by: userId, creator_email: profile.email, status: 'waiting_follower', sequence: 1, created_at: timestamp, updated_at: timestamp, messages: [{ id: randomUUID(), sequence: 1, author_id: userId, author_email: profile.email, author_role: profile.role, kind: 'message', body, created_at: timestamp }] };
+      this.put('order_issues', issue);
+      return decorate(issue);
+    }
+    const issue = all.find(row => row.id === input.issue_id);
+    if (!issue || !visible(issue)) fail('问题不存在或无权访问', 404);
+    if (action === 'read') {
+      const sequence = Number(input.sequence);
+      if (!Number.isInteger(sequence) || sequence < 0 || sequence > issue.sequence) fail('已读位置无效');
+      this.put('order_issue_reads', { id: userId + ':' + issue.id, user_id: userId, issue_id: issue.id, sequence: Math.max(reads.get(issue.id) || 0, sequence) });
+      return { ok: true };
+    }
+    if (issue.status === 'closed') {
+      if (action === 'close' && issue.created_by === userId) return decorate(issue);
+      fail('问题已结束，不能继续操作', 409);
+    }
+    if (orders.get(issue.order_id).deleted_at) fail('订单已删除，无法操作', 409);
+    let body, status = issue.status, kind = 'message';
+    if (action === 'reply') { body = content(); status = follower ? 'waiting_business' : 'waiting_follower'; }
+    else if (action === 'close') {
+      if (issue.created_by !== userId) fail('只有提交问题的业务员可以结束问题', 403);
+      status = 'closed'; kind = 'closed'; body = '业务员已确认解决，结束问题';
+    } else if (action === 'remind') {
+      if (!follower || status !== 'waiting_business') fail('请先回复问题，再提醒业务员结束', 403);
+      const previous = issue.messages.filter(message => message.kind === 'reminder').at(-1);
+      if (previous && Date.now() - Date.parse(previous.created_at) < 60000) fail('提醒已发送，请稍后再试', 429);
+      kind = 'reminder'; body = '问题如已解决，请点击“结束问题”；仍需处理请继续回复';
+    } else fail('不支持的问题操作');
+    const sequence = issue.sequence + 1;
+    const updated = { ...issue, status, sequence, updated_at: timestamp, ...(status === 'closed' ? { closed_at: timestamp, closed_by: userId } : {}), messages: [...issue.messages, { id: randomUUID(), sequence, author_id: userId, author_email: profile.email, author_role: profile.role, kind, body, created_at: timestamp }] };
+    this.put('order_issues', updated);
+    return decorate(updated);
+  }
+
+
   homeCoreSnapshot(userId) {
     const supervisor = this.isSupervisor(userId);
     return {
@@ -258,6 +334,7 @@ export class TencentDataStore {
   }
 
   mutate(table, method, url, body, userId, prefer = '') {
+    if (['order_issues', 'order_issue_reads'].includes(table)) throw Object.assign(Error('问题记录只能通过订单问题接口访问'), { status: 403 });
     if (RETIRED_FEATURE_TABLES.has(table)) throw Object.assign(Error('该历史功能已停用'), { status: 403 });
     const follower = this.isFollower(userId);
     const supervisor = this.isSupervisor(userId);

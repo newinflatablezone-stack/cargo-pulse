@@ -75,12 +75,12 @@ test('首页快照一次返回首屏资料并隐藏普通账号的回收站订�
   const { store, close } = fixture();
   try {
     const user = store.upsertAccount({ email: 'business@example.com', password: 'password123', role: 'business' });
-    store.put('orders', { id: 'visible', order_no: 'A-1', deleted_at: null });
+    store.put('orders', { id: 'visible', order_no: 'A-1', business_id: user.id, deleted_at: null });
     store.put('orders', { id: 'deleted', order_no: 'A-2', deleted_at: '2026-10-01T00:00:00Z' });
     store.put('order_events', { id: 'active', order_id: 'visible', note: 'tracking:ABC', completed_at: null });
     store.put('order_images', { id: 'proof', order_id: 'visible', object_path: 'visible/delivery-proof-test.png' });
     const core = store.homeCoreSnapshot(user.id);
-    const relations = store.homeRelationsSnapshot();
+    const relations = store.homeRelationsSnapshot(user.id);
     assert.deepEqual(core.orders.map(row => row.id), ['visible']);
     assert.equal(Object.prototype.hasOwnProperty.call(core, 'active_events'), false);
     assert.equal(relations.active_events.length, 1);

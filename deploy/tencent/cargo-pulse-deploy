@@ -27,6 +27,9 @@ if [ -f "$APP_ROOT/api/version" ]; then
   CURRENT_VERSION="$(sed -n 's/.*"version":"\([^"]*\)".*/\1/p' "$APP_ROOT/api/version" | head -n 1)"
 fi
 if [ "$CURRENT_VERSION" = "$VERSION" ]; then
+  # Configuration fixes must also run when application code is already current.
+  git -C "$APP_SOURCE" show "$VERSION:deploy/tencent/isolate-order-uploads.py" > "$RELEASE_DIR/isolate-order-uploads.py"
+  python3 "$RELEASE_DIR/isolate-order-uploads.py"
   echo "Cargo Pulse 已是最新版本：$VERSION"
   exit 0
 fi
@@ -44,6 +47,9 @@ test -s "$RELEASE_DIR/dist/index.html"
 install -d -o "$APP_USER" -g "$APP_USER" "$RELEASE_DIR/dist/api"
 install -m 644 -o "$APP_USER" -g "$APP_USER" "$APP_CONFIG" "$RELEASE_DIR/dist/api/config"
 printf '{"version":"%s"}\n' "$VERSION" > "$RELEASE_DIR/dist/api/version"
+
+# Close static attachment bypasses before publishing the application.
+python3 "$RELEASE_DIR/deploy/tencent/isolate-order-uploads.py"
 
 # Replace the live site only after the clean release built successfully.
 install -d "$APP_ROOT"

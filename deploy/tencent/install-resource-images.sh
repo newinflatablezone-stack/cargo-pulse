@@ -63,6 +63,17 @@ block='''    location = /api/resource-image {
         proxy_request_buffering off;
     }
 
+    # cargo-pulse-private-order-uploads
+    location ^~ /uploads/orders/ {
+        add_header X-Cargo-Pulse-Order-Privacy "scoped" always;
+        add_header Cache-Control "private, no-store" always;
+        return 404;
+    }
+    location = /uploads/orders {
+        add_header X-Cargo-Pulse-Order-Privacy "scoped" always;
+        return 404;
+    }
+
     location /uploads/ {
         alias /var/lib/cargo-pulse/uploads/;
         add_header Cache-Control "public, max-age=31536000, immutable" always;

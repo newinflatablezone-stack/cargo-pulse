@@ -42,7 +42,7 @@ test('issue lifecycle: unread, reply, reminder, creator closure and independent 
 
 test('business isolation, own-order permission and direct table protection',t=>{
   const {store,business,other,follower,call,create}=fixture(t);const issue=create();
-  assert.equal(call(other,'summary').total,0);assert.equal(call(other,'order',{order_id:'o1'}).can_create,false);
+  assert.equal(call(other,'summary').total,0);assert.throws(()=>call(other,'order',{order_id:'o1'}),error=>error.status===404);
   for(const action of ['reply','read','close','remind'])assert.throws(()=>call(other,action,{issue_id:issue.id,body:'hack',sequence:1}),error=>error.status===404);
   for(const actor of [other,follower])assert.throws(()=>call(actor,'create',{order_id:'o1',body:'hack',request_id:'request-3'}),error=>error.status===403);
   for(const table of ['order_issues','order_issue_reads'])for(const method of ['GET','POST','PATCH','DELETE'])assert.throws(()=>store.mutate(table,method,new URL('http://local/rest/v1/'+table),{},follower.id),error=>error.status===403);
@@ -71,6 +71,6 @@ test('input validation, retry idempotency, deleted orders, and persisted history
   store.tableCache.clear();assert.equal(call(follower,'order',{order_id:'o1'}).issues[0].messages[0].body,'Please check delivery');
   const order=store.all('orders')[0];store.put('orders',{...order,deleted_at:new Date().toISOString()});
   assert.equal(call(follower,'summary').total,0);
-  assert.throws(()=>call(follower,'reply',{issue_id:issue.id,body:'test'}),error=>error.status===409);
+  assert.throws(()=>call(follower,'reply',{issue_id:issue.id,body:'test'}),error=>error.status===404);
   store.put('orders',{...order,deleted_at:null});assert.equal(call(follower,'summary').total,1);
 });

@@ -122,6 +122,8 @@ export class TencentDataStore {
   }
 
   all(table) {
+    const version = this.db.prepare('pragma data_version').get().data_version;
+    if (version !== this.dataVersion) { this.tableCache.clear(); this.dataVersion = version; }
     if (!this.tableCache.has(table)) {
       this.tableCache.set(table, this.db.prepare('select data from records where table_name=?').all(table).map(({ data }) => JSON.parse(data)));
     }
@@ -213,22 +215,93 @@ export class TencentDataStore {
     return this.issueSession(account);
   }
 
+  revokeSession(token) { if (token) this.db.prepare('delete from sessions where token_hash=?').run(tokenHash(token)); }
+
   profile(userId) { return this.all('profiles').find(row => row.id === userId); }
   isFollower(userId) { return this.profile(userId)?.role === 'follower'; }
   internalResourcePermissions(userId) {
     const profile = this.profile(userId);
     return { can_edit: Boolean(profile && !profile.disabled_at && (this.isFollower(userId) || this.isSupervisor(userId))) };
   }
-  isSupervisor(userId) { return this.accountById(userId)?.email?.toLowerCase() === SUPERVISOR_EMAIL; }
+  isSupervisor(userId) { return Boolean(userId) && this.accountById(userId)?.email?.toLowerCase() === SUPERVISOR_EMAIL; }
+
+  canReadAllOrders(userId) {
+    const actor = this.profile(userId);
+    return Boolean(actor && !actor.disabled_at && (actor.role === 'follower' || this.isSupervisor(userId)));
+  }
+
+  ownsOrder(userId, order) {
+    const actor = this.profile(userId);
+    if (!actor || actor.disabled_at || actor.role !== 'business' || !order) return false;
+    const explicit = [...new Set([order.business_id, order.business_user_id].filter(value => value != null && String(value).trim()).map(String))];
+    if (explicit.length) return explicit.length === 1 && explicit[0] === userId;
+    const assignedName = String(order.business_name || '').trim().toLowerCase();
+    if (!assignedName) return order.created_by === userId;
+    const matches = this.businessOwnersForName(assignedName);
+    return matches.length === 1 && matches[0].id === userId;
+  }
+
+  businessOwnersForName(value) {
+    const assignedName = String(value || '').trim().toLowerCase();
+    if (!assignedName) return [];
+    const aliases = { 'sales@inflatable-zone.com': 'Ella', 'sherry@inflatable-zone.com': 'Sherry', 'demi@inflatable-zone.com': 'Demi', 'rayna@inflatable-zone.com': 'Rayna' };
+    // Ambiguous legacy names grant nobody access until staff assign an ID.
+    return this.all('profiles').filter(candidate => {
+      if (candidate.role !== 'business' || candidate.disabled_at) return false;
+      const email = String(candidate.email || '').trim().toLowerCase();
+      return [aliases[email], candidate.business_name, candidate.display_name, candidate.name].filter(Boolean)
+        .some(name => String(name).trim().toLowerCase() === assignedName);
+    });
+  }
+
+  normalizeOrderOwner(order, input) {
+    if (!Object.hasOwn(input, 'business_name') || Object.hasOwn(input, 'business_id') || Object.hasOwn(input, 'business_user_id')) return order;
+    const owners = this.businessOwnersForName(input.business_name);
+    return { ...order, business_id: owners.length === 1 ? owners[0].id : null, business_user_id: null };
+  }
+
+  canReadOrder(userId, order) {
+    if (!userId || !order || (order.deleted_at && !this.isSupervisor(userId))) return false;
+    return this.canReadAllOrders(userId) || this.ownsOrder(userId, order);
+  }
+
+  visibleRows(table, userId) {
+    const actor = userId && this.profile(userId);
+    if (!actor || actor.disabled_at) return [];
+    if (table === 'orders') return this.all(table).filter(order => this.canReadOrder(userId, order));
+    if (table === 'profiles') return this.all(table).filter(row => this.isSupervisor(userId) || row.id === userId);
+    if (table === 'app_settings') return this.all(table).filter(row => this.isSupervisor(userId) || !String(row.key || '').endsWith('_invite'));
+    const related = ['order_events', 'order_images', 'order_factories', 'order_shipments', 'order_shipment_events'];
+    if (!related.includes(table)) return this.all(table);
+    const orderIds = new Set(this.visibleRows('orders', userId).map(order => order.id));
+    if (table === 'order_shipment_events') {
+      const shipmentIds = new Set(this.all('order_shipments').filter(row => orderIds.has(row.order_id)).map(row => row.id));
+      return this.all(table).filter(row => shipmentIds.has(row.shipment_id));
+    }
+    return this.all(table).filter(row => orderIds.has(row.order_id));
+  }
+
+  canReadObject(userId, objectPath) {
+    if (this.canReadAllOrders(userId)) return true;
+    const references = this.all('order_images').filter(row => row.object_path === objectPath);
+    if (references.length) {
+      const orders = new Map(this.all('orders').map(order => [order.id, order]));
+      return references.some(row => this.canReadOrder(userId, orders.get(row.order_id)));
+    }
+    // Resource-table illustrations remain shared reference material. Unknown
+    // order files, orphan files and guessed order-id prefixes are denied.
+    const actor = this.profile(userId);
+    if (!actor || actor.disabled_at) return false;
+    const referencesPath = value => {
+      if (!value || typeof value !== 'object') return false;
+      if (value.object_path === objectPath) return true;
+      return Object.values(value).some(referencesPath);
+    };
+    return this.all('internal_resource_tables').some(referencesPath);
+  }
 
   issueCanCreate(userId, order) {
-    const profile = this.profile(userId);
-    if (!profile || profile.role !== 'business' || !order || order.deleted_at) return false;
-    const email = String(profile.email || '').toLowerCase();
-    const names = [profile.business_name, profile.display_name, profile.name, email.split('@')[0]];
-    const aliases = { 'sales@inflatable-zone.com': 'Ella', 'sherry@inflatable-zone.com': 'Sherry', 'demi@inflatable-zone.com': 'Demi', 'rayna@inflatable-zone.com': 'Rayna' };
-    names.push(aliases[email]);
-    return order.business_id === userId || order.business_user_id === userId || order.created_by === userId || names.filter(Boolean).some(name => String(name).trim().toLowerCase() === String(order.business_name || '').trim().toLowerCase());
+    return Boolean(order && !order.deleted_at && this.ownsOrder(userId, order));
   }
 
   orderIssues(userId, input = {}) {
@@ -236,10 +309,10 @@ export class TencentDataStore {
     const fail = (message, status = 400) => { throw Object.assign(Error(message), { status }); };
     if (!profile) fail('请先登录', 401);
     const follower = this.isFollower(userId), action = input.action || 'summary';
-    const orders = new Map(this.all('orders').map(order => [order.id, order]));
-    const visible = issue => (follower || issue.created_by === userId) && orders.has(issue.order_id);
+    const orders = new Map(this.visibleRows('orders', userId).map(order => [order.id, order]));
+    const visible = issue => orders.has(issue.order_id);
     const reads = new Map(this.all('order_issue_reads').filter(row => row.user_id === userId).map(row => [row.issue_id, row.sequence]));
-    const decorate = issue => ({ ...issue, unread: (reads.get(issue.id) || 0) < issue.sequence && issue.messages.some(message => message.sequence > (reads.get(issue.id) || 0) && message.author_id !== userId), order_no: orders.get(issue.order_id)?.order_no || '', business_name: orders.get(issue.order_id)?.business_name || '', can_close: issue.created_by === userId && issue.status !== 'closed', can_reply: issue.status !== 'closed' && (follower || issue.created_by === userId), can_remind: follower && issue.status === 'waiting_business' });
+    const decorate = issue => ({ ...issue, unread: (reads.get(issue.id) || 0) < issue.sequence && issue.messages.some(message => message.sequence > (reads.get(issue.id) || 0) && message.author_id !== userId), order_no: orders.get(issue.order_id)?.order_no || '', business_name: orders.get(issue.order_id)?.business_name || '', can_close: this.ownsOrder(userId, orders.get(issue.order_id)) && issue.status !== 'closed', can_reply: issue.status !== 'closed' && (follower || this.ownsOrder(userId, orders.get(issue.order_id))), can_remind: follower && issue.status === 'waiting_business' });
     const all = this.all('order_issues');
     if (action === 'summary') {
       const issues = all.filter(issue => visible(issue) && !orders.get(issue.order_id).deleted_at).map(decorate).filter(issue => issue.status !== 'closed' || issue.unread).sort((a,b) => b.updated_at.localeCompare(a.updated_at));
@@ -260,7 +333,7 @@ export class TencentDataStore {
       if (!this.issueCanCreate(userId, order)) fail('只能为自己负责的订单提交问题', 403);
       if (typeof input.request_id !== 'string' || !/^[a-zA-Z0-9-]{8,80}$/.test(input.request_id)) fail('提交标识无效，请重试');
       const id = userId + ':' + input.request_id, existing = all.find(issue => issue.id === id);
-      if (existing) return decorate(existing);
+      if (existing) { if (!visible(existing)) fail('问题不存在或无权访问', 404); return decorate(existing); }
       const body = content();
       const issue = { id, order_id: order.id, created_by: userId, creator_email: profile.email, status: 'waiting_follower', sequence: 1, created_at: timestamp, updated_at: timestamp, messages: [{ id: randomUUID(), sequence: 1, author_id: userId, author_email: profile.email, author_role: profile.role, kind: 'message', body, created_at: timestamp }] };
       this.put('order_issues', issue);
@@ -275,14 +348,14 @@ export class TencentDataStore {
       return { ok: true };
     }
     if (issue.status === 'closed') {
-      if (action === 'close' && issue.created_by === userId) return decorate(issue);
+      if (action === 'close' && this.ownsOrder(userId, orders.get(issue.order_id))) return decorate(issue);
       fail('问题已结束，不能继续操作', 409);
     }
     if (orders.get(issue.order_id).deleted_at) fail('订单已删除，无法操作', 409);
     let body, status = issue.status, kind = 'message';
     if (action === 'reply') { body = content(); status = follower ? 'waiting_business' : 'waiting_follower'; }
     else if (action === 'close') {
-      if (issue.created_by !== userId) fail('只有提交问题的业务员可以结束问题', 403);
+      if (!this.ownsOrder(userId, orders.get(issue.order_id))) fail('只有当前负责该订单的业务员可以结束问题', 403);
       status = 'closed'; kind = 'closed'; body = '业务员已确认解决，结束问题';
     } else if (action === 'remind') {
       if (!follower || status !== 'waiting_business') fail('请先回复问题，再提醒业务员结束', 403);
@@ -301,29 +374,29 @@ export class TencentDataStore {
     const supervisor = this.isSupervisor(userId);
     return {
       profile: this.profile(userId) || null,
-      orders: this.all('orders').filter(row => supervisor || !row.deleted_at),
+      orders: this.visibleRows('orders', userId),
       profiles: supervisor ? this.all('profiles') : this.all('profiles').filter(row => row.id === userId),
       partners: this.all('partners').filter(row => row.active !== false)
     };
   }
 
-  homeRelationsSnapshot() {
+  homeRelationsSnapshot(userId) {
     return {
-      images: this.all('order_images').filter(row => String(row.object_path || '').includes('/delivery-proof-')),
-      tracking_events: this.all('order_events').filter(row => String(row.note || '').startsWith('tracking:')),
-      active_events: this.all('order_events').filter(row => !row.completed_at),
-      factories: this.all('order_factories'),
-      shipments: this.all('order_shipments')
+      images: this.visibleRows('order_images', userId).filter(row => String(row.object_path || '').includes('/delivery-proof-')),
+      tracking_events: this.visibleRows('order_events', userId).filter(row => String(row.note || '').startsWith('tracking:')),
+      active_events: this.visibleRows('order_events', userId).filter(row => !row.completed_at),
+      factories: this.visibleRows('order_factories', userId),
+      shipments: this.visibleRows('order_shipments', userId)
     };
   }
 
   homeSnapshot(userId) {
-    return { ...this.homeCoreSnapshot(userId), ...this.homeRelationsSnapshot() };
+    return { ...this.homeCoreSnapshot(userId), ...this.homeRelationsSnapshot(userId) };
   }
 
-  query(table, url, rangeHeader = '') {
+  query(table, url, rangeHeader = '', sourceRows = this.all(table)) {
     const ignored = new Set(['select', 'order', 'limit', 'offset']);
-    let rows = this.all(table).filter(row => [...url.searchParams].every(([key, value]) => ignored.has(key) || matches(row, key, value)));
+    let rows = sourceRows.filter(row => [...url.searchParams].every(([key, value]) => ignored.has(key) || matches(row, key, value)));
     const order = url.searchParams.get('order');
     if (order) {
       const clauses = order.split(',').map(value => { const [field, direction = 'asc'] = value.split('.'); return { field, direction }; });
@@ -337,9 +410,10 @@ export class TencentDataStore {
     return rows.map(row => project(row, url.searchParams.get('select')));
   }
 
-  mutate(table, method, url, body, userId, prefer = '') {
+  mutate(table, method, url, body, userId, prefer = '', rangeHeader = '') {
     if (['order_issues', 'order_issue_reads'].includes(table)) throw Object.assign(Error('问题记录只能通过订单问题接口访问'), { status: 403 });
     if (RETIRED_FEATURE_TABLES.has(table)) throw Object.assign(Error('该历史功能已停用'), { status: 403 });
+    if (method === 'GET') return this.query(table, url, rangeHeader, this.visibleRows(table, userId));
     const follower = this.isFollower(userId);
     const supervisor = this.isSupervisor(userId);
     const resourceEditor = table === 'internal_resource_tables' && this.internalResourcePermissions(userId).can_edit;
@@ -354,7 +428,7 @@ export class TencentDataStore {
         if (!row.created_at) row.created_at = now();
         if (table === 'orders') {
           if (!row.created_by) row.created_by = userId;
-          Object.assign(row, this.normalizeOrderDestination(row, userId));
+          Object.assign(row, this.normalizeOrderOwner(this.normalizeOrderDestination(row, userId), value));
         }
         if (table === 'order_images' && !row.uploaded_by) row.uploaded_by = userId;
         return this.put(table, row);
@@ -364,14 +438,11 @@ export class TencentDataStore {
     // Mutations must operate on complete matched records. A projected row may
     // omit its identity, and unrelated absent keys must never compare equal.
     const mutationUrl = new URL(url);
-    if (method !== 'GET') mutationUrl.searchParams.delete('select');
+    mutationUrl.searchParams.delete('select');
     let matchesRows = this.query(table, mutationUrl);
-    if (method === 'GET' && table === 'profiles' && !supervisor) matchesRows = matchesRows.filter(row => row.id === userId);
-    if (method === 'GET' && table === 'app_settings' && !supervisor) matchesRows = matchesRows.filter(row => !String(row.key || '').endsWith('_invite'));
-    if (method === 'GET' && table === 'orders' && !supervisor) matchesRows = matchesRows.filter(row => !row.deleted_at);
     if (method === 'PATCH') return matchesRows.map(row => {
       let next = { ...row, ...body };
-      if (table === 'orders') next = this.normalizeOrderDestination(next, userId, row);
+      if (table === 'orders') next = this.normalizeOrderOwner(this.normalizeOrderDestination(next, userId, row), body);
       return project(this.put(table, next), url.searchParams.get('select'));
     });
     if (method === 'DELETE') { this.remove(table, matchesRows.map(row => row.id ?? row.key ?? row.resource_key)); return matchesRows.map(row => project(row, url.searchParams.get('select'))); }

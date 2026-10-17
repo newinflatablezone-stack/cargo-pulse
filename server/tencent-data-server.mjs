@@ -26,7 +26,7 @@ ensureInvite('follower_invite');
 const DATA_REVISION = createHash('sha256').update(await readFile(new URL('./tencent-data-core.mjs', import.meta.url))).digest('hex');
 const send = (res, status, value, headers = {}) => {
   const body = value == null ? '' : JSON.stringify(value);
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Cargo-Pulse-Data-Revision': DATA_REVISION, ...headers });
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Cargo-Pulse-Data-Revision': DATA_REVISION, ...(value?.access_token ? { 'Set-Cookie': `cp_order_images=${value.access_token}; HttpOnly; Secure; SameSite=Strict; Path=/storage/v1/; Max-Age=3600` } : {}), ...headers });
   res.end(body);
 };
 const error = (res, caught) => send(res, caught.status || 500, { message: caught.message || '服务器错误' });
@@ -44,13 +44,26 @@ const requireUser = req => {
   return user;
 };
 const safeUploadPath = (raw, root = UPLOAD_DIR) => {
-  const cleaned = normalize('/' + decodeURIComponent(raw)).replace(/^[/\\]+/, '');
+  const decoded = decodeURIComponent(raw);
+  if (decoded.includes('\\') || decoded.includes('\0') || decoded.split('/').some(part => part === '.' || part === '..')) throw Object.assign(Error('非法文件路径'), { status: 400 });
+  const cleaned = normalize('/' + decoded).replace(/^[/\\]+/, '');
   if (cleaned.includes('..')) throw Object.assign(Error('非法文件路径'), { status: 400 });
   return join(root, cleaned);
 };
-const objectSignature = (raw, expires) => createHmac('sha256', IMPORT_SECRET).update(`${raw}\n${expires}`).digest('base64url');
+const objectSigningKey = IMPORT_SECRET || randomUUID();
+const objectSignature = (raw, expires, userId) => createHmac('sha256', objectSigningKey).update(`${raw}\n${expires}\n${userId}`).digest('base64url');
+const storageUser = req => {
+  const cookie = String(req.headers.cookie || '').split(';').map(part => part.trim()).find(part => part.startsWith('cp_order_images='));
+  return store.session(bearer(req) || (cookie ? cookie.slice('cp_order_images='.length) : ''));
+};
 
 async function authRoute(req, res, url) {
+  if (url.pathname.endsWith('/logout') && req.method === 'POST') {
+    const body = await readBody(req), token = bearer(req), user = store.session(token);
+    if (user && store.session(body.refresh_token, 'refresh')?.id === user.id) store.revokeSession(body.refresh_token);
+    store.revokeSession(token);
+    return send(res, 200, { ok: true }, { 'Set-Cookie': 'cp_order_images=; HttpOnly; Secure; SameSite=Strict; Path=/storage/v1/; Max-Age=0' });
+  }
   if (url.pathname.endsWith('/user') && req.method === 'GET') {
     const user = requireUser(req);
     return send(res, 200, { id: user.id, email: user.email });
@@ -112,8 +125,8 @@ async function rpc(req, res, name, body, user) {
   if (name === 'home_bootstrap') return send(res, 200, store.homeSnapshot(user.id));
   if (name === 'home_core') return send(res, 200, store.homeCoreSnapshot(user.id));
   if (name === 'internal_resource_permissions') return send(res, 200, store.internalResourcePermissions(user.id));
-  if (name === 'home_relations') return send(res, 200, store.homeRelationsSnapshot());
-  if (name === 'list_visible_orders') return send(res, 200, store.all('orders').filter(row => !row.deleted_at || store.isSupervisor(user.id)));
+  if (name === 'home_relations') return send(res, 200, store.homeRelationsSnapshot(user.id));
+  if (name === 'list_visible_orders') return send(res, 200, store.visibleRows('orders', user.id));
   if (name === 'impersonate_user') {
     if (!store.isSupervisor(user.id)) throw Object.assign(Error('仅主管可以切换账号'), { status: 403 });
     const targetProfile = store.profile(body.target_user_id);
@@ -176,9 +189,12 @@ async function storageRoute(req, res, url, user) {
   const objectPrefix = '/storage/v1/object/order-images/';
   if (url.pathname.startsWith(signPrefix)) {
     const raw = url.pathname.slice(signPrefix.length);
-    const expires = Math.floor(Date.now() / 1000) + Math.min(3600, Number((await readBody(req)).expiresIn || 3600));
-    const token = objectSignature(raw, expires);
-    return send(res, 200, { signedURL: `/object/order-images/${raw}?expires=${expires}&token=${encodeURIComponent(token)}` });
+    safeUploadPath(raw);
+    if (!store.canReadObject(user.id, decodeURIComponent(raw))) throw Object.assign(Error('图片不存在或无权访问'), { status: 404 });
+    const duration = Number((await readBody(req)).expiresIn || 3600);
+    const expires = Math.floor(Date.now() / 1000) + (Number.isFinite(duration) ? Math.max(1, Math.min(3600, duration)) : 3600);
+    const token = objectSignature(raw, expires, user.id);
+    return send(res, 200, { signedURL: `/object/order-images/${raw}?expires=${expires}&uid=${encodeURIComponent(user.id)}&token=${encodeURIComponent(token)}` }, { 'Set-Cookie': `cp_order_images=${bearer(req)}; HttpOnly; Secure; SameSite=Strict; Path=/storage/v1/; Max-Age=3600` });
   }
   if (url.pathname.startsWith('/storage/v1/object/order-images/')) {
     if (!store.isFollower(user.id)) throw Object.assign(Error('没有操作权限'), { status: 403 });
@@ -193,17 +209,21 @@ async function storageRoute(req, res, url, user) {
 async function serveObject(req, res, url) {
   const raw = url.pathname.slice('/storage/v1/object/order-images/'.length);
   const expires = Number(url.searchParams.get('expires') || 0), supplied = String(url.searchParams.get('token') || '');
-  const expected = objectSignature(raw, expires);
+  safeUploadPath(raw);
+  const user = storageUser(req);
+  const ownerId = url.searchParams.get('uid');
+  if (!user || user.id !== ownerId || !store.canReadObject(user.id, decodeURIComponent(raw))) throw Object.assign(Error('图片不存在或无权访问'), { status: 404 });
+  const expected = objectSignature(raw, expires, ownerId);
   const valid = expires > Math.floor(Date.now() / 1000) && supplied.length === expected.length && timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
   if (!valid) throw Object.assign(Error('图片链接已失效'), { status: 403 });
   const file = safeUploadPath(raw);
-  const info = await stat(file); res.writeHead(200, { 'Content-Length': info.size, 'Cache-Control': 'private, max-age=3600' }); res.end(await readFile(file));
+  const info = await stat(file); res.writeHead(200, { 'Content-Length': info.size, 'Cache-Control': 'private, no-store' }); res.end(await readFile(file));
 }
 
 async function handleRequest(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    if (url.pathname === '/health') return send(res, 200, { ok: true, orders: store.count('orders') });
+    if (url.pathname === '/health') return send(res, 200, { ok: true });
     // Await every asynchronous route here so its rejection stays inside this
     // request's error boundary. Returning the promise directly would let a
     // normal 4xx error become an unhandled rejection and terminate Node.
@@ -231,7 +251,7 @@ async function handleRequest(req, res) {
     const tableMatch = /^\/rest\/v1\/([a-z0-9_]+)$/.exec(url.pathname);
     if (tableMatch && TABLES.includes(tableMatch[1])) {
       const body = ['POST', 'PATCH'].includes(req.method) ? await readBody(req) : {};
-      return send(res, 200, store.mutate(tableMatch[1], req.method, url, body, user.id, String(req.headers.prefer || '')));
+      return send(res, 200, store.mutate(tableMatch[1], req.method, url, body, user.id, String(req.headers.prefer || ''), String(req.headers.range || '')));
     }
     throw Object.assign(Error('接口不存在'), { status: 404 });
   } catch (caught) { error(res, caught); }

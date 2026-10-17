@@ -128,3 +128,24 @@ test('批量更新和带投影删除不会混淆主键', () => {
     assert.deepEqual(store.all('order_events').map(row => row.id), ['first']);
   } finally { close(); }
 });
+
+test('物流参数和库存使用独立编辑权限，跟单和主管能保存，业务员只读', () => {
+  const {store,close}=fixture();
+  try {
+    const follower=store.upsertAccount({email:'follower-resource@example.com',password:'password123',role:'follower'});
+    const business=store.upsertAccount({email:'sales-resource@example.com',password:'password123',role:'business'});
+    const supervisor=store.upsertAccount({email:'505863160@qq.com',password:'password123',role:'business'});
+    for(const key of ['logistics','inventory']) {
+      store.put('internal_resource_tables',{resource_key:key,headers:['名称'],rows:[['原始数据']],updated_at:'2026-10-17'});
+      const url=new URL('http://local/rest/v1/internal_resource_tables?resource_key=eq.'+key);
+      for(const user of [follower,supervisor]) {
+        assert.equal(store.internalResourcePermissions(user.id).can_edit,true);
+        const result=store.mutate('internal_resource_tables','PATCH',url,{rows:[['跟单修改']],updated_by:user.id},user.id);
+        assert.deepEqual(result[0].rows,[['跟单修改']]);
+      }
+      assert.equal(store.internalResourcePermissions(business.id).can_edit,false);
+      assert.throws(()=>store.mutate('internal_resource_tables','PATCH',url,{rows:[]},business.id),{status:403});
+      assert.equal(store.mutate('internal_resource_tables','GET',url,{},business.id).length,1);
+    }
+  }finally{close();}
+});

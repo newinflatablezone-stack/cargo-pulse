@@ -111,6 +111,7 @@ async function rpc(req, res, name, body, user) {
   }
   if (name === 'home_bootstrap') return send(res, 200, store.homeSnapshot(user.id));
   if (name === 'home_core') return send(res, 200, store.homeCoreSnapshot(user.id));
+  if (name === 'internal_resource_permissions') return send(res, 200, store.internalResourcePermissions(user.id));
   if (name === 'home_relations') return send(res, 200, store.homeRelationsSnapshot());
   if (name === 'list_visible_orders') return send(res, 200, store.all('orders').filter(row => !row.deleted_at || store.isSupervisor(user.id)));
   if (name === 'impersonate_user') {

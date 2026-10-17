@@ -37,6 +37,8 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
   store.put('app_settings', { key: 'business_invite', value: 'business-test-invite' });
   store.upsertAccount({ email: '505863160@qq.com', password: 'supervisor-password', role: 'follower' });
   const impersonationTarget = store.upsertAccount({ email: 'target@example.com', password: 'target-password', role: 'business' });
+  store.upsertAccount({ email: 'resource-follower@example.com', password: 'follower-password', role: 'follower' });
+  store.put('internal_resource_tables', { resource_key: 'logistics', headers: ['产品'], rows: [['原始值']] });
   store.put('orders', { id: 'tracking-order', order_no: 'TRACK-1', customer_info: 'Customer customer@example.com', current_step: 'ocean_transit' });
   store.put('order_events', { id: 'tracking-event', order_id: 'tracking-order', step_key: 'ocean_transit', note: 'tracking:SHIP123' });
   store.db.close();
@@ -88,6 +90,23 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
       method: 'POST', headers: { ...authenticatedHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ target_user_id: impersonationTarget.id })
     });
     assert.equal(deniedImpersonation.status, 403);
+    const deniedEdit = await fetch(`${baseUrl}/rest/v1/internal_resource_tables?resource_key=eq.logistics`, {
+      method: 'PATCH', headers: { ...authenticatedHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ rows: [] })
+    });
+    assert.equal(deniedEdit.status, 403);
+    const followerLogin = await fetch(`${baseUrl}/auth/v1/token?grant_type=password`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'resource-follower@example.com', password: 'follower-password' })
+    });
+    const followerSession = await followerLogin.json();
+    const followerHeaders = { Authorization: `Bearer ${followerSession.access_token}`, 'Content-Type': 'application/json' };
+    const access = await fetch(`${baseUrl}/rest/v1/rpc/internal_resource_permissions`, { method: 'POST', headers: followerHeaders, body: '{}' });
+    assert.equal(access.status, 200);
+    assert.equal((await access.json()).can_edit, true);
+    const saved = await fetch(`${baseUrl}/rest/v1/internal_resource_tables?resource_key=eq.logistics`, {
+      method: 'PATCH', headers: followerHeaders, body: JSON.stringify({ rows: [['跟单更新']] })
+    });
+    assert.equal(saved.status, 200);
+    assert.deepEqual((await saved.json())[0].rows, [['跟单更新']]);
 
     const supervisorLogin = await fetch(`${baseUrl}/auth/v1/token?grant_type=password`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: '505863160@qq.com', password: 'supervisor-password' })

@@ -215,6 +215,10 @@ export class TencentDataStore {
 
   profile(userId) { return this.all('profiles').find(row => row.id === userId); }
   isFollower(userId) { return this.profile(userId)?.role === 'follower'; }
+  internalResourcePermissions(userId) {
+    const profile = this.profile(userId);
+    return { can_edit: Boolean(profile && !profile.disabled_at && (this.isFollower(userId) || this.isSupervisor(userId))) };
+  }
   isSupervisor(userId) { return this.accountById(userId)?.email?.toLowerCase() === SUPERVISOR_EMAIL; }
 
   issueCanCreate(userId, order) {
@@ -338,7 +342,9 @@ export class TencentDataStore {
     if (RETIRED_FEATURE_TABLES.has(table)) throw Object.assign(Error('该历史功能已停用'), { status: 403 });
     const follower = this.isFollower(userId);
     const supervisor = this.isSupervisor(userId);
-    if (method !== 'GET' && !follower && !(table === 'profiles' && supervisor)) throw Object.assign(Error('没有修改权限'), { status: 403 });
+    const resourceEditor = table === 'internal_resource_tables' && this.internalResourcePermissions(userId).can_edit;
+    if (method !== 'GET' && table === 'internal_resource_tables' && !resourceEditor) throw Object.assign(Error('没有修改权限'), { status: 403 });
+    if (method !== 'GET' && !follower && !resourceEditor && !(table === 'profiles' && supervisor)) throw Object.assign(Error('没有修改权限'), { status: 403 });
     if (method !== 'GET' && table === 'profiles' && !supervisor) throw Object.assign(Error('仅主管可以修改账号权限'), { status: 403 });
     if (method === 'POST') {
       const input = Array.isArray(body) ? body : [body];

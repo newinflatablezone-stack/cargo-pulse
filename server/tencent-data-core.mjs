@@ -304,6 +304,21 @@ export class TencentDataStore {
     return Boolean(order && !order.deleted_at && this.ownsOrder(userId, order));
   }
 
+  issueDisplayName(userId, historicalEmail = '', role = 'business') {
+    const profile = this.profile(userId);
+    const email = String(profile?.email || historicalEmail).trim().toLowerCase();
+    const names = {
+      'sales@inflatable-zone.com': 'Ella', 'sherry@inflatable-zone.com': 'Sherry',
+      'demi@inflatable-zone.com': 'Demi', 'rayna@inflatable-zone.com': 'Rayna',
+      '2548462886@qq.com': 'ICEY', '1544264271@qq.com': '秦枝',
+      [SUPERVISOR_EMAIL]: '主管'
+    };
+    if (names[email]) return names[email];
+    const name = [profile?.display_name, profile?.name, profile?.business_name]
+      .find(value => typeof value === 'string' && value.trim() && !value.includes('@'));
+    return name?.trim() || ((profile?.role || role) === 'follower' ? '跟单' : '业务员');
+  }
+
   orderIssues(userId, input = {}) {
     const profile = this.profile(userId);
     const fail = (message, status = 400) => { throw Object.assign(Error(message), { status }); };
@@ -312,7 +327,7 @@ export class TencentDataStore {
     const orders = new Map(this.visibleRows('orders', userId).map(order => [order.id, order]));
     const visible = issue => orders.has(issue.order_id);
     const reads = new Map(this.all('order_issue_reads').filter(row => row.user_id === userId).map(row => [row.issue_id, row.sequence]));
-    const decorate = issue => ({ ...issue, unread: (reads.get(issue.id) || 0) < issue.sequence && issue.messages.some(message => message.sequence > (reads.get(issue.id) || 0) && message.author_id !== userId), order_no: orders.get(issue.order_id)?.order_no || '', business_name: orders.get(issue.order_id)?.business_name || '', can_close: this.ownsOrder(userId, orders.get(issue.order_id)) && issue.status !== 'closed', can_reply: issue.status !== 'closed' && (follower || this.ownsOrder(userId, orders.get(issue.order_id))), can_remind: follower && issue.status === 'waiting_business' });
+    const decorate = issue => ({ ...issue, creator_name: this.issueDisplayName(issue.created_by, issue.creator_email), messages: issue.messages.map(message => ({ ...message, author_name: this.issueDisplayName(message.author_id, message.author_email, message.author_role) })), unread: (reads.get(issue.id) || 0) < issue.sequence && issue.messages.some(message => message.sequence > (reads.get(issue.id) || 0) && message.author_id !== userId), order_no: orders.get(issue.order_id)?.order_no || '', business_name: orders.get(issue.order_id)?.business_name || '', can_close: this.ownsOrder(userId, orders.get(issue.order_id)) && issue.status !== 'closed', can_reply: issue.status !== 'closed' && (follower || this.ownsOrder(userId, orders.get(issue.order_id))), can_remind: follower && issue.status === 'waiting_business' });
     const all = this.all('order_issues');
     if (action === 'summary') {
       const issues = all.filter(issue => visible(issue) && !orders.get(issue.order_id).deleted_at).map(decorate).filter(issue => issue.status !== 'closed' || issue.unread).sort((a,b) => b.updated_at.localeCompare(a.updated_at));

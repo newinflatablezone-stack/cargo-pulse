@@ -74,3 +74,26 @@ test('input validation, retry idempotency, deleted orders, and persisted history
   assert.throws(()=>call(follower,'reply',{issue_id:issue.id,body:'test'}),error=>error.status===404);
   store.put('orders',{...order,deleted_at:null});assert.equal(call(follower,'summary').total,1);
 });
+
+test('issue authors and creators resolve names for historical messages without changing receipts',t=>{
+  const {store,business,follower,call,create}=fixture(t);
+  const issue=create();
+  const staff=[['505863160@qq.com','主管'],['2548462886@qq.com','ICEY'],['1544264271@qq.com','秦枝']];
+  for(const [email,name] of staff){
+    const actor=store.upsertAccount({email,role:'follower'});
+    const result=call(actor,'reply',{issue_id:issue.id,body:'Checking'});
+    assert.equal(result.messages.at(-1).author_name,name);
+    assert.equal(call(actor,'order',{order_id:'o1'}).issues[0].creator_name,'Demi');
+  }
+  assert.equal(call(follower,'summary').issues[0].creator_name,'Demi');
+  const stored=store.all('order_issues')[0];
+  assert.equal('author_name' in stored.messages[0],false);
+  assert.equal(call(follower,'order',{order_id:'o1'}).issues[0].messages[0].author_name,'Demi');
+  store.put('profiles',{...store.profile(follower.id),display_name:'小林'});
+  assert.equal(call(follower,'reply',{issue_id:issue.id,body:'Reply'}).messages.at(-1).author_name,'小林');
+  assert.equal(store.issueDisplayName('deleted','2548462886@qq.com','follower'),'ICEY');
+  assert.equal(store.issueDisplayName('missing','unknown@example.com','follower'),'跟单');
+  store.put('profiles',{...store.profile(follower.id),display_name:'mail@example.com'});
+  assert.equal(store.issueDisplayName(follower.id),'跟单');
+  assert.equal(call(business,'summary').issues[0].unread,true);
+});

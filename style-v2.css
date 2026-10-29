@@ -1402,3 +1402,6 @@ main.internal-resource-page-shell{width:100%;max-width:none!important;min-height
 
 /* Logistics thumbnails: double size on PC only. */
 @media(min-width:701px){.internal-resource-page-shell .resource-logistics-table .resource-row-thumbnails a{flex-basis:68px;width:68px;height:68px}}
+
+/* Fit enlarged desktop images without per-product horizontal scrollbars. */
+@media(min-width:701px){.internal-resource-page-shell .resource-logistics-table .resource-images-column{width:90px;min-width:90px;max-width:90px}.internal-resource-page-shell .resource-inventory-table .resource-row-thumbnails,.internal-resource-page-shell .resource-logistics-table .resource-row-thumbnails{flex-wrap:wrap;max-width:none;overflow:visible}}

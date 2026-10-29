@@ -1396,3 +1396,6 @@ main.internal-resource-page-shell{width:100%;max-width:none!important;min-height
 .destination-risk-warning input[type="checkbox"]{width:17px!important;height:17px!important;margin:0;flex:0 0 auto}
 .destination-risk-badge{display:inline-flex;margin-left:8px;padding:3px 7px;border-radius:999px;background:#fff0ed;color:#b22d20;font-size:12px}
 @media(max-width:700px){.destination-risk-warning{padding:12px}.destination-risk-warning p{font-size:13px}.destination-risk-warning label{font-size:13px}}
+
+/* Inventory thumbnails: double size on PC only. */
+@media(min-width:701px){.internal-resource-page-shell .resource-inventory-table .resource-row-thumbnails a{flex-basis:80px;width:80px;height:80px}}

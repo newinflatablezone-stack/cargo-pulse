@@ -1399,3 +1399,6 @@ main.internal-resource-page-shell{width:100%;max-width:none!important;min-height
 
 /* Inventory thumbnails: double size on PC only. */
 @media(min-width:701px){.internal-resource-page-shell .resource-inventory-table .resource-row-thumbnails a{flex-basis:80px;width:80px;height:80px}}
+
+/* Logistics thumbnails: double size on PC only. */
+@media(min-width:701px){.internal-resource-page-shell .resource-logistics-table .resource-row-thumbnails a{flex-basis:68px;width:68px;height:68px}}

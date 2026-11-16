@@ -149,3 +149,17 @@ test('物流参数和库存使用独立编辑权限，跟单和主管能保存�
     }
   }finally{close();}
 });
+test('creating a workbook cannot overwrite an existing workbook', () => {
+  const { store, close } = fixture();
+  try {
+    const user = store.upsertAccount({ email: 'follower@example.com', role: 'follower' });
+    const url = new URL('http://localhost/rest/v1/internal_resource_tables');
+    const table = 'internal_resource_tables';
+    const original = { resource_key: 'logistics', rows: [['original']] };
+    store.mutate(table, 'POST', url, original, user.id);
+    assert.throws(() => store.mutate(table, 'POST', url,
+      { ...original, rows: [['replacement']] }, user.id, 'resolution=merge-duplicates'),
+    { status: 409 });
+    assert.deepEqual(store.query(table, url)[0].rows, original.rows);
+  } finally { close(); }
+});

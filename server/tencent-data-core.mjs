@@ -435,6 +435,20 @@ export class TencentDataStore {
     if (method !== 'GET' && table === 'internal_resource_tables' && !resourceEditor) throw Object.assign(Error('没有修改权限'), { status: 403 });
     if (method !== 'GET' && !follower && !resourceEditor && !(table === 'profiles' && supervisor)) throw Object.assign(Error('没有修改权限'), { status: 403 });
     if (method !== 'GET' && table === 'profiles' && !supervisor) throw Object.assign(Error('仅主管可以修改账号权限'), { status: 403 });
+    if (method === 'POST' && table === 'internal_resource_tables') {
+      if (!['inventory', 'logistics'].includes(body?.resource_key)) {
+        throw Object.assign(Error('Invalid workbook key'), { status: 400 });
+      }
+      const row = { ...body, created_at: body.created_at || now() };
+      const result = this.db.prepare(
+        'insert into records(table_name,record_id,data) values(?,?,?) on conflict(table_name,record_id) do nothing'
+      ).run(table, row.resource_key, json(row));
+      if (result.changes === 0) {
+        throw Object.assign(Error('Workbook already exists. Reopen it before saving.'), { status: 409 });
+      }
+      this.tableCache.delete(table);
+      return [row];
+    }
     if (method === 'POST') {
       const input = Array.isArray(body) ? body : [body];
       const created = input.map(value => {

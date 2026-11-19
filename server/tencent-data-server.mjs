@@ -171,7 +171,7 @@ async function rpc(req, res, name, body, user) {
     const shipping = body.target_shipping || {};
     store.put('orders', {
       ...order,
-      ...(body.target_shipping ? { shipping_mode: shipping.shipping_mode, forwarder_name: shipping.forwarder_name, sea_region: shipping.sea_region || null, overseas_method: shipping.overseas_method || null } : {}),
+      ...(body.target_shipping ? { shipped_at: shipping.shipped_at, shipping_mode: shipping.shipping_mode, forwarder_name: shipping.forwarder_name, sea_region: shipping.sea_region || null, overseas_method: shipping.overseas_method || null } : {}),
       ...(body.target_tracking_no ? { tracking_no: body.target_tracking_no } : {}),
       current_step: body.target_next_step,
       step_started_at: transitionTime,

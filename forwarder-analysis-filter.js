@@ -18,7 +18,7 @@ export function mountForwarderDateFilter(page,onChange) {
     const range=activeForwarderRange();
     toolbar.querySelectorAll('[data-period]').forEach(button=>{const selected=button.dataset.period===editing;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected));});
     form.hidden=editing!=='custom';
-    description.textContent=`统计范围：${range.start.replaceAll('-','/')} 至 ${range.end.replaceAll('-','/')} · 按下单日期，包含起止当天`;
+    description.textContent=`统计范围：${range.start.replaceAll('-','/')} 至 ${range.end.replaceAll('-','/')} · 按实际发货日期（新加坡时间），包含起止当天`;
   };
   const initial=activeForwarderRange();
   form.elements.start.value=selection.start||initial.start;

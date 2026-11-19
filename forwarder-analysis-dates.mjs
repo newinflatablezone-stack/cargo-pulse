@@ -34,6 +34,9 @@ export function makeForwarderDateRange(period = '3', start = '', end = '', today
 
 export function orderWithinForwarderRange(order, range) {
   if (order.deleted_at) return false;
-  const date = String(order.order_date || '').slice(0,10);
+  if (!order.shipped_at) return false;
+  const shipped = new Date(order.shipped_at);
+  if (!Number.isFinite(shipped.getTime())) return false;
+  const date = singaporeToday(shipped);
   return validAnalysisDate(date) && date >= range.start && date <= range.end;
 }

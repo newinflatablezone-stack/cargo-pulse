@@ -15,9 +15,9 @@ test('calendar month subtraction clamps month ends and leap years',()=>{
 });
 test('custom range includes both endpoints and rejects missing, invalid or reversed dates',()=>{
   const range=makeForwarderDateRange('custom','2026-10-01','2026-10-19','2026-10-19');
-  for(const order_date of ['2026-10-01','2026-10-19','2026-10-19T23:59:59'])assert.equal(orderWithinForwarderRange({order_date},range),true);
-  for(const order_date of ['2026-09-30','2026-10-20','2026-02-30','',null])assert.equal(orderWithinForwarderRange({order_date},range),false);
-  assert.equal(orderWithinForwarderRange({order_date:'2026-10-10',deleted_at:'2026-10-11'},range),false);
+  for(const shipped_at of ['2026-10-01','2026-10-19','2026-10-19T15:59:59Z'])assert.equal(orderWithinForwarderRange({shipped_at},range),true);
+  for(const shipped_at of ['2026-09-30','2026-10-19T16:00:00Z','2026-10-20','2026-02-30','',null])assert.equal(orderWithinForwarderRange({shipped_at},range),false);
+  assert.equal(orderWithinForwarderRange({shipped_at:'2026-10-10',deleted_at:'2026-10-11'},range),false);
   assert.throws(()=>makeForwarderDateRange('custom','','2026-10-19','2026-10-19'));
   assert.throws(()=>makeForwarderDateRange('custom','2026-10-19','2026-10-01','2026-10-19'));
   assert.throws(()=>makeForwarderDateRange('custom','2026-02-30','2026-10-01','2026-10-19'));
@@ -26,14 +26,14 @@ test('custom range includes both endpoints and rejects missing, invalid or rever
 test('changing range updates volume, share and abnormal rate, including split shipment deduplication',()=>{
   const source=readFileSync(new URL('../app-v2.js',import.meta.url),'utf8');
   const fn=source.split('\n').find(line=>line.startsWith('function forwarderAnalysisRows('));
-  const ctx={orders:[{id:'old',order_date:'2026-05-01',forwarder_name:'A'},{id:'first',order_date:'2026-10-01',forwarder_name:'A',red_delay_cause:'forwarder'},{id:'last',order_date:'2026-10-19',forwarder_name:'B'},{id:'future',order_date:'2026-10-20',forwarder_name:'A'},{id:'deleted',order_date:'2026-10-19',forwarder_name:'A',deleted_at:'today'}],normalizeForwarderName:value=>value||'',orderWithinForwarderRange,shipmentRowsForOrder:order=>order.id==='last'?[{forwarder_name:'B'},{forwarder_name:'B'}]:[]};
+  const ctx={orders:[{id:'old',shipped_at:'2026-05-01',forwarder_name:'A'},{id:'first',order_date:'2026-05-01',shipped_at:'2026-10-01',forwarder_name:'A',red_delay_cause:'forwarder'},{id:'last',shipped_at:'2026-10-19',forwarder_name:'B'},{id:'future',shipped_at:'2026-10-20',forwarder_name:'A'},{id:'deleted',shipped_at:'2026-10-19',forwarder_name:'A',deleted_at:'today'}],normalizeForwarderName:value=>value||'',orderWithinForwarderRange,shipmentRowsForOrder:order=>order.id==='last'?[{forwarder_name:'B',shipped_at:'2026-10-19'},{forwarder_name:'B',shipped_at:'2026-10-19'},{forwarder_name:'C',shipped_at:'2026-10-20'}]:[]};
   runInNewContext(fn,ctx);
   const meta={forwarderScores:[{name:'A',reliability:90,channel:80},{name:'B',reliability:80,channel:90}],forwarderIssueOrderIds:['old']};
   const short=ctx.forwarderAnalysisRows(meta,makeForwarderDateRange('1','','','2026-10-19'));
   assert.equal(short[0].total,1);assert.equal(short[0].abnormal,1);assert.equal(short[0].rate,100);assert.equal(short[0].share,50);assert.equal(short[1].total,1);
-  ctx.orders.push({id:'unscored',order_date:'2026-10-19',forwarder_name:'C'});
+  ctx.orders.push({id:'unscored',shipped_at:'2026-10-19',forwarder_name:'C'});
   const shipmentRowsForOrder=ctx.shipmentRowsForOrder;
-  ctx.shipmentRowsForOrder=order=>order.id==='unscored'?[{forwarder_name:' '}]:shipmentRowsForOrder(order);
+  ctx.shipmentRowsForOrder=order=>order.id==='unscored'?[{forwarder_name:' ',shipped_at:'2026-10-19'}]:shipmentRowsForOrder(order);
   const week=ctx.forwarderAnalysisRows(meta,makeForwarderDateRange('week','','','2026-10-19'));
   assert.equal(week[1].share,50);
   assert.equal(week[2].name,'C');

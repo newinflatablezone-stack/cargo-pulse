@@ -18,6 +18,11 @@ export function makeForwarderDateRange(period = '3', start = '', end = '', today
     if (end > today) throw Error('结束日期不能晚于今天');
     return {period,start,end};
   }
+  if (period === 'week') {
+    const date = new Date(today+'T00:00:00Z');
+    date.setUTCDate(date.getUTCDate()-6);
+    return {period,start:date.toISOString().slice(0,10),end:today};
+  }
   if (!['1','3','6','12'].includes(String(period))) throw Error('请选择有效的统计周期');
   const date = new Date(today+'T00:00:00Z'), day = date.getUTCDate();
   date.setUTCDate(1);

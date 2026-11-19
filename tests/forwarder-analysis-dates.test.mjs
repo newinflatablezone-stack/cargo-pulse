@@ -6,7 +6,7 @@ import {singaporeToday,makeForwarderDateRange,orderWithinForwarderRange} from '.
 
 test('preset periods use Singapore calendar dates and cross years correctly',()=>{
   assert.equal(singaporeToday(new Date('2026-10-18T17:00:00Z')),'2026-10-19');
-  for(const [period,start] of [['1','2026-09-19'],['3','2026-07-19'],['6','2026-04-19'],['12','2025-10-19']])assert.deepEqual(makeForwarderDateRange(period,'','','2026-10-19'),{period,start,end:'2026-10-19'});
+  for(const [period,start] of [['week','2026-10-13'],['1','2026-09-19'],['3','2026-07-19'],['6','2026-04-19'],['12','2025-10-19']])assert.deepEqual(makeForwarderDateRange(period,'','','2026-10-19'),{period,start,end:'2026-10-19'});
 });
 test('calendar month subtraction clamps month ends and leap years',()=>{
   assert.equal(makeForwarderDateRange('1','','','2026-03-31').start,'2026-02-28');
@@ -31,6 +31,14 @@ test('changing range updates volume, share and abnormal rate, including split sh
   const meta={forwarderScores:[{name:'A',reliability:90,channel:80},{name:'B',reliability:80,channel:90}],forwarderIssueOrderIds:['old']};
   const short=ctx.forwarderAnalysisRows(meta,makeForwarderDateRange('1','','','2026-10-19'));
   assert.equal(short[0].total,1);assert.equal(short[0].abnormal,1);assert.equal(short[0].rate,100);assert.equal(short[0].share,50);assert.equal(short[1].total,1);
+  ctx.orders.push({id:'unscored',order_date:'2026-10-19',forwarder_name:'C'});
+  const shipmentRowsForOrder=ctx.shipmentRowsForOrder;
+  ctx.shipmentRowsForOrder=order=>order.id==='unscored'?[{forwarder_name:' '}]:shipmentRowsForOrder(order);
+  const week=ctx.forwarderAnalysisRows(meta,makeForwarderDateRange('week','','','2026-10-19'));
+  assert.equal(week[1].share,50);
+  assert.equal(week[2].name,'C');
+  assert.equal(week[2].total,1);
+  ctx.orders.pop();
   const long=ctx.forwarderAnalysisRows(meta,makeForwarderDateRange('6','','','2026-10-19'));
   assert.equal(long[0].total,2);assert.equal(long[0].abnormal,2);assert.equal(long[1].total,1);assert.ok(Math.abs(long[0].share-200/3)<1e-10);
   assert.equal(ctx.forwarderAnalysisRows(meta,makeForwarderDateRange('custom','2026-10-19','2026-10-19','2026-10-19'))[0].total,0);

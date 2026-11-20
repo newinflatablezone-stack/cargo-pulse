@@ -220,9 +220,40 @@ async function serveObject(req, res, url) {
   const info = await stat(file); res.writeHead(200, { 'Content-Length': info.size, 'Cache-Control': 'private, no-store' }); res.end(await readFile(file));
 }
 
+const AI_READ_TABLES = new Set([
+  'orders', 'order_events', 'order_factories', 'order_shipments', 'order_shipment_events',
+  'order_images', 'order_issues', 'partners', 'internal_resource_tables'
+]);
+
+function aiReadRoute(req, res, url) {
+  const path = url.pathname.slice('/rest/v1/ai/'.length);
+  const keyPath = /^keys(?:\/([a-f0-9]{64}))?$/.exec(path);
+  if (keyPath) {
+    const user = requireUser(req);
+    if (!store.isSupervisor(user.id)) throw Object.assign(Error('仅主管可管理 AI 读取密钥'), { status: 403 });
+    if (keyPath[1] && req.method === 'DELETE') {
+      store.revokeAiReadKey(user.id, keyPath[1]);
+      return send(res, 204, null);
+    }
+    if (!keyPath[1] && req.method === 'GET') return send(res, 200, { keys: store.aiReadKeys(user.id) });
+    if (!keyPath[1] && req.method === 'POST') return send(res, 201, store.issueAiReadKey(user.id));
+    return send(res, 405, { message: '不支持此请求方法' });
+  }
+
+  const user = store.session(bearer(req), 'ai_read');
+  if (!user || !store.isSupervisor(user.id)) throw Object.assign(Error('AI 读取密钥无效或已过期'), { status: 401 });
+  if (req.method !== 'GET') return send(res, 405, { message: '此接口仅支持读取' }, { Allow: 'GET' });
+  if (path === 'datasets') return send(res, 200, { datasets: [...AI_READ_TABLES], default_limit: 100, max_limit: 500 });
+  if (!AI_READ_TABLES.has(path)) return send(res, 404, { message: '数据集不存在' });
+  const limit = Number(url.searchParams.get('limit') ?? '100');
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) return send(res, 400, { message: 'limit 必须是 1 到 500 之间的整数' });
+  return send(res, 200, store.aiReadPage(path, url.searchParams.get('cursor') || '', limit));
+}
+
 async function handleRequest(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    if (url.pathname.startsWith('/rest/v1/ai/')) return aiReadRoute(req, res, url);
     if (url.pathname === '/health') return send(res, 200, { ok: true });
     // Await every asynchronous route here so its rejection stays inside this
     // request's error boundary. Returning the promise directly would let a

@@ -178,6 +178,34 @@ export class TencentDataStore {
     return { access_token: access, refresh_token: refresh, token_type: 'bearer', expires_in: 3600, expires_at: epoch + 3600, user: { id: user.id, email: user.email } };
   }
 
+  issueAiReadKey(userId) {
+    const key = 'cp_read_' + randomBytes(32).toString('base64url');
+    const keyId = tokenHash(key);
+    const expiresAt = Math.floor(Date.now() / 1000) + 30 * 86400;
+    this.db.prepare('insert into sessions(token_hash,user_id,kind,expires_at) values(?,?,?,?)')
+      .run(keyId, userId, 'ai_read', expiresAt);
+    return { key, key_id: keyId, expires_at: new Date(expiresAt * 1000).toISOString() };
+  }
+
+  aiReadKeys(userId) {
+    return this.db.prepare("select token_hash as key_id, expires_at from sessions where user_id=? and kind='ai_read' and expires_at>? order by expires_at")
+      .all(userId, Math.floor(Date.now() / 1000))
+      .map(row => ({ ...row, expires_at: new Date(row.expires_at * 1000).toISOString() }));
+  }
+
+  revokeAiReadKey(userId, keyId) {
+    this.db.prepare("delete from sessions where user_id=? and kind='ai_read' and token_hash=?").run(userId, keyId);
+  }
+
+  aiReadPage(table, after, limit) {
+    const rows = this.db.prepare('select record_id, data from records where table_name=? and record_id>? order by record_id limit ?')
+      .all(table, after, limit + 1);
+    return {
+      data: rows.slice(0, limit).map(row => JSON.parse(row.data)),
+      next_cursor: rows.length > limit ? rows[limit - 1].record_id : null
+    };
+  }
+
   session(token, kind = 'access') {
     if (!token) return null;
     const row = this.db.prepare('select * from sessions where token_hash=? and kind=? and expires_at>?').get(tokenHash(token), kind, Math.floor(Date.now() / 1000));

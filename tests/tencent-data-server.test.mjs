@@ -41,6 +41,7 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
   store.put('internal_resource_tables', { resource_key: 'logistics', headers: ['产品'], rows: [['原始值']] });
   store.put('orders', { id: 'tracking-order', order_no: 'TRACK-1', customer_info: 'Customer customer@example.com', current_step: 'ocean_transit' });
   store.put('order_events', { id: 'tracking-event', order_id: 'tracking-order', step_key: 'ocean_transit', note: 'tracking:SHIP123' });
+  store.put('orders', { id: 'second-order', order_no: 'TRACK-2' });
   store.db.close();
   const child = spawn(process.execPath, [resolve('server/tencent-data-server.mjs')], {
     env: {
@@ -112,6 +113,30 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: '505863160@qq.com', password: 'supervisor-password' })
     });
     const supervisorSession = await supervisorLogin.json();
+    const ai = '/rest/v1/ai';
+    const supervisorHeaders = { Authorization: `Bearer ${supervisorSession.access_token}` };
+    const request = (path, options) => fetch(baseUrl + path, options);
+    assert.equal((await request(ai+'/datasets')).status, 401);
+    assert.equal((await request(ai+'/datasets', { headers: supervisorHeaders })).status, 401);
+    const issued = await request(ai+'/keys', { method: 'POST', headers: supervisorHeaders });
+    assert.equal(issued.status, 201);
+    const key = await issued.json();
+    const aiHeaders = { Authorization: `Bearer ${key.key}` };
+    assert.equal((await request(ai+'/keys', { headers: aiHeaders })).status, 401);
+    assert.equal((await request('/rest/v1/orders', { headers: aiHeaders })).status, 401);
+    assert.equal((await request(ai+'/orders', { method: 'POST', headers: aiHeaders })).status, 405);
+    assert.equal((await request(ai+'/app_settings', { headers: aiHeaders })).status, 404);
+    assert.equal((await request(ai+'/orders?limit=0', { headers: aiHeaders })).status, 400);
+    const firstPage = await (await request(ai+'/orders?limit=1', { headers: aiHeaders })).json();
+    assert.equal(firstPage.data.length, 1);
+    assert.ok(firstPage.next_cursor);
+      const secondPage = await (await request(ai+'/orders?limit=1&cursor='+encodeURIComponent(firstPage.next_cursor), { headers: aiHeaders })).json();
+      assert.notEqual(secondPage.data[0].id, firstPage.data[0].id);
+    const listed = await (await request(ai+'/keys', { headers: supervisorHeaders })).json();
+    assert.equal(listed.keys[0].key_id, key.key_id);
+    assert.equal(listed.keys[0].key, undefined);
+    assert.equal((await request(ai+'/keys/'+key.key_id, { method: 'DELETE', headers: supervisorHeaders })).status, 204);
+    assert.equal((await request(ai+'/orders', { headers: aiHeaders })).status, 401);
     const impersonation = await fetch(`${baseUrl}/rest/v1/rpc/impersonate_user`, {
       method: 'POST', headers: { Authorization: `Bearer ${supervisorSession.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ target_user_id: impersonationTarget.id })
     });

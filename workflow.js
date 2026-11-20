@@ -35,7 +35,7 @@ export function effectiveStepDeadline(order){
  return deadline(oceanTransitDays(order),new Date(order.step_started_at));
 }
 export const RED_OVERDUE_AFTER_DAYS=7;
-export function alertLevel(value){if(!value)return 'normal';const today=new Date(),due=new Date(value);today.setHours(0,0,0,0);due.setHours(0,0,0,0);const overdue=Math.round((today-due)/86400000);if(overdue<=0)return 'normal';if(overdue<=RED_OVERDUE_AFTER_DAYS)return 'yellow';return 'red'}
+export function alertLevel(value,redAfterDays=RED_OVERDUE_AFTER_DAYS){if(!value)return 'normal';const today=new Date(),due=new Date(value);today.setHours(0,0,0,0);due.setHours(0,0,0,0);const overdue=Math.round((today-due)/86400000);if(overdue<=0)return 'normal';if(overdue<=redAfterDays)return 'yellow';return 'red'}
 
 
 export function flowFor(order){if(order.current_step==='batch_shipping')return ['batch_shipping','completed'];const start=order.inventory_mode==='stock'?['shipping_selection']:order.needs_rendering?['rendering','production','production_shipping']:['production','production_shipping'];if(order.shipping_mode==='air_freight')return [...start,'air_pickup','delivery','completed'];if(order.shipping_mode==='domestic_express')return [...start,'tracking','delivery','completed'];if(order.shipping_mode==='overseas_warehouse')return [...start,'tracking','delivery','completed'];if(order.shipping_mode==='domestic_sea_port')return [...start,'domestic_customs','ocean_transit','completed'];return [...start,'domestic_customs','ocean_transit','overseas_customs','warehouse_appointment','last_mile','completed']}
@@ -102,4 +102,8 @@ export function overallDeadline(order){
  const seaTotals={domestic_customs:customs,ocean_tracking:customs+1,ocean_transit:customs+ocean,overseas_customs:customs+ocean+7,warehouse_appointment:customs+ocean+14,last_mile_tracking:customs+ocean+15,last_mile:customs+ocean+21};
  return deadline(base+(seaTotals[order.current_step]??0),start);
 }
-export function orderAlertLevel(order){const rank={normal:0,yellow:1,red:2},stage=alertLevel(effectiveStepDeadline(order)),overall=alertLevel(overallDeadline(order));return rank[stage]>=rank[overall]?stage:overall}
+export function stageAlertLevel(order){
+ const shorterDeliveryWindow=order.current_step==='delivery'&&['domestic_express','overseas_warehouse'].includes(order.shipping_mode);
+ return alertLevel(effectiveStepDeadline(order),shorterDeliveryWindow?2:RED_OVERDUE_AFTER_DAYS);
+}
+export function orderAlertLevel(order){const rank={normal:0,yellow:1,red:2},stage=stageAlertLevel(order),overall=alertLevel(overallDeadline(order));return rank[stage]>=rank[overall]?stage:overall}

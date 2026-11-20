@@ -386,7 +386,9 @@ export class TencentDataStore {
       const id = userId + (afterSales ? ':after_sales:' : ':') + input.request_id, existing = all.find(issue => issue.id === id);
       if (existing) { if (!visible(existing)) fail('问题不存在或无权访问', 404); return decorate(existing); }
       const body = content();
-      const issue = { id, ...(afterSales ? { category: 'after_sales' } : {}), order_id: order.id, created_by: userId, creator_email: profile.email, status: 'waiting_follower', sequence: 1, created_at: timestamp, updated_at: timestamp, messages: [{ id: randomUUID(), sequence: 1, author_id: userId, author_email: profile.email, author_role: profile.role, kind: 'message', body, created_at: timestamp }] };
+      const factory = typeof input.factory === 'string' ? input.factory.trim() : '';
+      if (afterSales && (!factory || factory.length > 120)) fail('请填写工厂名称，最多 120 字');
+      const issue = { id, ...(afterSales ? { category: 'after_sales', factory } : {}), order_id: order.id, created_by: userId, creator_email: profile.email, status: 'waiting_follower', sequence: 1, created_at: timestamp, updated_at: timestamp, messages: [{ id: randomUUID(), sequence: 1, author_id: userId, author_email: profile.email, author_role: profile.role, kind: 'message', body, created_at: timestamp }] };
       this.put('order_issues', issue);
       return decorate(issue);
     }

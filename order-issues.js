@@ -108,17 +108,29 @@ function createIssueView(afterSales) {
     const start = summaryDialog.querySelector('.q-start-after-sales');
     if (start) start.hidden = !summary?.can_create;
     const filter = summaryDialog.querySelector('select').value;
-    const issues = (summary?.issues || []).filter(issue => (filter === 'all' ? issue.status !== 'closed' : issue.status === filter));
+    const records = summary?.issues || [];
+    const factorySelect = summaryDialog.querySelector('[name="factory_filter"]');
+    const factory = factorySelect?.value || '';
+    if (factorySelect) {
+      const names = [...new Set(records.map(issue => issue.factory).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh-CN'));
+      factorySelect.replaceChildren(new Option('全部工厂',''));
+      for (const name of names) factorySelect.add(new Option(name,name));
+      if (names.includes(factory)) factorySelect.value = factory;
+    }
+    const issues = records.filter(issue =>
+      (filter === 'history' || (filter === 'all' ? issue.status !== 'closed' : issue.status === filter)) &&
+      (!factorySelect?.value || issue.factory === factorySelect.value)
+    );
     summaryDialog.querySelector('.q-total').textContent = `未结束的${topic}共 ${summary?.total ?? '…'} 个`;
     const list = summaryDialog.querySelector('.q-list');
-    list.innerHTML = summary ? issues.map(issue => `<button type="button" class="q-list-item" data-issue-order="${escape(issue.order_id)}" data-issue-id="${escape(issue.id)}"><span><strong>${escape(issue.order_no)}</strong>${issue.unread?'<i class="q-inline-dot" aria-label="未读"></i>':''}<small>${escape(stateLabel[issue.status])} · ${escape(issue.creator_name || '业务员')}</small></span><p>${escape(issue.subject)}</p><small>最新：${escape(issue.preview)} · ${escape(date(issue.updated_at))}</small></button>`).join('') || `<p class="q-empty">暂无符合条件的${topic}</p>` : '<p>正在加载…</p>';
+    list.innerHTML = summary ? issues.map(issue => `<button type="button" class="q-list-item" data-issue-order="${escape(issue.order_id)}" data-issue-id="${escape(issue.id)}"><span><strong>${escape(issue.order_no)}</strong>${issue.unread?'<i class="q-inline-dot" aria-label="未读"></i>':''}<small>${escape(stateLabel[issue.status])}${afterSales?' · '+escape(issue.factory||'工厂未填写'):''} · ${escape(issue.creator_name || '业务员')}</small></span><p>${escape(issue.subject)}</p><small>最新：${escape(issue.preview)} · ${escape(date(issue.updated_at))}</small></button>`).join('') || `<p class="q-empty">暂无符合条件的${topic}</p>` : '<p>正在加载…</p>';
     list.querySelectorAll('[data-issue-order]').forEach(button => button.onclick = () => {summaryDialog.close();const issue=issues.find(row=>row.order_id===button.dataset.issueOrder&&row.id===button.dataset.issueId);context.openOrder(button.dataset.issueOrder,issue?.id);});
   }
 
   async function showSummary() {
     if (!summaryDialog?.isConnected) {
-      summaryDialog = dialog(afterSales ? '售后汇总' : '订单问题汇总',`<p class="q-total"></p>${afterSales ? '<button type="button" class="q-create q-start-after-sales" hidden>发起售后</button>' : ''}<label>查看范围<select><option value="all">全部未结束</option><option value="waiting_follower">待跟单回复</option><option value="waiting_business">待业务员确认</option>${afterSales ? '<option value="closed">已解决</option>' : ''}</select></label><p class="q-error" role="alert"></p><div class="q-list"></div>`);
-      summaryDialog.querySelector('select').onchange=paintSummary;
+      summaryDialog = dialog(afterSales ? '售后汇总' : '订单问题汇总',`<p class="q-total"></p>${afterSales ? '<button type="button" class="q-create q-start-after-sales" hidden>发起售后</button>' : ''}<label>查看范围<select><option value="all">全部未结束</option><option value="waiting_follower">待跟单回复</option><option value="waiting_business">待业务员确认</option>${afterSales ? '<option value="closed">已解决</option><option value="history">全部记录</option>' : ''}</select></label>${afterSales ? '<label>工厂<select name="factory_filter"><option value="">全部工厂</option></select></label>' : ''}<p class="q-error" role="alert"></p><div class="q-list"></div>`);
+      summaryDialog.querySelectorAll('select').forEach(select=>{select.onchange=paintSummary;});
       const start = summaryDialog.querySelector('.q-start-after-sales');
       if (start) start.onclick = startAfterSales;
     }
@@ -129,14 +141,14 @@ function createIssueView(afterSales) {
   async function startAfterSales() {
     const requestId = crypto.randomUUID(), revision = generation;
     const node = compose('发起售后', async (body, fields) => {
-      await rpc('create', {order_id:fields.order_id.value, body, request_id:requestId});
+      await rpc('create', {order_id:fields.order_id.value, factory:fields.factory.value, body, request_id:requestId});
       if (revision !== generation || !summaryDialog?.isConnected) return;
       summaryDialog.querySelector('select').value = 'all';
       void sync(true).catch(error => {
         const hint = summaryDialog?.querySelector('.q-error');
         if (hint) hint.textContent = '售后已提交，刷新汇总失败：' + error.message;
       });
-    }, '<label>选择订单<select name="order_id" required disabled><option value="">正在加载订单…</option></select></label>');
+    }, '<label>选择订单<select name="order_id" required disabled><option value="">正在加载订单…</option></select></label><label>工厂<input name="factory" maxlength="120" required placeholder="填写工厂名称"></label>');
     const select = node.querySelector('[name="order_id"]');
     const submit = node.querySelector('[type="submit"]');
     submit.disabled = true;
@@ -180,7 +192,7 @@ function createIssueView(afterSales) {
       const data=await rpc('order',{order_id:order.id});
       if(!valid())return;
       activeOrder={id:order.id,panel,sequences:new Map(data.issues.map(issue=>[issue.id,issue.sequence]))};
-      panel.innerHTML=`<div class="q-order-head"><h3>${orderTitle}</h3><button type="button" class="q-refresh" hidden>有新消息，点击刷新</button></div><p class="q-error" role="alert"></p><div class="q-threads">${data.issues.map(issue=>`<article class="q-thread ${issue.status==='closed'?'q-closed':''}" data-issue="${escape(issue.id)}"><div class="q-thread-head"><strong>${escape(stateLabel[issue.status])}</strong><small>${escape(date(issue.created_at))}</small></div><div class="q-messages">${issue.messages.map(message=>`<div class="q-message ${message.author_id===userId?'q-mine':''} ${message.kind!=='message'?'q-system':''}"><small>${escape(message.author_role==='follower'?'跟单':'业务员')} · ${escape(message.author_name || (message.author_role === 'follower' ? '跟单' : '业务员'))} · ${escape(date(message.created_at))}</small><p>${escape(message.body)}</p></div>`).join('')}</div><div class="q-thread-actions">${issue.can_reply?'<button type="button" data-reply>回复</button>':''}${issue.can_close?`<button type="button" class="q-end" data-close>${closeLabel}</button>`:''}${issue.can_remind?'<button type="button" data-remind>提醒业务员确认</button>':''}</div></article>`).join('')||`<p class="q-empty">暂无${topic}</p>`}</div>${!afterSales&&data.can_create?'<button type="button" class="q-create">提交问题</button>':''}`;
+      panel.innerHTML=`<div class="q-order-head"><h3>${orderTitle}</h3><button type="button" class="q-refresh" hidden>有新消息，点击刷新</button></div><p class="q-error" role="alert"></p><div class="q-threads">${data.issues.map(issue=>`<article class="q-thread ${issue.status==='closed'?'q-closed':''}" data-issue="${escape(issue.id)}"><div class="q-thread-head"><strong>${escape(stateLabel[issue.status])}${afterSales?' · '+escape(issue.factory||'工厂未填写'):''}</strong><small>${escape(date(issue.created_at))}</small></div><div class="q-messages">${issue.messages.map(message=>`<div class="q-message ${message.author_id===userId?'q-mine':''} ${message.kind!=='message'?'q-system':''}"><small>${escape(message.author_role==='follower'?'跟单':'业务员')} · ${escape(message.author_name || (message.author_role === 'follower' ? '跟单' : '业务员'))} · ${escape(date(message.created_at))}</small><p>${escape(message.body)}</p></div>`).join('')}</div><div class="q-thread-actions">${issue.can_reply?'<button type="button" data-reply>回复</button>':''}${issue.can_close?`<button type="button" class="q-end" data-close>${closeLabel}</button>`:''}${issue.can_remind?'<button type="button" data-remind>提醒业务员确认</button>':''}</div></article>`).join('')||`<p class="q-empty">暂无${topic}</p>`}</div>${!afterSales&&data.can_create?'<button type="button" class="q-create">提交问题</button>':''}`;
       panel.querySelector('.q-refresh').onclick=()=>mountOrder(order,detail);
       const reload=async()=>{await mountOrder(order,detail);await sync(true);};
       panel.querySelector('.q-create')?.addEventListener('click',()=>{const requestId=crypto.randomUUID();compose('提交问题',async body=>{await rpc('create',{order_id:order.id,body,request_id:requestId});await reload();});});

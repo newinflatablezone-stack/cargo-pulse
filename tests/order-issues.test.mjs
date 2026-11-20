@@ -107,7 +107,9 @@ test('after-sales reaches followers and supervisor, stays separate and retains r
   assert.deepEqual(sales(follower,'eligible_orders').orders,[]);
   assert.equal(sales(supervisor,'summary').can_create,false);
   const general=create();
-  const issue=sales(business,'create',{order_id:'o1',body:'Replacement requested',request_id:'request-1'});
+  assert.throws(()=>sales(business,'create',{order_id:'o1',body:'Replacement requested',request_id:'request-1'}),error=>error.status===400);
+  const issue=sales(business,'create',{order_id:'o1',factory:' Factory A ',body:'Replacement requested',request_id:'request-1'});
+  assert.equal(issue.factory,'Factory A');
   assert.notEqual(issue.id,general.id);
   assert.equal(call(follower,'summary').total,1);
   assert.equal(sales(follower,'summary').issues[0].unread,true);
@@ -121,6 +123,7 @@ test('after-sales reaches followers and supervisor, stays separate and retains r
   const resolved=sales(supervisor,'summary');
   assert.equal(resolved.total,0);
   assert.equal(resolved.issues[0].status,'closed');
+  assert.equal(resolved.issues[0].factory,'Factory A');
   sales(supervisor,'read',{issue_id:issue.id,sequence:resolved.issues[0].sequence});
   assert.equal(sales(supervisor,'summary').issues[0].unread,false);
   assert.equal(call(follower,'summary').total,1);

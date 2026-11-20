@@ -369,7 +369,10 @@ export class TencentDataStore {
         .map(order => ({ id: order.id, order_no: order.order_no, product_name: order.product_name })) };
     }
     if (action === 'summary') {
-      const issues = all.filter(issue => visible(issue) && !orders.get(issue.order_id).deleted_at).map(decorate).filter(issue => afterSales || issue.status !== 'closed' || issue.unread).sort((a,b) => b.updated_at.localeCompare(a.updated_at));
+      const summaryRows = !afterSales && input.include_after_sales === true
+        ? this.all('order_issues').filter(issue => issue.category !== 'after_sales' || issue.status !== 'closed')
+        : all;
+      const issues = summaryRows.filter(issue => visible(issue) && !orders.get(issue.order_id).deleted_at).map(decorate).filter(issue => afterSales || issue.status !== 'closed' || issue.unread).sort((a,b) => b.updated_at.localeCompare(a.updated_at));
       return { ...(afterSales ? { can_create: profile.role === 'business' } : {}), total: issues.filter(issue => issue.status !== 'closed').length, issues: issues.map(({ messages, ...issue }) => ({ ...issue, subject: messages[0]?.body || '', preview: messages.filter(message => message.kind === 'message').at(-1)?.body || '' })) };
     }
     if (action === 'order') {

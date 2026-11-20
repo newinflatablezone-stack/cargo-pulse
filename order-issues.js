@@ -57,9 +57,9 @@ function createIssueView(afterSales) {
       card.onkeydown = event => {if (event.key === 'Enter' || event.key === ' ') {event.preventDefault();showSummary();}};
       stats.append(card);
     }
-    card.innerHTML = `<small>未结束的问题</small><b>${summary ? summary.total : '…'}</b><span>${summary ? '查看问题订单与回复' : '正在加载问题'}</span>`;
+    card.innerHTML = `<small>未结束的问题</small><b>${summary ? summary.total : '…'}</b><span>${summary ? '查看问题、售后与回复' : '正在加载问题'}</span>`;
     }
-    const unreadOrders = new Set((summary?.issues || []).filter(issue => issue.unread).map(issue => issue.order_id));
+    const unreadOrders = new Set((summary?.issues || []).filter(issue => issue.unread && (afterSales || issue.category !== 'after_sales')).map(issue => issue.order_id));
     document.querySelectorAll('.order-card[data-order]').forEach(order => {
       order.querySelector('.q-unread-dot.'+panelClass)?.remove();
       if (unreadOrders.has(order.dataset.order)) {
@@ -67,7 +67,7 @@ function createIssueView(afterSales) {
       }
     });
     if (activeOrder?.panel.isConnected && summary) {
-      const changed = summary.issues.some(issue => issue.order_id === activeOrder.id && issue.sequence > (activeOrder.sequences.get(issue.id) || 0));
+      const changed = summary.issues.some(issue => (afterSales || issue.category !== 'after_sales') && issue.order_id === activeOrder.id && issue.sequence > (activeOrder.sequences.get(issue.id) || 0));
       activeOrder.panel.querySelector('.q-refresh').hidden = !changed;
     }
   }
@@ -80,7 +80,7 @@ function createIssueView(afterSales) {
       if (!identity) return;
     }
     const revision = generation;
-    const pending = rpc('summary').then(data => {
+    const pending = rpc('summary',afterSales?{}:{include_after_sales:true}).then(data => {
       if (revision !== generation) return;
       summary = data; paintHome();
       if (summaryDialog?.isConnected) paintSummary();
@@ -126,9 +126,9 @@ function createIssueView(afterSales) {
       (filter === 'history' || (filter === 'all' ? issue.status !== 'closed' : issue.status === filter)) &&
       (!factorySelect?.value || issue.factory === factorySelect.value)
     );
-    summaryDialog.querySelector('.q-total').textContent = `未结束的${topic}共 ${summary?.total ?? '…'} 个`;
+    summaryDialog.querySelector('.q-total').textContent = `未结束的${afterSales?topic:'问题和售后'}共 ${summary?.total ?? '…'} 个`;
     const list = summaryDialog.querySelector('.q-list');
-    list.innerHTML = summary ? issues.map(issue => `<button type="button" class="q-list-item" data-issue-order="${escape(issue.order_id)}" data-issue-id="${escape(issue.id)}"><span><strong>${escape(issue.order_no)}</strong>${issue.unread?'<i class="q-inline-dot" aria-label="未读"></i>':''}<small>${escape(stateLabel[issue.status])}${afterSales?' · '+escape(issue.factory||'工厂未填写'):''} · ${escape(issue.creator_name || '业务员')}</small></span><p>${escape(issue.subject)}</p><small>最新：${escape(issue.preview)} · ${escape(date(issue.updated_at))}</small></button>`).join('') || `<p class="q-empty">暂无符合条件的${topic}</p>` : '<p>正在加载…</p>';
+    list.innerHTML = summary ? issues.map(issue => `<button type="button" class="q-list-item" data-issue-order="${escape(issue.order_id)}" data-issue-id="${escape(issue.id)}"><span><strong>${escape(issue.order_no)}</strong>${issue.unread?'<i class="q-inline-dot" aria-label="未读"></i>':''}<small>${escape(stateLabel[issue.status])}${issue.category==='after_sales'?' · 售后 · '+escape(issue.factory||'工厂未填写'):''} · ${escape(issue.creator_name || '业务员')}</small></span><p>${escape(issue.subject)}</p><small>最新：${escape(issue.preview)} · ${escape(date(issue.updated_at))}</small></button>`).join('') || `<p class="q-empty">暂无符合条件的${topic}</p>` : '<p>正在加载…</p>';
     list.querySelectorAll('[data-issue-order]').forEach(button => button.onclick = () => {
       if (!afterSales) {
         summaryDialog.close();

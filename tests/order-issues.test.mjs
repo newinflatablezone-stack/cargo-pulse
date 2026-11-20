@@ -117,6 +117,10 @@ test('after-sales reaches followers and supervisor, stays separate and retains r
   assert.equal(issue.factory,'Factory A');
   assert.notEqual(issue.id,general.id);
   assert.equal(call(follower,'summary').total,1);
+  const combined=call(follower,'summary',{include_after_sales:true});
+  assert.equal(combined.total,2);
+  assert.equal(combined.issues.find(row=>row.id===issue.id).category,'after_sales');
+  assert.equal(call(other,'summary',{include_after_sales:true}).total,0);
   assert.equal(sales(follower,'summary').issues[0].unread,true);
   assert.equal(sales(supervisor,'summary').issues[0].unread,true);
   assert.equal(sales(other,'summary').total,0);
@@ -125,6 +129,9 @@ test('after-sales reaches followers and supervisor, stays separate and retains r
   sales(follower,'reply',{issue_id:issue.id,body:'Replacement sent'});
   assert.equal(sales(business,'summary').issues[0].status,'waiting_business');
   sales(business,'close',{issue_id:issue.id});
+  const combinedAfterClose=call(supervisor,'summary',{include_after_sales:true});
+  assert.equal(combinedAfterClose.total,1);
+  assert.equal(combinedAfterClose.issues.some(row=>row.id===issue.id),false);
   const resolved=sales(supervisor,'summary');
   assert.equal(resolved.total,0);
   assert.equal(resolved.issues[0].status,'closed');

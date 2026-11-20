@@ -36,11 +36,14 @@ function createIssueView(afterSales) {
         if (!entry) {
           entry = document.createElement('button');
           entry.type = 'button'; entry.id = 'afterSalesSummary';
-          entry.onclick = () => showSummary();
+          entry.onclick = () => {
+            history.pushState({},'',location.pathname+'?after-sales=1');
+            void showSummary();
+          };
           anchor.after(entry);
         }
         const unread = summary?.issues.filter(issue => issue.unread).length || 0;
-        entry.textContent = summary?.total ? `售后汇总（${summary.total}）` : '售后汇总';
+        entry.textContent = summary?.total ? `售后（${summary.total}）` : '售后';
         if (unread) entry.textContent += ' · 未读 '+unread;
       }
     } else if (stats) {
@@ -93,10 +96,12 @@ function createIssueView(afterSales) {
   function mountHome(options) {
     context = options;
     const next = options.userId && options.backend === 'tencent-v1' ? options.userId : '';
-    if (next !== identity) {identity=next;generation++;summary=null;request=null;activeOrder=null;summaryDialog?.close();document.querySelectorAll(`.q-dialog[data-issue-view="${panelClass}"]`).forEach(node=>node.close());if(afterSales)document.querySelector('#afterSalesSummary')?.remove();}
+    if (next !== identity) {identity=next;generation++;summary=null;request=null;activeOrder=null;if(summaryDialog?.isConnected){if(afterSales)summaryDialog.remove();else summaryDialog.close();}document.querySelectorAll(`.q-dialog[data-issue-view="${panelClass}"]`).forEach(node=>node.close());if(afterSales)document.querySelector('#afterSalesSummary')?.remove();}
     if (!identity) return;
     paintHome();
-    if (!summary && !request) void sync(true).catch(()=>{});
+    if (afterSales && new URLSearchParams(location.search).get('after-sales')==='1' && !summaryDialog?.isConnected) {
+      void showSummary();
+    } else if (!summary && !request) void sync(true).catch(()=>{});
   }
 
   setInterval(() => {if(identity)void sync().catch(()=>{});}, 15000);
@@ -124,12 +129,39 @@ function createIssueView(afterSales) {
     summaryDialog.querySelector('.q-total').textContent = `未结束的${topic}共 ${summary?.total ?? '…'} 个`;
     const list = summaryDialog.querySelector('.q-list');
     list.innerHTML = summary ? issues.map(issue => `<button type="button" class="q-list-item" data-issue-order="${escape(issue.order_id)}" data-issue-id="${escape(issue.id)}"><span><strong>${escape(issue.order_no)}</strong>${issue.unread?'<i class="q-inline-dot" aria-label="未读"></i>':''}<small>${escape(stateLabel[issue.status])}${afterSales?' · '+escape(issue.factory||'工厂未填写'):''} · ${escape(issue.creator_name || '业务员')}</small></span><p>${escape(issue.subject)}</p><small>最新：${escape(issue.preview)} · ${escape(date(issue.updated_at))}</small></button>`).join('') || `<p class="q-empty">暂无符合条件的${topic}</p>` : '<p>正在加载…</p>';
-    list.querySelectorAll('[data-issue-order]').forEach(button => button.onclick = () => {summaryDialog.close();const issue=issues.find(row=>row.order_id===button.dataset.issueOrder&&row.id===button.dataset.issueId);context.openOrder(button.dataset.issueOrder,issue?.id);});
+    list.querySelectorAll('[data-issue-order]').forEach(button => button.onclick = () => {
+      if (!afterSales) {
+        summaryDialog.close();
+        context.openOrder(button.dataset.issueOrder,button.dataset.issueId);
+        return;
+      }
+      const detail = summaryDialog.querySelector('.q-after-sales-detail');
+      detail.hidden = false;
+      detail.innerHTML = '<button type="button" class="q-detail-back">返回列表</button><div class="detail"></div>';
+      detail.querySelector('.q-detail-back').onclick = () => { detail.hidden = true; detail.replaceChildren(); };
+      const record = issues.find(issue=>issue.id===button.dataset.issueId);
+      const heading = document.createElement('h2');
+      heading.textContent = record.order_no;
+      detail.querySelector('.detail').append(heading);
+      void mountOrder({id:record.order_id},detail,record.id);
+      detail.scrollIntoView({block:'start'});
+    });
   }
 
   async function showSummary() {
     if (!summaryDialog?.isConnected) {
-      summaryDialog = dialog(afterSales ? '售后汇总' : '订单问题汇总',`<p class="q-total"></p>${afterSales ? '<button type="button" class="q-create q-start-after-sales" hidden>发起售后</button>' : ''}<label>查看范围<select><option value="all">全部未结束</option><option value="waiting_follower">待跟单回复</option><option value="waiting_business">待业务员确认</option>${afterSales ? '<option value="closed">已解决</option><option value="history">全部记录</option>' : ''}</select></label>${afterSales ? '<label>工厂<select name="factory_filter"><option value="">全部工厂</option></select></label>' : ''}<p class="q-error" role="alert"></p><div class="q-list"></div>`);
+      const content = `<p class="q-total"></p>${afterSales ? '<button type="button" class="q-create q-start-after-sales" hidden>发起售后</button>' : ''}<label>查看范围<select><option value="all">全部未结束</option><option value="waiting_follower">待跟单回复</option><option value="waiting_business">待业务员确认</option>${afterSales ? '<option value="closed">已解决</option><option value="history">全部记录</option>' : ''}</select></label>${afterSales ? '<label>工厂<select name="factory_filter"><option value="">全部工厂</option></select></label>' : ''}<p class="q-error" role="alert"></p><div class="q-list"></div>`;
+      if (afterSales) {
+        const main = document.querySelector('#app main');
+        if (!main) return;
+        main.className = 'q-after-sales-page';
+        main.innerHTML = `<section class="q-modal q-page-content"><div class="q-page-heading"><h1>售后</h1><button type="button" class="q-return">返回订单中心</button></div><section class="q-after-sales-form" hidden></section><section class="q-after-sales-detail" hidden></section>${content}</section>`;
+        summaryDialog = main;
+        main.querySelector('.q-return').onclick = () => {
+          history.pushState({},'',location.pathname);
+          context.renderHome();
+        };
+      } else summaryDialog = dialog('订单问题汇总',content);
       summaryDialog.querySelectorAll('select').forEach(select=>{select.onchange=paintSummary;});
       const start = summaryDialog.querySelector('.q-start-after-sales');
       if (start) start.onclick = startAfterSales;
@@ -142,6 +174,8 @@ function createIssueView(afterSales) {
     const requestId = crypto.randomUUID(), revision = generation;
     const orderNumber = value => String(value ?? '').trim().replace(/^#\s*/, '').toLowerCase();
     let orders = [];
+    const host = summaryDialog.querySelector('.q-after-sales-form');
+    if (!host.hidden) return;
     const node = compose('发起售后', async (body, fields) => {
       const matches = orders.filter(order => orderNumber(order.order_no) === orderNumber(fields.order_no.value));
       if (matches.length !== 1) throw Error(matches.length ? '该单号匹配多笔订单，请联系主管核对' : '请输入有权限的完整订单号，或从推荐中选择');
@@ -152,13 +186,13 @@ function createIssueView(afterSales) {
         const hint = summaryDialog?.querySelector('.q-error');
         if (hint) hint.textContent = '售后已提交，刷新汇总失败：' + error.message;
       });
-    }, '<label>订单号<input name="order_no" list="after-sales-order-options" autocomplete="off" required disabled placeholder="正在加载订单…"></label><datalist id="after-sales-order-options"></datalist><label>工厂<input name="factory" list="after-sales-factory-options" autocomplete="off" maxlength="120" required placeholder="选择已有工厂或输入新名称"></label><datalist id="after-sales-factory-options"></datalist>');
+    }, '<label>订单号<input name="order_no" list="after-sales-order-options" autocomplete="off" required disabled placeholder="正在加载订单…"></label><datalist id="after-sales-order-options"></datalist><label>工厂<input name="factory" list="after-sales-factory-options" autocomplete="off" maxlength="120" required placeholder="选择已有工厂或输入新名称"></label><datalist id="after-sales-factory-options"></datalist>',host);
     const input = node.querySelector('[name="order_no"]');
     const submit = node.querySelector('[type="submit"]');
     submit.disabled = true;
     try {
       const result = await rpc('eligible_orders');
-      if (!node.open || revision !== generation) return;
+      if (!node.isConnected || node.hidden || revision !== generation) return;
       orders = result.orders.filter(order => orderNumber(order.order_no));
       const orderOptions = node.querySelector('#after-sales-order-options');
       for (const order of orders) orderOptions.append(new Option(order.product_name || order.order_no, order.order_no));
@@ -168,42 +202,68 @@ function createIssueView(afterSales) {
       input.disabled = submit.disabled = !orders.length;
       if (orders.length) input.focus();
     } catch (error) {
-      if (!node.open || revision !== generation) return;
+      if (!node.isConnected || node.hidden || revision !== generation) return;
       node.querySelector('.q-error').textContent = '订单加载失败：' + error.message;
       input.placeholder = '订单加载失败';
     }
   }
 
-  function compose(title, onSubmit, fields = '') {
-    const node=dialog(title,`<form>${fields}<label>内容<textarea name="body" maxlength="5000" rows="5" required placeholder="请填写具体问题或处理要求"></textarea></label><p class="q-error" role="alert"></p><button class="q-submit" type="submit">提交</button></form>`);
-    const form=node.querySelector('form');
+  function compose(title, onSubmit, fields = '', host = null) {
+    const content=`<form>${fields}<label>内容<textarea name="body" maxlength="5000" rows="5" required placeholder="请填写具体问题或处理要求"></textarea></label><p class="q-error" role="alert"></p><button class="q-submit" type="submit">提交</button></form>`;
+    const node = host || dialog(title,content);
+    const close = () => {
+      if (!host) { node.close(); return; }
+      host.hidden = true;
+      host.replaceChildren();
+    };
+    if (host) {
+      host.innerHTML = `<h2>${escape(title)}</h2><button type="button" class="q-close">取消</button>${content}`;
+      host.hidden = false;
+      host.querySelector('.q-close').onclick = close;
+      host.scrollIntoView({block:'nearest'});
+    }
+    const form=node.querySelector('form'), cancel=node.querySelector('.q-close');
     form.onsubmit=async event=>{
       event.preventDefault();const body=form.elements.body.value.trim();if(!body){form.elements.body.focus();return;}
-      const button=form.querySelector('[type="submit"]');button.disabled=true;node.querySelector('.q-close').disabled=true;
-      try{await onSubmit(body,form.elements);node.close();}catch(error){form.querySelector('.q-error').textContent=error.message;}finally{button.disabled=false;node.querySelector('.q-close').disabled=false;}
+      const button=form.querySelector('[type="submit"]');button.disabled=true;cancel.disabled=true;
+      try{await onSubmit(body,form.elements);close();}catch(error){form.querySelector('.q-error').textContent=error.message;}finally{button.disabled=false;cancel.disabled=false;}
     };
     if (!fields) form.elements.body.focus();
     return node;
   }
 
-  async function mountOrder(order, detail) {
+  async function mountOrder(order, detail, issueId = null) {
     if (!identity || order.deleted_at) return;
     const revision = generation, userId=identity;
     let panel=detail.querySelector('.'+panelClass);
     if(!panel){panel=document.createElement('section');panel.className='q-order '+panelClass;panel.innerHTML=`<h3>${orderTitle}</h3><p>正在加载…</p>`;detail.querySelector('.detail').append(panel);}
     const loadToken=Symbol();panel.issueLoadToken=loadToken;
-    const valid=()=>revision===generation&&identity===userId&&panel.issueLoadToken===loadToken&&panel.isConnected&&detail.open;
+    const valid=()=>revision===generation&&identity===userId&&panel.issueLoadToken===loadToken&&panel.isConnected&&(issueId ? !detail.hidden : detail.open);
     try {
       const data=await rpc('order',{order_id:order.id});
       if(!valid())return;
       activeOrder={id:order.id,panel,sequences:new Map(data.issues.map(issue=>[issue.id,issue.sequence]))};
       panel.innerHTML=`<div class="q-order-head"><h3>${orderTitle}</h3><button type="button" class="q-refresh" hidden>有新消息，点击刷新</button></div><p class="q-error" role="alert"></p><div class="q-threads">${data.issues.map(issue=>`<article class="q-thread ${issue.status==='closed'?'q-closed':''}" data-issue="${escape(issue.id)}"><div class="q-thread-head"><strong>${escape(stateLabel[issue.status])}${afterSales?' · '+escape(issue.factory||'工厂未填写'):''}</strong><small>${escape(date(issue.created_at))}</small></div><div class="q-messages">${issue.messages.map(message=>`<div class="q-message ${message.author_id===userId?'q-mine':''} ${message.kind!=='message'?'q-system':''}"><small>${escape(message.author_role==='follower'?'跟单':'业务员')} · ${escape(message.author_name || (message.author_role === 'follower' ? '跟单' : '业务员'))} · ${escape(date(message.created_at))}</small><p>${escape(message.body)}</p></div>`).join('')}</div><div class="q-thread-actions">${issue.can_reply?'<button type="button" data-reply>回复</button>':''}${issue.can_close?`<button type="button" class="q-end" data-close>${closeLabel}</button>`:''}${issue.can_remind?'<button type="button" data-remind>提醒业务员确认</button>':''}</div></article>`).join('')||`<p class="q-empty">暂无${topic}</p>`}</div>${!afterSales&&data.can_create?'<button type="button" class="q-create">提交问题</button>':''}`;
-      panel.querySelector('.q-refresh').onclick=()=>mountOrder(order,detail);
-      const reload=async()=>{await mountOrder(order,detail);await sync(true);};
+      panel.querySelector('.q-refresh').onclick=()=>mountOrder(order,detail,issueId);
+      const reload=async()=>{await mountOrder(order,detail,issueId);await sync(true);};
       panel.querySelector('.q-create')?.addEventListener('click',()=>{const requestId=crypto.randomUUID();compose('提交问题',async body=>{await rpc('create',{order_id:order.id,body,request_id:requestId});await reload();});});
       for(const issue of data.issues){
         const row=[...panel.querySelectorAll('[data-issue]')].find(node=>node.dataset.issue===issue.id);
-        row.querySelector('[data-reply]')?.addEventListener('click',()=>compose('回复'+topic,async body=>{await rpc('reply',{issue_id:issue.id,body});await reload();}));
+        row.querySelector('[data-reply]')?.addEventListener('click',()=>{
+          let host = null;
+          if (issueId) {
+            host = row.querySelector('.q-after-sales-form');
+            if (!host) {
+              host = document.createElement('section');
+              host.className = 'q-after-sales-form';
+              row.append(host);
+            }
+          }
+          compose('回复'+topic,async body=>{
+            await rpc('reply',{issue_id:issue.id,body});
+            await reload();
+          },'',host);
+        });
         for(const [selector,action] of [['[data-close]','close'],['[data-remind]','remind']])row.querySelector(selector)?.addEventListener('click',async event=>{
           const button=event.currentTarget;button.disabled=true;
           try{await rpc(action,{issue_id:issue.id});await reload();}catch(error){if(valid())panel.querySelector('.q-error').textContent=error.message;}finally{button.disabled=false;}
@@ -217,7 +277,7 @@ function createIssueView(afterSales) {
     } catch(error) {
       if(!valid())return;
       const hint=panel.querySelector('.q-error')||panel.querySelector('p');hint.textContent=topic+'加载失败：'+error.message;
-      const retry=document.createElement('button');retry.type='button';retry.textContent='重试';retry.onclick=()=>mountOrder(order,detail);panel.append(retry);
+      const retry=document.createElement('button');retry.type='button';retry.textContent='重试';retry.onclick=()=>mountOrder(order,detail,issueId);panel.append(retry);
     }
   }
 

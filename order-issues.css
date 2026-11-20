@@ -15,3 +15,41 @@
 .q-message.q-system{background:#ffecd5}
 .q-refresh{background:#fff4e8;border-color:#f1b56b;color:#b85a08}
 .q-order .q-create:disabled,.q-thread-actions button:disabled,.q-dialog form button[type="submit"]:disabled{opacity:.5;cursor:wait}
+
+.q-after-sales-page {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  padding: clamp(12px, 3vw, 28px);
+}
+.q-page-content {
+  background: #fff;
+  border: 1px solid #dce4e0;
+  border-radius: 16px;
+}
+.q-page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.q-page-heading h1 { margin: 0; }
+.q-after-sales-page select { max-width: 440px; }
+.q-after-sales-form, .q-after-sales-detail {
+  position: relative;
+  padding: 18px;
+  margin-bottom: 18px;
+  border: 1px solid #dce4e0;
+  border-radius: 12px;
+}
+.q-after-sales-form[hidden], .q-after-sales-detail[hidden],
+.q-after-sales-page .q-start-after-sales[hidden] { display: none; }
+.q-after-sales-page .q-start-after-sales { margin: 0 0 16px; }
+.q-after-sales-form input { width: 100%; }
+.q-after-sales-form .q-submit, .q-after-sales-page .q-start-after-sales {
+  background: #174438;
+  border: 1px solid #174438;
+  color: #fff;
+  border-radius: 8px;
+  padding: 10px 15px;
+}

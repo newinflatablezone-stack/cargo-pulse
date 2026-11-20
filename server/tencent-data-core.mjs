@@ -356,10 +356,18 @@ export class TencentDataStore {
     const visible = issue => orders.has(issue.order_id);
     const reads = new Map(this.all('order_issue_reads').filter(row => row.user_id === userId).map(row => [row.issue_id, row.sequence]));
     const decorate = issue => ({ ...issue, creator_name: this.issueDisplayName(issue.created_by, issue.creator_email), messages: issue.messages.map(message => ({ ...message, author_name: this.issueDisplayName(message.author_id, message.author_email, message.author_role) })), unread: (reads.get(issue.id) || 0) < issue.sequence && issue.messages.some(message => message.sequence > (reads.get(issue.id) || 0) && message.author_id !== userId), order_no: orders.get(issue.order_id)?.order_no || '', business_name: orders.get(issue.order_id)?.business_name || '', can_close: this.ownsOrder(userId, orders.get(issue.order_id)) && issue.status !== 'closed', can_reply: issue.status !== 'closed' && (follower || this.ownsOrder(userId, orders.get(issue.order_id))), can_remind: follower && issue.status === 'waiting_business' });
-    const all = this.all('order_issues');
+    const afterSales = input.category === 'after_sales';
+    if (input.category && !afterSales) fail('不支持的问题分类');
+    const all = this.all('order_issues').filter(issue => (issue.category === 'after_sales') === afterSales);
+    if (action === 'eligible_orders' && afterSales) {
+      return { orders: [...orders.values()]
+        .filter(order => this.issueCanCreate(userId, order))
+        .sort((a, b) => String(b.order_date || '').localeCompare(String(a.order_date || '')))
+        .map(order => ({ id: order.id, order_no: order.order_no, product_name: order.product_name })) };
+    }
     if (action === 'summary') {
-      const issues = all.filter(issue => visible(issue) && !orders.get(issue.order_id).deleted_at).map(decorate).filter(issue => issue.status !== 'closed' || issue.unread).sort((a,b) => b.updated_at.localeCompare(a.updated_at));
-      return { total: issues.filter(issue => issue.status !== 'closed').length, issues: issues.map(({ messages, ...issue }) => ({ ...issue, subject: messages[0]?.body || '', preview: messages.filter(message => message.kind === 'message').at(-1)?.body || '' })) };
+      const issues = all.filter(issue => visible(issue) && !orders.get(issue.order_id).deleted_at).map(decorate).filter(issue => afterSales || issue.status !== 'closed' || issue.unread).sort((a,b) => b.updated_at.localeCompare(a.updated_at));
+      return { ...(afterSales ? { can_create: profile.role === 'business' } : {}), total: issues.filter(issue => issue.status !== 'closed').length, issues: issues.map(({ messages, ...issue }) => ({ ...issue, subject: messages[0]?.body || '', preview: messages.filter(message => message.kind === 'message').at(-1)?.body || '' })) };
     }
     if (action === 'order') {
       const order = orders.get(input.order_id);
@@ -375,10 +383,10 @@ export class TencentDataStore {
       const order = orders.get(input.order_id);
       if (!this.issueCanCreate(userId, order)) fail('只能为自己负责的订单提交问题', 403);
       if (typeof input.request_id !== 'string' || !/^[a-zA-Z0-9-]{8,80}$/.test(input.request_id)) fail('提交标识无效，请重试');
-      const id = userId + ':' + input.request_id, existing = all.find(issue => issue.id === id);
+      const id = userId + (afterSales ? ':after_sales:' : ':') + input.request_id, existing = all.find(issue => issue.id === id);
       if (existing) { if (!visible(existing)) fail('问题不存在或无权访问', 404); return decorate(existing); }
       const body = content();
-      const issue = { id, order_id: order.id, created_by: userId, creator_email: profile.email, status: 'waiting_follower', sequence: 1, created_at: timestamp, updated_at: timestamp, messages: [{ id: randomUUID(), sequence: 1, author_id: userId, author_email: profile.email, author_role: profile.role, kind: 'message', body, created_at: timestamp }] };
+      const issue = { id, ...(afterSales ? { category: 'after_sales' } : {}), order_id: order.id, created_by: userId, creator_email: profile.email, status: 'waiting_follower', sequence: 1, created_at: timestamp, updated_at: timestamp, messages: [{ id: randomUUID(), sequence: 1, author_id: userId, author_email: profile.email, author_role: profile.role, kind: 'message', body, created_at: timestamp }] };
       this.put('order_issues', issue);
       return decorate(issue);
     }
@@ -399,12 +407,12 @@ export class TencentDataStore {
     if (action === 'reply') { body = content(); status = follower ? 'waiting_business' : 'waiting_follower'; }
     else if (action === 'close') {
       if (!this.ownsOrder(userId, orders.get(issue.order_id))) fail('只有当前负责该订单的业务员可以结束问题', 403);
-      status = 'closed'; kind = 'closed'; body = '业务员已确认解决，结束问题';
+      status = 'closed'; kind = 'closed'; body = afterSales ? '业务员已确认售后解决' : '业务员已确认解决，结束问题';
     } else if (action === 'remind') {
       if (!follower || status !== 'waiting_business') fail('请先回复问题，再提醒业务员结束', 403);
       const previous = issue.messages.filter(message => message.kind === 'reminder').at(-1);
       if (previous && Date.now() - Date.parse(previous.created_at) < 60000) fail('提醒已发送，请稍后再试', 429);
-      kind = 'reminder'; body = '问题如已解决，请点击“结束问题”；仍需处理请继续回复';
+      kind = 'reminder'; body = afterSales ? '售后如已解决，请点击“确认解决”；仍需处理请继续回复' : '问题如已解决，请点击“结束问题”；仍需处理请继续回复';
     } else fail('不支持的问题操作');
     const sequence = issue.sequence + 1;
     const updated = { ...issue, status, sequence, updated_at: timestamp, ...(status === 'closed' ? { closed_at: timestamp, closed_by: userId } : {}), messages: [...issue.messages, { id: randomUUID(), sequence, author_id: userId, author_email: profile.email, author_role: profile.role, kind, body, created_at: timestamp }] };

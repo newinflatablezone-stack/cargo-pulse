@@ -97,3 +97,31 @@ test('issue authors and creators resolve names for historical messages without c
   assert.equal(store.issueDisplayName(follower.id),'跟单');
   assert.equal(call(business,'summary').issues[0].unread,true);
 });
+
+test('after-sales reaches followers and supervisor, stays separate and retains resolved history',t=>{
+  const {store,business,other,follower,call,create}=fixture(t);
+  const supervisor=store.upsertAccount({email:'505863160@qq.com',role:'follower'});
+  const sales=(user,action,values={})=>call(user,action,{category:'after_sales',...values});
+  assert.deepEqual(sales(business,'eligible_orders').orders.map(order=>order.id),['o1']);
+  assert.deepEqual(sales(other,'eligible_orders').orders,[]);
+  assert.deepEqual(sales(follower,'eligible_orders').orders,[]);
+  assert.equal(sales(supervisor,'summary').can_create,false);
+  const general=create();
+  const issue=sales(business,'create',{order_id:'o1',body:'Replacement requested',request_id:'request-1'});
+  assert.notEqual(issue.id,general.id);
+  assert.equal(call(follower,'summary').total,1);
+  assert.equal(sales(follower,'summary').issues[0].unread,true);
+  assert.equal(sales(supervisor,'summary').issues[0].unread,true);
+  assert.equal(sales(other,'summary').total,0);
+  assert.throws(()=>sales(other,'order',{order_id:'o1'}),error=>error.status===404);
+  assert.throws(()=>call(follower,'reply',{issue_id:issue.id,body:'Wrong category'}),error=>error.status===404);
+  sales(follower,'reply',{issue_id:issue.id,body:'Replacement sent'});
+  assert.equal(sales(business,'summary').issues[0].status,'waiting_business');
+  sales(business,'close',{issue_id:issue.id});
+  const resolved=sales(supervisor,'summary');
+  assert.equal(resolved.total,0);
+  assert.equal(resolved.issues[0].status,'closed');
+  sales(supervisor,'read',{issue_id:issue.id,sequence:resolved.issues[0].sequence});
+  assert.equal(sales(supervisor,'summary').issues[0].unread,false);
+  assert.equal(call(follower,'summary').total,1);
+});

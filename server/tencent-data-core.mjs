@@ -360,7 +360,10 @@ export class TencentDataStore {
     if (input.category && !afterSales) fail('不支持的问题分类');
     const all = this.all('order_issues').filter(issue => (issue.category === 'after_sales') === afterSales);
     if (action === 'eligible_orders' && afterSales) {
-      return { orders: [...orders.values()]
+      const factories = [...new Set(this.all('partners')
+        .filter(partner => partner.kind === 'factory' && partner.active !== false)
+        .map(partner => String(partner.name || '').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh-CN'));
+      return { factories, orders: [...orders.values()]
         .filter(order => this.issueCanCreate(userId, order))
         .sort((a, b) => String(b.order_date || '').localeCompare(String(a.order_date || '')))
         .map(order => ({ id: order.id, order_no: order.order_no, product_name: order.product_name })) };

@@ -102,7 +102,12 @@ test('after-sales reaches followers and supervisor, stays separate and retains r
   const {store,business,other,follower,call,create}=fixture(t);
   const supervisor=store.upsertAccount({email:'505863160@qq.com',role:'follower'});
   const sales=(user,action,values={})=>call(user,action,{category:'after_sales',...values});
-  assert.deepEqual(sales(business,'eligible_orders').orders.map(order=>order.id),['o1']);
+  store.put('partners',{id:'factory-a',kind:'factory',name:'Factory A',active:true});
+  store.put('partners',{id:'factory-b',kind:'factory',name:'Factory B',active:false});
+  store.put('partners',{id:'forwarder-a',kind:'forwarder',name:'Forwarder A',active:true});
+  const eligible=sales(business,'eligible_orders');
+  assert.deepEqual(eligible.orders.map(order=>order.id),['o1']);
+  assert.deepEqual(eligible.factories,['Factory A']);
   assert.deepEqual(sales(other,'eligible_orders').orders,[]);
   assert.deepEqual(sales(follower,'eligible_orders').orders,[]);
   assert.equal(sales(supervisor,'summary').can_create,false);

@@ -140,32 +140,37 @@ function createIssueView(afterSales) {
 
   async function startAfterSales() {
     const requestId = crypto.randomUUID(), revision = generation;
+    const orderNumber = value => String(value ?? '').trim().replace(/^#\s*/, '').toLowerCase();
+    let orders = [];
     const node = compose('发起售后', async (body, fields) => {
-      await rpc('create', {order_id:fields.order_id.value, factory:fields.factory.value, body, request_id:requestId});
+      const matches = orders.filter(order => orderNumber(order.order_no) === orderNumber(fields.order_no.value));
+      if (matches.length !== 1) throw Error(matches.length ? '该单号匹配多笔订单，请联系主管核对' : '请输入有权限的完整订单号，或从推荐中选择');
+      await rpc('create', {order_id:matches[0].id, factory:fields.factory.value, body, request_id:requestId});
       if (revision !== generation || !summaryDialog?.isConnected) return;
       summaryDialog.querySelector('select').value = 'all';
       void sync(true).catch(error => {
         const hint = summaryDialog?.querySelector('.q-error');
         if (hint) hint.textContent = '售后已提交，刷新汇总失败：' + error.message;
       });
-    }, '<label>选择订单<select name="order_id" required disabled><option value="">正在加载订单…</option></select></label><label>工厂<input name="factory" maxlength="120" required placeholder="填写工厂名称"></label>');
-    const select = node.querySelector('[name="order_id"]');
+    }, '<label>订单号<input name="order_no" list="after-sales-order-options" autocomplete="off" required disabled placeholder="正在加载订单…"></label><datalist id="after-sales-order-options"></datalist><label>工厂<input name="factory" list="after-sales-factory-options" autocomplete="off" maxlength="120" required placeholder="选择已有工厂或输入新名称"></label><datalist id="after-sales-factory-options"></datalist>');
+    const input = node.querySelector('[name="order_no"]');
     const submit = node.querySelector('[type="submit"]');
     submit.disabled = true;
     try {
-      const {orders} = await rpc('eligible_orders');
+      const result = await rpc('eligible_orders');
       if (!node.open || revision !== generation) return;
-      select.replaceChildren(new Option(orders.length ? '请选择订单' : '暂无可发起售后的订单', ''));
-      for (const order of orders) {
-        const label = [order.order_no, order.product_name].filter(Boolean).join(' · ');
-        select.add(new Option(label || order.id, order.id));
-      }
-      select.disabled = submit.disabled = !orders.length;
-      if (orders.length) select.focus();
+      orders = result.orders.filter(order => orderNumber(order.order_no));
+      const orderOptions = node.querySelector('#after-sales-order-options');
+      for (const order of orders) orderOptions.append(new Option(order.product_name || order.order_no, order.order_no));
+      const factoryOptions = node.querySelector('#after-sales-factory-options');
+      for (const name of result.factories || []) factoryOptions.append(new Option(name, name));
+      input.placeholder = orders.length ? '输入订单号搜索或选择' : '暂无可发起售后的订单';
+      input.disabled = submit.disabled = !orders.length;
+      if (orders.length) input.focus();
     } catch (error) {
       if (!node.open || revision !== generation) return;
       node.querySelector('.q-error').textContent = '订单加载失败：' + error.message;
-      select.options[0].textContent = '订单加载失败';
+      input.placeholder = '订单加载失败';
     }
   }
 

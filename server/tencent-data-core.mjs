@@ -14,7 +14,7 @@ const classifyDestination = value => {
 
 export const TABLES = [
   'profiles', 'app_settings', 'partners', 'orders', 'order_events', 'order_images', 'order_issues', 'order_issue_reads',
-  'order_factories', 'order_shipments', 'order_shipment_events', 'internal_resource_tables',
+  'shopify_order_intake', 'order_factories', 'order_shipments', 'order_shipment_events', 'internal_resource_tables',
   'tickets', 'ticket_messages', 'ticket_attachments', 'ticket_history',
   'ticket_notifications', 'ticket_reminder_logs', 'push_subscriptions', 'push_delivery_logs'
 ];
@@ -24,6 +24,7 @@ const RETIRED_FEATURE_TABLES = new Set(['tickets', 'ticket_messages', 'ticket_at
 
 const PUBLIC_RPC = new Set(['lookup_customer_tracking']);
 const SUPERVISOR_EMAIL = '505863160@qq.com';
+const orderNumberKey = value => String(value || '').trim().replace(/^#\s*/, '').toLowerCase();
 const now = () => new Date().toISOString();
 const tokenHash = value => createHash('sha256').update(value).digest('hex');
 const json = value => JSON.stringify(value ?? null);
@@ -347,6 +348,78 @@ export class TencentDataStore {
     return name?.trim() || ((profile?.role || role) === 'follower' ? '跟单' : '业务员');
   }
 
+  hasShopifyOrder(number) {
+    const key = orderNumberKey(number);
+    return !key || ['orders','shopify_order_intake'].some(table =>
+      this.all(table).some(row => orderNumberKey(row.order_no) === key));
+  }
+
+  importShopifyOrder(row) {
+    this.db.exec('begin immediate');
+    try {
+      if (!this.hasShopifyOrder(row.order_no) && !this.all('shopify_order_intake').some(record=>record.id===row.id)) {
+        this.put('shopify_order_intake', row);
+      }
+      this.db.exec('commit');
+    } catch (error) {
+      this.db.exec('rollback');
+      this.tableCache.delete('shopify_order_intake');
+      throw error;
+    }
+  }
+
+  shopifyIntake(userId, input) {
+    const profile = this.profile(userId);
+    const fail = (message, status = 400) => { throw Object.assign(Error(message), {status}); };
+    if (profile?.role !== 'business' || profile.disabled_at) fail('仅业务员可以处理导入订单',403);
+    const table = 'shopify_order_intake';
+    const records = this.all(table);
+    if (input.action === 'list') return {orders:records
+      .filter(row=>!row.submitted_at && (!row.claimed_by || row.claimed_by === userId))
+      .map(({claimed_by,...row})=>({...row,claimed:claimed_by===userId}))
+      .sort((a,b)=>b.order_date.localeCompare(a.order_date))};
+    if (!['claim','submit'].includes(input.action)) fail('不支持的操作');
+    this.db.exec('begin immediate');
+    try {
+      const row = this.all(table).find(record=>record.id===input.id);
+      if (!row || row.submitted_at || (row.claimed_by && row.claimed_by !== userId)) fail('订单已被其他业务员认领或提交',409);
+      if (input.action === 'claim') {
+        const claimed = this.put(table,{...row,claimed_by:userId});
+        this.db.exec('commit');
+        return {...claimed,claimed:true};
+      }
+      if (row.claimed_by !== userId) fail('请先认领订单',403);
+      if (this.all('orders').some(order=>orderNumberKey(order.order_no)===orderNumberKey(row.order_no))) fail('订单号已存在',409);
+      const value = key => typeof input[key]==='string' ? input[key].trim() : '';
+      const orderDate=value('order_date'), quantity=Number(input.quantity);
+      const shippingMode=value('shipping_mode'), blower=value('blower');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate) || !Number.isFinite(Date.parse(orderDate)) ||
+        new Date(orderDate).toISOString().slice(0,10)!==orderDate || !Number.isSafeInteger(quantity) || quantity<1 ||
+        !value('product_name') || !value('size') || !value('customer_info') ||
+        !['包含','不包含'].includes(blower) || !['domestic_sea','domestic_express'].includes(shippingMode)) {
+        fail('请补齐日期、产品名称、数量、尺寸、客户地址、风机和运输方式');
+      }
+      const urls=value('image_urls').split(/\s+/).filter(Boolean);
+      if (urls.length>100 || urls.some(url=>{try{return new URL(url).protocol!=='https:'}catch{return true}})) fail('图片地址须为 HTTPS 链接');
+      const timestamp=now();
+      const order=this.put('orders',{
+        order_no:row.order_no,order_date:orderDate,product_name:value('product_name'),quantity,size:value('size'),
+        customer_info:value('customer_info'),requirements:value('requirements'),blower,shipping_mode:shippingMode,
+        shopify_image_urls:[...new Set(urls)],created_by:userId,business_id:userId,
+        business_name:this.issueDisplayName(userId,profile.email),created_at:timestamp,updated_at:timestamp,
+        current_step:'business_placed',step_started_at:timestamp,step_deadline:null,inventory_mode:'production',status:'active'
+      });
+      this.put('order_events',{order_id:order.id,step_key:'business_placed',started_at:timestamp,created_at:timestamp});
+      this.put(table,{...row,submitted_at:timestamp});
+      this.db.exec('commit');
+      return {id:order.id};
+    } catch(error) {
+      this.db.exec('rollback');
+      for (const name of [table,'orders','order_events']) this.tableCache.delete(name);
+      throw error;
+    }
+  }
+
   orderIssues(userId, input = {}) {
     const profile = this.profile(userId);
     const fail = (message, status = 400) => { throw Object.assign(Error(message), { status }); };
@@ -470,6 +543,7 @@ export class TencentDataStore {
   }
 
   mutate(table, method, url, body, userId, prefer = '', rangeHeader = '') {
+    if (table === 'shopify_order_intake') throw Object.assign(Error('请通过 Shopify 订单认领接口操作'), {status:403});
     if (['order_issues', 'order_issue_reads'].includes(table)) throw Object.assign(Error('问题记录只能通过订单问题接口访问'), { status: 403 });
     if (RETIRED_FEATURE_TABLES.has(table)) throw Object.assign(Error('该历史功能已停用'), { status: 403 });
     if (method === 'GET') return this.query(table, url, rangeHeader, this.visibleRows(table, userId));

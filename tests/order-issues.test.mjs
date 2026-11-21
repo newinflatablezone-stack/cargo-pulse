@@ -140,3 +140,28 @@ test('after-sales reaches followers and supervisor, stays separate and retains r
   assert.equal(sales(supervisor,'summary').issues[0].unread,false);
   assert.equal(call(follower,'summary').total,1);
 });
+
+test('Shopify intake deduplicates numbers and enforces claim and handoff roles',t=>{
+  const {store,business,other,follower}=fixture(t);
+  const imported={id:'shopify-1',order_no:' #123 ',order_date:'2026-11-21',size:'',image_urls:[]};
+  const call=(user,action,values={})=>store.shopifyIntake(user.id,{action,...values});
+  store.importShopifyOrder({...imported,id:'duplicate-existing',order_no:'#ORDER-1'});
+  store.importShopifyOrder(imported);
+  store.importShopifyOrder({...imported,id:'duplicate',order_no:'123'});
+  assert.equal(call(business,'list').orders.length,1);
+  assert.equal(call(other,'list').orders.length,1);
+  assert.throws(()=>call(follower,'list'),error=>error.status===403);
+  assert.throws(()=>call(business,'submit',{id:imported.id}),error=>error.status===403);
+  call(business,'claim',{id:imported.id});
+  assert.equal(call(other,'list').orders.length,0);
+  assert.throws(()=>call(other,'claim',{id:imported.id}),error=>error.status===409);
+  assert.throws(()=>call(business,'submit',{id:imported.id}),error=>error.status===400);
+  const {id}=call(business,'submit',{id:imported.id,order_date:'2026-11-21',product_name:'Inflatable',
+    quantity:'1',size:'2 x 3 m',customer_info:'Delivery address',blower:'不包含',shipping_mode:'domestic_sea'});
+  assert.equal(call(business,'list').orders.length,0);
+  const order=store.visibleRows('orders',follower.id).find(row=>row.id===id);
+  assert.equal(order.current_step,'business_placed');
+  assert.equal(order.business_id,business.id);
+  assert.equal(store.all('order_events').find(row=>row.order_id===id).step_key,'business_placed');
+  assert.throws(()=>call(business,'submit',{id:imported.id}),error=>error.status===409);
+});

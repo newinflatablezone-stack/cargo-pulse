@@ -122,6 +122,10 @@ async function rpc(req, res, name, body, user) {
     if (req.method !== 'POST') throw Object.assign(Error('请使用 POST 请求'), { status: 405 });
     return send(res, 200, store.orderIssues(user.id, body));
   }
+  if (name === 'shopify_order_intake') {
+    if (req.method !== 'POST') throw Object.assign(Error('请使用 POST 请求'), {status:405});
+    return send(res, 200, store.shopifyIntake(user.id, body));
+  }
   if (name === 'home_bootstrap') return send(res, 200, store.homeSnapshot(user.id));
   if (name === 'home_core') return send(res, 200, store.homeCoreSnapshot(user.id));
   if (name === 'internal_resource_permissions') return send(res, 200, store.internalResourcePermissions(user.id));
@@ -162,6 +166,7 @@ async function rpc(req, res, name, body, user) {
     store.setUserActive(target.id, Boolean(body.active));
   } else if (name === 'transition_order_stage') {
     if (!order || order.deleted_at) throw Object.assign(Error('订单不存在'), { status: 404 });
+    if (order.current_step === 'business_placed' && !String(order.factory_name || '').trim()) throw Object.assign(Error('请先填写主工厂，再确认向工厂下单'), {status:400});
     if (order.current_step === 'completed') throw Object.assign(Error('已完成订单不能继续推进'), { status: 409 });
     if (body.target_next_step !== 'completed' && !body.target_deadline) throw Object.assign(Error('进行中的步骤必须有截止时间'), { status: 400 });
     const transitionTime = new Date().toISOString();
@@ -301,4 +306,114 @@ const server = http.createServer((req, res) => {
 // Deadline reminders and retry delivery run in the dedicated systemd worker.
 // Keeping those provider calls out of this process protects the core API.
 
+const shopifyImportStart = '2026-11-20T16:00:00Z';
+const period = 30 * 60 * 1000;
+const orderQuery = `query ImportOrders($query: String!, $after: String) {
+  orders(first: 25, after: $after, query: $query, sortKey: CREATED_AT) {
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      id name createdAt note
+      customAttributes { key value }
+      shippingAddress { address1 address2 city province zip country }
+      shippingLines(first: 10) { nodes { title code } }
+      lineItems(first: 30) {
+        nodes { name variantTitle image { url } customAttributes { key value } }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}`;
+const lineQuery = `query ImportOrderItems($id: ID!, $after: String) {
+  order(id: $id) {
+    lineItems(first: 100, after: $after) {
+      nodes { name variantTitle image { url } customAttributes { key value } }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}`;
+
+function mapShopifyOrder(order, items) {
+  const attributes = [...(order.customAttributes || []), ...items.flatMap(item => item.customAttributes || [])];
+  const allText = [order.note, ...attributes.map(({key,value}) => key+' '+value), ...items.map(item=>item.name)].filter(Boolean);
+  const mentions = new Set();
+  for (const text of allText) {
+    if (/不\s*包含/.test(text)) mentions.add('不包含');
+    if (/包含/.test(text.replace(/不\s*包含/g,''))) mentions.add('包含');
+  }
+  const shipping = (order.shippingLines?.nodes || []).map(line=>[line.title,line.code].join(' ')).join(' ');
+  const sea = /\bsea\b/i.test(shipping), express = /\bexpress\b/i.test(shipping);
+  const dimensions = /\d+(?:\.\d+)?\s*(?:cm|mm|m|ft|in|米|英尺)?\s*[×xX*]\s*\d+(?:\.\d+)?(?:\s*(?:cm|mm|m|ft|in|米|英尺)?\s*[×xX*]\s*\d+(?:\.\d+)?)?\s*(?:cm|mm|m|ft|in|米|英尺)?/gi;
+  const sizes = [...attributes.filter(entry=>/^(size|dimensions?|产品尺寸|尺寸)$/i.test(entry.key.trim())).map(entry=>entry.value),
+    ...items.flatMap(item=>[...(String(item.variantTitle||'').match(dimensions)||[]),...(String(item.name||'').match(dimensions)||[])])];
+  const address = order.shippingAddress;
+  return {
+    id: order.id, order_no: String(order.name || '').trim(),
+    order_date: new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(order.createdAt)),
+    image_urls: [...new Set(items.map(item=>item.image?.url).filter(url=>typeof url==='string'&&url.startsWith('https://')))],
+    size: [...new Set(sizes.map(size=>String(size||'').trim()).filter(Boolean))].join(' / '),
+    requirements: order.note || '',
+    blower: mentions.size === 1 ? [...mentions][0] : '',
+    customer_info: address ? [address.address1,address.address2,address.city,address.province,address.zip,address.country].filter(Boolean).join(', ') : '',
+    shipping_mode: sea === express ? '' : sea ? 'domestic_sea' : 'domestic_express'
+  };
+}
+
+function startShopifySync(store, env = process.env) {
+  const domain = String(env.SHOPIFY_ORDER_SHOP || '').toLowerCase().trim();
+  const {SHOPIFY_ORDER_CLIENT_ID:clientId, SHOPIFY_ORDER_CLIENT_SECRET:clientSecret} = env;
+  let token = env.SHOPIFY_ORDER_TOKEN, tokenExpires = token ? Infinity : 0;
+  const version = env.SHOPIFY_ORDER_API_VERSION || '2026-10';
+  if ((!token && (!clientId || !clientSecret)) || !/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(domain) || !/^\d{4}-(01|04|07|10)$/.test(version)) return;
+  let running = false;
+  async function query(document, variables) {
+    if (Date.now() >= tokenExpires) {
+      const response = await fetch(`https://${domain}/admin/oauth/access_token`,{
+        method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({grant_type:'client_credentials',client_id:clientId,client_secret:clientSecret}),
+        signal:AbortSignal.timeout(30000), redirect:'error'
+      });
+      if (!response.ok) throw Error('Shopify 认证 HTTP '+response.status);
+      const result = await response.json();
+      if (!result.access_token || !Number.isFinite(result.expires_in)) throw Error('Shopify 未返回可续期的访问凭据');
+      token=result.access_token;
+      tokenExpires=Date.now()+Math.max(0,result.expires_in-300)*1000;
+    }
+    const response = await fetch(`https://${domain}/admin/api/${version}/graphql.json`,{
+      method:'POST', headers:{'Content-Type':'application/json','X-Shopify-Access-Token':token},
+      body:JSON.stringify({query:document,variables}), signal:AbortSignal.timeout(30000), redirect:'error'
+    });
+    if (!response.ok) throw Error('Shopify HTTP '+response.status);
+    const result = await response.json();
+    if (result.errors?.length || !result.data) throw Error('Shopify 未返回完整订单数据，请检查应用权限');
+    return result.data;
+  }
+  async function sync() {
+    if(running)return;
+    running=true;
+    try {
+      const search = "created_at:>='"+shopifyImportStart+"'";
+      let after = null;
+      do {
+        const {orders} = await query(orderQuery,{query:search,after});
+        for(const order of orders.nodes){
+          if(Date.parse(order.createdAt)<Date.parse(shopifyImportStart)||store.hasShopifyOrder(order.name))continue;
+          let connection=order.lineItems;
+          const items=[...connection.nodes];
+          while(connection.pageInfo.hasNextPage){
+            const result=await query(lineQuery,{id:order.id,after:connection.pageInfo.endCursor});
+            connection=result.order.lineItems;
+            items.push(...connection.nodes);
+          }
+          store.importShopifyOrder(mapShopifyOrder(order,items));
+        }
+        after=orders.pageInfo.hasNextPage?orders.pageInfo.endCursor:null;
+      }while(after);
+    }catch(error){console.warn('Shopify 自动导入失败',error.message);}
+    finally{running=false;}
+  }
+  void sync();
+  setInterval(sync,period).unref();
+}
+
+startShopifySync(store);
 server.listen(PORT, '127.0.0.1', () => console.log(`Cargo Pulse Tencent data service listening on 127.0.0.1:${PORT}`));

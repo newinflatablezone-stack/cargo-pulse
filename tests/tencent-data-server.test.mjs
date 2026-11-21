@@ -42,6 +42,8 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
   store.put('orders', { id: 'tracking-order', order_no: 'TRACK-1', customer_info: 'Customer customer@example.com', current_step: 'ocean_transit' });
   store.put('order_events', { id: 'tracking-event', order_id: 'tracking-order', step_key: 'ocean_transit', note: 'tracking:SHIP123' });
   store.put('orders', { id: 'second-order', order_no: 'TRACK-2' });
+  store.put('orders', {id:'factory-handoff',order_no:'HANDOFF-1',order_date:'2025-01-01',current_step:'business_placed',factory_name:'Factory A'});
+  store.put('order_events', {id:'factory-start',order_id:'factory-handoff',step_key:'business_placed'});
   store.db.close();
   const child = spawn(process.execPath, [resolve('server/tencent-data-server.mjs')], {
     env: {
@@ -116,6 +118,19 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
     const ai = '/rest/v1/ai';
     const supervisorHeaders = { Authorization: `Bearer ${supervisorSession.access_token}` };
     const request = (path, options) => fetch(baseUrl + path, options);
+    const handoff = await request('/rest/v1/rpc/transition_order_stage', {
+      method:'POST',headers:{...supervisorHeaders,'Content-Type':'application/json'},
+      body:JSON.stringify({target_order_id:'factory-handoff',target_next_step:'production',target_deadline:'2025-01-11T00:00:00Z'})
+    });
+    assert.equal(handoff.status,200);
+    const transition=await handoff.json();
+    const expectedDate = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'})
+      .format(new Date(transition.started_at));
+    assert.equal(transition.order_date,expectedDate);
+    assert.equal(Date.parse(transition.deadline_at)-Date.parse(transition.started_at),10*86400000);
+    const savedHandoff = await (await request('/rest/v1/orders?id=eq.factory-handoff',{headers:supervisorHeaders})).json();
+    assert.equal(savedHandoff[0].order_date,expectedDate);
+    assert.equal(savedHandoff[0].step_started_at,transition.started_at);
     assert.equal((await request(ai+'/datasets')).status, 401);
     assert.equal((await request(ai+'/datasets', { headers: supervisorHeaders })).status, 401);
     const issued = await request(ai+'/keys', { method: 'POST', headers: supervisorHeaders });

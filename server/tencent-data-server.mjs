@@ -170,9 +170,19 @@ async function rpc(req, res, name, body, user) {
     if (order.current_step === 'completed') throw Object.assign(Error('已完成订单不能继续推进'), { status: 409 });
     if (body.target_next_step !== 'completed' && !body.target_deadline) throw Object.assign(Error('进行中的步骤必须有截止时间'), { status: 400 });
     const transitionTime = new Date().toISOString();
+    let stageDeadline = body.target_deadline, orderDate = order.order_date;
+    const factoryOrder = order.current_step === 'business_placed';
+    if (factoryOrder) {
+      const next = order.inventory_mode === 'stock' ? ['shipping_selection',1] :
+        order.needs_rendering ? ['rendering',3] : ['production',10];
+      if (body.target_next_step !== next[0]) throw Object.assign(Error('下一阶段不正确，请刷新订单'), {status:409});
+      orderDate = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'})
+        .format(new Date(transitionTime));
+      stageDeadline = new Date(Date.parse(transitionTime) + next[1] * 86400000).toISOString();
+    }
     const active = store.all('order_events').filter(row => row.order_id === order.id && !row.completed_at);
     active.forEach(row => store.put('order_events', { ...row, completed_at: transitionTime, completed_by: user.id }));
-    store.put('order_events', { id: randomUUID(), order_id: order.id, step_key: body.target_next_step, started_at: transitionTime, deadline_at: body.target_deadline, completed_at: null, completed_by: null, note: null, created_at: transitionTime });
+    store.put('order_events', { id: randomUUID(), order_id: order.id, step_key: body.target_next_step, started_at: transitionTime, deadline_at: stageDeadline, completed_at: null, completed_by: null, note: null, created_at: transitionTime });
     const shipping = body.target_shipping || {};
     store.put('orders', {
       ...order,
@@ -180,10 +190,12 @@ async function rpc(req, res, name, body, user) {
       ...(body.target_tracking_no ? { tracking_no: body.target_tracking_no } : {}),
       current_step: body.target_next_step,
       step_started_at: transitionTime,
-      step_deadline: body.target_deadline,
+      step_deadline: stageDeadline,
+      ...(factoryOrder ? { order_date: orderDate } : {}),
       rollback_used: false,
       updated_at: transitionTime
     });
+    if (factoryOrder) return send(res, 200, { started_at: transitionTime, deadline_at: stageDeadline, order_date: orderDate });
   } else throw Object.assign(Error('暂不支持该事务操作'), { status: 404 });
   return send(res, 200, null);
 }

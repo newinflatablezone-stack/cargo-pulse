@@ -1,3 +1,6 @@
+// Browser copy of the customer rules. The data service inlines the same
+// functions in tencent-data-core.mjs because the live deployer does not copy
+// this file into the runtime. Keep the two copies behavior-identical.
 function emailPattern() {
   return /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 }

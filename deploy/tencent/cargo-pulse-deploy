@@ -63,6 +63,13 @@ if systemctl cat cargo-pulse-data.service >/dev/null 2>&1 && [ -s "$RELEASE_DIR/
   install -m 644 "$RELEASE_DIR/server/tencent-data-core.mjs" /opt/cargo-pulse-runtime/tencent-data-core.mjs
   install -m 644 "$RELEASE_DIR/server/destination-risk.mjs" /opt/cargo-pulse-runtime/destination-risk.mjs
   install -m 644 "$RELEASE_DIR/server/tencent-data-server.mjs" /opt/cargo-pulse-runtime/tencent-data-server.mjs
+  # The data service inlines these rules and does not load this file. Copy it
+  # only so a future deployer repair keeps the frontend source module beside
+  # the runtime. The script already installed on the server will not do this
+  # until that repair runs.
+  if [ -s "$RELEASE_DIR/server/customer-info.mjs" ]; then
+    install -m 644 "$RELEASE_DIR/server/customer-info.mjs" /opt/cargo-pulse-runtime/customer-info.mjs
+  fi
   # Remove the retired issue-tracking runtime without touching historical data
   # or uploaded attachments.
   systemctl disable --now cargo-pulse-ticket-reminders.timer 2>/dev/null || true

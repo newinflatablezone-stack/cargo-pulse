@@ -1,6 +1,43 @@
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { customerInfoReminder } from './customer-info.mjs';
+
+// Keep the data service self-contained: the live deployer copies this file
+// into the runtime and does not copy newly added helper modules. The browser
+// copy lives in server/customer-info.mjs and must stay behavior-identical.
+function customerEmailPattern() {
+  return /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+}
+function customerPhonePattern() {
+  return /(?:\+|00)?\d[\d\s().-]{5,}\d/g;
+}
+export function extractCustomerContacts(value) {
+  const text = String(value || '');
+  const emails = [...new Set((text.match(customerEmailPattern()) || []).map(item => item.toLowerCase()))];
+  const phones = new Set();
+  for (const raw of text.match(customerPhonePattern()) || []) {
+    let digits = raw.replace(/\D/g, '');
+    if (digits.startsWith('00')) digits = digits.slice(2);
+    if (digits.length < 7 || digits.length > 15) continue;
+    phones.add(digits);
+    if (digits.length === 13 && digits.startsWith('86')) phones.add(digits.slice(2));
+    if (digits.length === 11 && digits.startsWith('1')) phones.add(digits.slice(1));
+  }
+  return { emails, phones: [...phones] };
+}
+const CUSTOMER_STREET = /\b(?:st|street|rd|ave|road|blvd|dr|drive|lane|apt|unit|zip)\b|po\s*box|路|街|道|号|巷|弄|区|市|省|县|镇|村|大厦|室|座/i;
+function customerAddressRemainder(value) {
+  return String(value || '').replace(customerEmailPattern(), ' ').replace(customerPhonePattern(), ' ').replace(/\s+/g, ' ').trim();
+}
+export function customerInfoReminder(value) {
+  const contact = extractCustomerContacts(value);
+  const remainder = customerAddressRemainder(value);
+  const address = remainder.length >= 4 && (/\d/.test(remainder) || /[\u3400-\u9fff]/.test(remainder) || CUSTOMER_STREET.test(remainder));
+  const missing = [];
+  if (!address) missing.push('地址');
+  if (!contact.emails.length) missing.push('邮箱');
+  if (!contact.phones.length) missing.push('电话');
+  return missing.length ? `客户信息还缺少：${missing.join('、')}` : '';
+}
 
 // Keep the data service self-contained: older production deployers install
 // this core file directly and may not yet copy newly added helper modules.

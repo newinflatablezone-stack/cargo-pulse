@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { extractCustomerContacts, customerInfoReminder } from '../server/customer-info.mjs';
-import { TencentDataStore } from '../server/tencent-data-core.mjs';
+import { TencentDataStore, extractCustomerContacts as serverContacts, customerInfoReminder as serverReminder } from '../server/tencent-data-core.mjs';
 
 const address = '1 Main St, Austin, TX 78701';
 const email = 'ada@example.com';
@@ -36,6 +36,10 @@ test('an order needs an address, an email, and a phone', () => {
   assert.equal(customerInfoReminder(`Ada\n${address}\n${phone}`), '客户信息还缺少：邮箱');
   assert.equal(customerInfoReminder(`Ada\n${address}\n${email}`), '客户信息还缺少：电话');
   assert.equal(customerInfoReminder('   '), '客户信息还缺少：地址、邮箱、电话');
+  for (const sample of [complete, `Ada\n${email}\n${phone}`, `Ada\n${address}\n${phone}`, '   ', '13800138000', 'Alice +1 (626) 342-7272']) {
+    assert.equal(serverReminder(sample), customerInfoReminder(sample));
+    assert.deepEqual(serverContacts(sample), extractCustomerContacts(sample));
+  }
 });
 
 test('create and place reject incomplete customer details, and import still keeps them', t => {

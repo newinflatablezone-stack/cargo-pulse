@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TencentDataStore, shopifyLineSummary, shopifyShippingChoice, shopifyBlowerChoice, shopifyVariantChoices, shopifyCustomerInfo, lookupCustomerTracking, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible, normalizeBlowerChoice, beijingOrderDate } from '../server/tencent-data-core.mjs';
+import { TencentDataStore, shopifyLineSummary, shopifyShippingChoice, shopifyBlowerChoice, shopifyVariantChoices, shopifyGraphqlErrorDetail, shopifyCustomerInfo, lookupCustomerTracking, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible, normalizeBlowerChoice, beijingOrderDate } from '../server/tencent-data-core.mjs';
 import { overallDeadline } from '../workflow.js';
 
 function fixture(t) {
@@ -77,10 +77,28 @@ test('variant options fill 海运 and 包风机/包气泵, including the four li
     { shippingLines: { nodes: [{ title: 'Free Shipping', code: 'Free Shipping' }] } },
     [{ name: 'Please blow up before use', variantTitle: 'blow up', variant: { selectedOptions: [{ name: 'Note', value: 'blow up' }] } }]
   ).blower, '');
+  const fromTitle = variantTitle => shopifyVariantChoices(
+    { shippingLines: { nodes: [{ title: 'Free Shipping', code: 'Free Shipping' }] } },
+    [{ name: `Product - ${variantTitle}`, variantTitle }]
+  );
+  assert.deepEqual(fromTitle(`${sea} / Without air blower`), { shipping_mode: 'domestic_sea', blower: '不包风机' });
+  assert.deepEqual(fromTitle(`${sea} / With air blower`), { shipping_mode: 'domestic_sea', blower: '包风机' });
+  assert.deepEqual(fromTitle(`${sea} / COME WITH NO AIR PUMP`), { shipping_mode: 'domestic_sea', blower: '不包气泵' });
+  assert.deepEqual(shopifyVariantChoices(
+    { shippingLines: { nodes: [{ title: 'Free Shipping', code: 'Free Shipping' }] } },
+    [{ name: `${sea} / Without air blower`, variantTitle: '' }]
+  ), { shipping_mode: 'domestic_sea', blower: '不包风机' });
   const source = readFileSync(new URL('../server/tencent-data-server.mjs', import.meta.url), 'utf8');
-  assert.match(source, /selectedOptions \{ name value \}/);
-  assert.match(source, /shopifyVariantChoices/);
-  assert.equal(source.includes("created_at:>='" ), true);
+  assert.equal(source.includes('selectedOptions'), false);
+  assert.equal(/variant\s*\{/.test(source), false);
+  assert.match(source, /variantTitle/);
+  assert.match(source, /shopifyGraphqlErrorDetail/);
+  assert.equal(shopifyGraphqlErrorDetail([{
+    message: 'Access denied for variant field.',
+    path: ['orders', 'nodes', 'lineItems', 'nodes', 'variant'],
+    extensions: { code: 'ACCESS_DENIED', requestId: 'secret-request' }
+  }]), 'ACCESS_DENIED orders.nodes.lineItems.nodes.variant Access denied for variant field.');
+  assert.equal(shopifyGraphqlErrorDetail([]), '');
 });
 
 test('the Shopify sync window stays Beijing 2026-11-21 00:00 and also includes order 9050 exactly', () => {

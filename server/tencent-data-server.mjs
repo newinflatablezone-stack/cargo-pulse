@@ -2,7 +2,7 @@ import http from 'node:http';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize } from 'node:path';
-import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking, shopifyLineSummary, shopifyVariantChoices, shopifyCustomerInfo, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible } from './tencent-data-core.mjs';
+import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking, shopifyLineSummary, shopifyVariantChoices, shopifyGraphqlErrorDetail, shopifyCustomerInfo, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible } from './tencent-data-core.mjs';
 
 const PORT = Number(process.env.PORT || 8788);
 const DATA_DIR = process.env.CARGO_PULSE_DATA_DIR || '/var/lib/cargo-pulse/data';
@@ -342,7 +342,7 @@ const orderQuery = `query ImportOrders($query: String!, $after: String) {
       shippingAddress { name firstName lastName phone address1 address2 city province zip country }
       shippingLines(first: 10) { nodes { title code } }
       lineItems(first: 30) {
-        nodes { name quantity variantTitle image { url } customAttributes { key value } variant { title selectedOptions { name value } } }
+        nodes { name quantity variantTitle image { url } customAttributes { key value } }
         pageInfo { hasNextPage endCursor }
       }
     }
@@ -351,7 +351,7 @@ const orderQuery = `query ImportOrders($query: String!, $after: String) {
 const lineQuery = `query ImportOrderItems($id: ID!, $after: String) {
   order(id: $id) {
     lineItems(first: 100, after: $after) {
-      nodes { name quantity variantTitle image { url } customAttributes { key value } variant { title selectedOptions { name value } } }
+      nodes { name quantity variantTitle image { url } customAttributes { key value } }
       pageInfo { hasNextPage endCursor }
     }
   }
@@ -411,7 +411,10 @@ function startShopifySync(store, env = process.env) {
     });
     if (!response.ok) throw Error('Shopify HTTP '+response.status);
     const result = await response.json();
-    if (result.errors?.length || !result.data) throw Error('Shopify 未返回完整订单数据，请检查应用权限');
+    if (result.errors?.length || !result.data) {
+      const detail = shopifyGraphqlErrorDetail(result.errors);
+      throw Error(detail ? `Shopify 未返回完整订单数据，请检查应用权限：${detail}` : 'Shopify 未返回完整订单数据，请检查应用权限');
+    }
     return result.data;
   }
   async function sync() {

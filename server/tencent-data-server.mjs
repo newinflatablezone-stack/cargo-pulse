@@ -219,7 +219,9 @@ async function storageRoute(req, res, url, user) {
     return send(res, 200, { signedURL: `/object/order-images/${raw}?expires=${expires}&uid=${encodeURIComponent(user.id)}&token=${encodeURIComponent(token)}` }, { 'Set-Cookie': `cp_order_images=${bearer(req)}; HttpOnly; Secure; SameSite=Strict; Path=/storage/v1/; Max-Age=3600` });
   }
   if (url.pathname.startsWith('/storage/v1/object/order-images/')) {
-    if (!store.isFollower(user.id)) throw Object.assign(Error('没有操作权限'), { status: 403 });
+    const raw = decodeURIComponent(url.pathname.slice(objectPrefix.length));
+    const productUpload = req.method === 'POST' && store.canUploadShopifyProductImage(user.id, raw);
+    if (!store.isFollower(user.id) && !productUpload) throw Object.assign(Error('没有操作权限'), { status: 403 });
     const file = safeUploadPath(url.pathname.slice(objectPrefix.length));
     if (req.method === 'POST') { const body = await readBody(req); await mkdir(dirname(file), { recursive: true }); await writeFile(file, body); return send(res, 200, { Key: file }); }
     if (req.method === 'DELETE') { await unlink(file).catch(() => {}); return send(res, 200, {}); }

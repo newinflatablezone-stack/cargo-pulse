@@ -72,11 +72,20 @@ export function shopifyShippingChoice(text) {
   return sea ? 'domestic_sea' : 'domestic_express';
 }
 
+export const BLOWER_OPTIONS = ['包风机', '包气泵', '不包风机', '不包气泵'];
+const BLOWER_ALIASES = { '风机': '包风机', '气泵': '包气泵' };
+
+export function normalizeBlowerChoice(value) {
+  const text = String(value || '').trim();
+  if (BLOWER_OPTIONS.includes(text)) return text;
+  return BLOWER_ALIASES[text] || '';
+}
+
 export function shopifyBlowerChoice(text) {
   const value = String(text || '');
   const blower = /blower/i.test(value), pump = /pump/i.test(value);
   if (blower === pump) return '';
-  return blower ? '风机' : '气泵';
+  return blower ? '包风机' : '包气泵';
 }
 
 export function shopifyCustomerInfo(parts = {}) {
@@ -347,6 +356,24 @@ export class TencentDataStore {
     return { ...order, business_id: owners.length === 1 ? owners[0].id : null, business_user_id: null };
   }
 
+  canUploadShopifyProductImage(userId, objectPath) {
+    const path = String(objectPath || '');
+    const orderId = /^([^/]+)\/product-image-[A-Za-z0-9._-]+$/.exec(path)?.[1];
+    if (!orderId) return false;
+    const actor = this.profile(userId);
+    if (!actor || actor.disabled_at || actor.role !== 'business') return false;
+    const order = this.all('orders').find(row => row.id === orderId);
+    return Boolean(order && !order.deleted_at && order.current_step === SALES_SUPPLEMENT && order.shopify_order_id);
+  }
+
+  shopifyProductImagePost(userId, body) {
+    const rows = Array.isArray(body) ? body : [body];
+    return rows.length > 0 && rows.every(row => {
+      const path = String(row?.object_path || '');
+      return this.canUploadShopifyProductImage(userId, path) && String(row?.order_id || '') === path.split('/')[0];
+    });
+  }
+
   canReadOrder(userId, order) {
     if (!userId || !order || (order.deleted_at && !this.isSupervisor(userId))) return false;
     if (this.canReadAllOrders(userId) || this.ownsOrder(userId, order)) return true;
@@ -464,7 +491,7 @@ export class TencentDataStore {
       customer_info: String(row?.customer_info || '').trim(),
       requirements: note,
       abnormal_note: note,
-      blower: ['风机', '气泵'].includes(row?.blower) ? row.blower : '',
+      blower: normalizeBlowerChoice(row?.blower),
       shipping_mode: SALES_SHIPPING.has(row?.shipping_mode) ? row.shipping_mode : null,
       shopify_image_urls: images,
       shopify_order_id: String(row?.shopify_order_id || row?.id || '') || null,
@@ -603,12 +630,15 @@ export class TencentDataStore {
     const quantity = Number(input.quantity);
     const businessName = value('business_name');
     const shipping = value('shipping_mode');
-    const blower = value('blower');
+    const blower = normalizeBlowerChoice(value('blower'));
     const customer = value('customer_info');
     const note = value('abnormal_note');
-    const urls = httpsUrls(input.image_urls ?? input.shopify_image_urls ?? order.shopify_image_urls);
-    if (!orderNo || !product || !urls?.length || !Number.isSafeInteger(quantity) || quantity < 1 || !SALESPERSON_NAMES.includes(businessName) || !SALES_SHIPPING.has(shipping) || !['风机', '气泵'].includes(blower) || !customer || !note) {
-      fail('请补齐订单号、产品名称、图片、数量、业务员、运输方式、风机或气泵、客户信息和订单备注');
+    const suppliedImages = input.image_urls != null || input.shopify_image_urls != null;
+    const urls = suppliedImages ? httpsUrls(input.image_urls ?? input.shopify_image_urls) : (httpsUrls(order.shopify_image_urls) || []);
+    const hasUploadedImage = this.all('order_images').some(row => row.order_id === order.id && String(row.object_path || '').includes('/product-image-'));
+    if (suppliedImages && urls === null) fail('图片地址须为 HTTPS 链接');
+    if (!orderNo || !product || !(urls?.length || hasUploadedImage) || !Number.isSafeInteger(quantity) || quantity < 1 || !SALESPERSON_NAMES.includes(businessName) || !SALES_SHIPPING.has(shipping) || !blower || !customer || !note) {
+      fail('请补齐订单号、产品名称、图片、数量、业务员、运输方式、包风机或包气泵、客户信息和订单备注');
     }
     if (this.all('orders').some(row => row.id !== order.id && orderNumberKey(row.order_no) === orderNumberKey(orderNo))) fail('订单号已存在', 409);
     const owners = this.businessOwnersForName(businessName);
@@ -626,7 +656,7 @@ export class TencentDataStore {
         requirements: note,
         blower,
         shipping_mode: shipping,
-        shopify_image_urls: urls,
+        shopify_image_urls: urls || [],
         business_name: businessName,
         business_id: owners.length === 1 ? owners[0].id : null,
         business_user_id: null,
@@ -913,8 +943,9 @@ export class TencentDataStore {
     const follower = this.isFollower(userId);
     const supervisor = this.isSupervisor(userId);
     const resourceEditor = table === 'internal_resource_tables' && this.internalResourcePermissions(userId).can_edit;
+    const shopifyProductImage = method === 'POST' && table === 'order_images' && this.shopifyProductImagePost(userId, body);
     if (method !== 'GET' && table === 'internal_resource_tables' && !resourceEditor) throw Object.assign(Error('没有修改权限'), { status: 403 });
-    if (method !== 'GET' && !follower && !resourceEditor && !(table === 'profiles' && supervisor)) throw Object.assign(Error('没有修改权限'), { status: 403 });
+    if (method !== 'GET' && !follower && !resourceEditor && !(table === 'profiles' && supervisor) && !shopifyProductImage) throw Object.assign(Error('没有修改权限'), { status: 403 });
     if (method !== 'GET' && table === 'profiles' && !supervisor) throw Object.assign(Error('仅主管可以修改账号权限'), { status: 403 });
     if (method === 'POST' && table === 'internal_resource_tables') {
       if (!['inventory', 'logistics'].includes(body?.resource_key)) {

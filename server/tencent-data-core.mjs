@@ -92,6 +92,11 @@ export function shopifyCustomerInfo(parts = {}) {
   return ['name', 'address', 'email', 'phone'].map(key => String(parts[key] || '').trim()).filter(Boolean).join('\n');
 }
 
+// China Standard Time, UTC+8. Asia/Shanghai does not observe daylight saving.
+export function beijingOrderDate(value = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value);
+}
+
 const now = () => new Date().toISOString();
 const tokenHash = value => createHash('sha256').update(value).digest('hex');
 const json = value => JSON.stringify(value ?? null);
@@ -683,15 +688,13 @@ export class TencentDataStore {
     if (order.current_step !== FOLLOWER_CREATE) fail('订单已不在待跟单创建订单', 409);
     const value = key => typeof input[key] === 'string' ? input[key].trim() : '';
     const orderNo = value('order_no');
-    const orderDate = value('order_date');
     const product = value('product_name');
     const size = value('size');
     const customer = value('customer_info');
     const businessName = value('business_name');
     const quantity = Number(input.quantity);
-    const validDate = /^\d{4}-\d{2}-\d{2}$/.test(orderDate) && !Number.isNaN(Date.parse(orderDate)) && new Date(orderDate).toISOString().slice(0, 10) === orderDate;
-    if (!orderNo || !validDate || !product || !size || !customer || !SALESPERSON_NAMES.includes(businessName) || !Number.isSafeInteger(quantity) || quantity < 1 || !value('destination_country')) {
-      fail('请按新建订单补齐订单号、日期、产品名称、尺寸、数量、客户信息、目的国家和负责业务员');
+    if (!orderNo || !product || !size || !customer || !SALESPERSON_NAMES.includes(businessName) || !Number.isSafeInteger(quantity) || quantity < 1 || !value('destination_country')) {
+      fail('请按新建订单补齐订单号、产品名称、尺寸、数量、客户信息、目的国家和负责业务员');
     }
     if (this.all('orders').some(row => row.id !== order.id && orderNumberKey(row.order_no) === orderNumberKey(orderNo))) fail('订单号已存在', 409);
     const shipping = value('shipping_mode');
@@ -699,8 +702,13 @@ export class TencentDataStore {
     const inventory = value('inventory_mode') === 'stock' ? 'stock' : 'production';
     const needsRendering = input.needs_rendering === true || input.needs_rendering === 'true';
     const expectedStep = inventory === 'stock' ? 'shipping_selection' : needsRendering ? 'rendering' : 'production';
-    if (input.current_step !== expectedStep || !input.step_started_at || !input.step_deadline) fail('下一阶段不正确，请刷新订单', 409);
+    if (input.current_step !== expectedStep) fail('下一阶段不正确，请刷新订单', 409);
+    // Official 后台下单时间 is this click, in Beijing time. Shopify's created
+    // date, the import date, and the salesperson 下单 click are not used.
     const timestamp = now();
+    const orderDate = beijingOrderDate(new Date(timestamp));
+    const stepDays = inventory === 'stock' ? 1 : needsRendering ? 3 : 10;
+    const stepDeadline = new Date(Date.parse(timestamp) + stepDays * 86400000).toISOString();
     const names = [...new Set([...(Array.isArray(input.factory_names) ? input.factory_names : []), value('factory_name')].map(name => String(name || '').trim()).filter(Boolean))];
     let next = {
       ...order,
@@ -726,8 +734,8 @@ export class TencentDataStore {
       destination_risk_acknowledged_at: input.destination_risk_acknowledged_at || null,
       destination_risk_acknowledged_by: input.destination_risk_acknowledged_by || null,
       current_step: expectedStep,
-      step_started_at: input.step_started_at,
-      step_deadline: input.step_deadline,
+      step_started_at: timestamp,
+      step_deadline: stepDeadline,
       created_by: userId,
       updated_at: timestamp,
       status: 'active'

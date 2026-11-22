@@ -1460,6 +1460,10 @@ main.internal-resource-page-shell{width:100%;max-width:none!important;min-height
 .order-no-hint{color:#52665f;font-size:12px;line-height:1.4}
 .order-no-reminder{color:#b84735;font-size:12px;font-weight:700;line-height:1.4}
 .order-no-reminder[hidden]{display:none}
+.order-no-wrap{display:inline-flex;align-items:center;gap:8px;min-width:0}
+.factory-export-check{display:inline-flex;align-items:center}
+.factory-export-check input{width:16px;height:16px;margin:0;accent-color:#0e5949;cursor:pointer}
+.factory-export-button{background:#fff!important;color:#174438!important;border:1px solid #b7c9c0!important;box-shadow:none!important}
 .customer-info-hint{color:#52665f;font-size:12px;line-height:1.4}
 .customer-info-reminder{color:#b84735;font-size:12px;font-weight:700;line-height:1.4}
 .customer-info-reminder[hidden]{display:none}

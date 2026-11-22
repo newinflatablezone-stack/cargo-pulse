@@ -54,13 +54,10 @@ test('every in-window order missing from Cargo Pulse becomes 待业务员补充�
   });
   intake('gid://shopify/Order/9051', '#9051');
   intake('gid://shopify/Order/9052', '#9052');
-  intake('gid://shopify/Order/claimed', '#9054', { claimed_by: business.id });
   assert.equal(store.shopifyOrderNeedsRefresh('#9053', 'gid://shopify/Order/9053'), true);
-  assert.equal(store.shopifyOrderNeedsRefresh('#9054', 'gid://shopify/Order/claimed'), false);
 
   const promoted = store.promoteOpenShopifyIntake();
   assert.deepEqual(promoted.converted.map(row => row.order_no).sort(), ['#9051', '#9052']);
-  assert.equal(store.all('orders').filter(row => row.order_no === '#9054').length, 0);
   for (const number of ['#9051', '#9052']) {
     const order = store.all('orders').find(row => row.order_no === number);
     assert.equal(order.current_step, 'sales_supplement');
@@ -98,6 +95,46 @@ test('every in-window order missing from Cargo Pulse becomes 待业务员补充�
   assert.equal(Boolean(refreshed.shopify_source_refreshed_at), true);
   assert.equal(store.canReadOrder(other.id, store.all('orders').find(row => row.id === 'private-order')), false);
   assert.equal(lookupCustomerTracking(store, 'ada@example.com').found, false);
+});
+
+test('claimed but unsubmitted intake #9052 becomes 待业务员补充信息 and the first live refresh fills empty Shopify fields', t => {
+  const { store, business } = fixture(t);
+  store.put('orders', { id: 'earlier-9054', order_no: '#9054', current_step: 'shipping_selection', business_name: 'Demi', business_id: business.id, product_name: 'Keep me' });
+  store.put('shopify_order_intake', {
+    id: 'gid://shopify/Order/19025782341880', order_no: '#9052', order_date: '2026-11-22',
+    claimed_by: business.id, submitted_at: '', promoted_order_id: '', product_name: '', quantity: null, image_urls: [], customer_info: 'Addr'
+  });
+  store.put('shopify_order_intake', { id: 'gid://shopify/Order/claimed-9054', order_no: '#9054', order_date: '2026-11-01', claimed_by: business.id });
+  assert.equal(store.shopifyOrderNeedsRefresh('#9052', 'gid://shopify/Order/19025782341880'), true);
+  const promoted = store.promoteOpenShopifyIntake();
+  assert.deepEqual(promoted.converted.map(row => row.order_no), ['#9052']);
+  assert.deepEqual(promoted.already_present.map(row => row.order_no), ['#9054']);
+  const order = store.all('orders').find(row => row.order_no === '#9052');
+  assert.equal(order.current_step, 'sales_supplement');
+  assert.equal(order.product_name, '');
+  assert.equal(order.quantity, null);
+  assert.equal(order.shopify_order_id, 'gid://shopify/Order/19025782341880');
+  assert.equal(order.shopify_source_refreshed_at, undefined);
+  const intake = store.all('shopify_order_intake').find(row => row.id === 'gid://shopify/Order/19025782341880');
+  assert.equal(Boolean(intake.submitted_at), true);
+  assert.equal(intake.promoted_order_id, order.id);
+  assert.equal(intake.claimed_by, business.id);
+  const earlier = store.all('orders').find(row => row.id === 'earlier-9054');
+  assert.equal(earlier.current_step, 'shipping_selection');
+  assert.equal(earlier.product_name, 'Keep me');
+  assert.equal(store.all('orders').filter(row => row.order_no === '#9054').length, 1);
+  const refreshed = store.importShopifyOrder({
+    id: 'gid://shopify/Order/19025782341880', order_no: '#9052', product_name: 'Inflatable arch', quantity: 3,
+    image_urls: ['https://cdn.shopify.com/9052.jpg']
+  });
+  assert.equal(refreshed.id, order.id);
+  assert.equal(refreshed.current_step, 'sales_supplement');
+  assert.equal(refreshed.product_name, 'Inflatable arch');
+  assert.equal(refreshed.quantity, 3);
+  assert.equal(store.all('orders').filter(row => row.order_no === '#9052').length, 1);
+  assert.equal(store.shopifyOrderNeedsRefresh('#9052', order.shopify_order_id), false);
+  assert.equal(store.importShopifyOrder({ id: order.shopify_order_id, order_no: '#9052', product_name: 'Again', quantity: 9 }), null);
+  assert.equal(store.all('orders').find(row => row.id === order.id).quantity, 3);
 });
 
 test('salesperson 下单 then merchandiser 创建订单 follows the normal order path', t => {

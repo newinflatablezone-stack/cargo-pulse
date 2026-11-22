@@ -434,11 +434,7 @@ export class TencentDataStore {
   shopifyOrderNeedsRefresh(number, id) {
     const order = this.findShopifyOrder(number, id);
     if (order) return !order.deleted_at && order.current_step === SALES_SUPPLEMENT && !order.shopify_source_refreshed_at;
-    const key = orderNumberKey(number);
-    const sourceId = String(id || '');
-    const claimed = this.all('shopify_order_intake').some(row => !row.submitted_at && String(row.claimed_by || '').trim() && ((sourceId && row.id === sourceId) || (key && orderNumberKey(row.order_no) === key)));
-    if (claimed) return false;
-    return Boolean(key || sourceId);
+    return Boolean(orderNumberKey(number) || String(id || ''));
   }
 
   shopifyDraft(row, timestamp = now()) {
@@ -493,11 +489,11 @@ export class TencentDataStore {
     return next;
   }
 
-  closeUnclaimedShopifyIntake(number, id, orderId, timestamp) {
+  closeOpenShopifyIntake(number, id, orderId, timestamp) {
     const key = orderNumberKey(number);
     const sourceId = String(id || '');
     for (const row of this.all('shopify_order_intake')) {
-      if (row.submitted_at || String(row.claimed_by || '').trim()) continue;
+      if (row.submitted_at) continue;
       if (!((sourceId && row.id === sourceId) || (key && orderNumberKey(row.order_no) === key))) continue;
       this.put('shopify_order_intake', { ...row, submitted_at: timestamp, promoted_order_id: orderId });
     }
@@ -522,22 +518,15 @@ export class TencentDataStore {
         next.updated_at = timestamp;
         if (live) next.shopify_source_refreshed_at = timestamp;
         const saved = this.put('orders', next);
-        this.closeUnclaimedShopifyIntake(saved.order_no, saved.shopify_order_id, saved.id, timestamp);
+        this.closeOpenShopifyIntake(saved.order_no, saved.shopify_order_id, saved.id, timestamp);
         this.db.exec('commit');
         return saved;
-      }
-      const key = orderNumberKey(row.order_no);
-      const sourceId = String(row.shopify_order_id || row.id || '');
-      const claimed = this.all('shopify_order_intake').some(record => !record.submitted_at && String(record.claimed_by || '').trim() && ((sourceId && record.id === sourceId) || orderNumberKey(record.order_no) === key));
-      if (claimed) {
-        this.db.exec('commit');
-        return null;
       }
       const draft = this.shopifyDraft(row, timestamp);
       if (live) draft.shopify_source_refreshed_at = timestamp;
       const order = this.put('orders', draft);
       this.put('order_events', { order_id: order.id, step_key: SALES_SUPPLEMENT, started_at: timestamp, created_at: timestamp });
-      this.closeUnclaimedShopifyIntake(order.order_no, order.shopify_order_id, order.id, timestamp);
+      this.closeOpenShopifyIntake(order.order_no, order.shopify_order_id, order.id, timestamp);
       this.db.exec('commit');
       return order;
     } catch (error) {
@@ -547,14 +536,14 @@ export class TencentDataStore {
     }
   }
 
-  // Turns every open, unclaimed intake row into 待业务员补充信息.
-  // The following Shopify sync still pulls the whole window and fills gaps.
-  // Claimed rows and orders that already exist are not rewritten or deleted.
+  // Turns every intake row that was never submitted into 待业务员补充信息.
+  // A claim no longer keeps the order off the salesperson list. Rows that
+  // already have an orders record are only linked, not rewritten or deleted.
   promoteOpenShopifyIntake() {
     const result = { converted: [], already_present: [], skipped: [] };
     this.db.exec('begin immediate');
     try {
-      const open = this.all('shopify_order_intake').filter(row => !row.submitted_at && !String(row.claimed_by || '').trim());
+      const open = this.all('shopify_order_intake').filter(row => !row.submitted_at);
       for (const row of open) {
         const key = orderNumberKey(row.order_no);
         if (!key) {

@@ -6,7 +6,7 @@
 // would invent per-item quantities and sizes the order does not have.
 
 export const FACTORY_EXPORT_COLUMNS = Object.freeze([
-  '订单号', '下单日期', '产品名称', '产品图片', '尺寸', '数量', '下单要求', '交货日期'
+  '下单日期', '产品名称', '产品图片', '尺寸', '数量', '下单要求', '交货日期'
 ]);
 
 export const FACTORY_EXPORT_EXCLUDED_STEPS = Object.freeze([
@@ -55,7 +55,6 @@ function exportQuantity(value) {
 export function factoryExportRows(order) {
   if (!isFactoryExportable(order)) return [];
   return [{
-    订单号: String(order.order_no ?? '').trim(),
     下单日期: officialOrderDate(order),
     产品名称: String(order.product_name ?? '').trim(),
     尺寸: String(order.size ?? '').trim(),
@@ -154,7 +153,7 @@ export async function buildFactoryOrderWorkbook(orders, imagesByOrderId = new Ma
     const rows = factoryExportRows(order);
     if (!rows.length) continue;
     const images = imagesFor(order, imagesByOrderId);
-    for (const row of rows) lines.push({ row, images, sortDate: row['下单日期'], sortNo: row['订单号'] });
+    for (const row of rows) lines.push({ row, images, sortDate: row['下单日期'], sortNo: String(order.order_no ?? '') });
   }
   lines.sort((a, b) => a.sortDate.localeCompare(b.sortDate) || a.sortNo.localeCompare(b.sortNo, 'zh-CN'));
   if (!lines.length) throw Object.assign(new Error(FACTORY_EXPORT_EMPTY_MESSAGE), { code: 'empty-factory-export' });
@@ -167,15 +166,16 @@ export async function buildFactoryOrderWorkbook(orders, imagesByOrderId = new Ma
   header.font = { name: 'Microsoft YaHei', bold: true, size: 11, color: { argb: 'FF174438' } };
   header.alignment = { vertical: 'middle' };
   header.height = 22;
-  [18, 14, 28, 18, 16, 10, 36, 14].forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
-  for (const index of [3, 4, 7]) sheet.getColumn(index).alignment = { wrapText: true, vertical: 'top' };
+  const imageColumn = FACTORY_EXPORT_COLUMNS.indexOf('产品图片') + 1;
+  [14, 28, 18, 16, 10, 36, 14].forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
+  for (const name of ['产品名称', '产品图片', '下单要求']) sheet.getColumn(FACTORY_EXPORT_COLUMNS.indexOf(name) + 1).alignment = { wrapText: true, vertical: 'top' };
 
   for (const line of lines) {
     const values = FACTORY_EXPORT_COLUMNS.map(column => line.row[column] ?? '');
     const added = sheet.addRow(values);
     added.font = { name: 'Microsoft YaHei', size: 11 };
     added.alignment = { vertical: 'top', wrapText: true };
-    const cell = added.getCell(4);
+    const cell = added.getCell(imageColumn);
     const text = imageCellValue(line.images);
     cell.value = text || '';
     if (text && typeof text === 'object') cell.font = { name: 'Microsoft YaHei', size: 10, color: { argb: 'FF174438' }, underline: true };
@@ -191,7 +191,7 @@ export async function buildFactoryOrderWorkbook(orders, imagesByOrderId = new Ma
       const imageId = workbook.addImage({ base64: bytesToBase64(image.buffer), extension: image.extension });
       const slot = 1 / embedded.length;
       sheet.addImage(imageId, {
-        tl: { col: 3.08, row: (added.number - 1) + index * slot + 0.06 },
+        tl: { col: imageColumn - 1 + 0.08, row: (added.number - 1) + index * slot + 0.06 },
         ext: { width: 72, height: 72 },
         editAs: 'oneCell'
       });

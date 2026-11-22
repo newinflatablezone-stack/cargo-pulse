@@ -39,6 +39,7 @@ export function shopifySyncEligible(order) {
 }
 const SALES_SUPPLEMENT = 'sales_supplement';
 const FOLLOWER_CREATE = 'follower_create';
+const SALESPERSON_DRAFT = 'salesperson_draft';
 const SALESPERSON_NAMES = ['Ella', 'Sherry', 'Demi', 'Rayna'];
 const SALES_SHIPPING = new Set(['domestic_sea', 'domestic_express', 'other']);
 const ORDER_SHIPPING_MODES = new Set(['domestic_sea', 'domestic_express', 'domestic_sea_port', 'air_freight', 'overseas_warehouse']);
@@ -74,6 +75,13 @@ export function shopifyShippingChoice(text) {
 
 export const BLOWER_OPTIONS = ['包风机', '包气泵', '不包风机', '不包气泵'];
 const BLOWER_ALIASES = { '风机': '包风机', '气泵': '包气泵' };
+
+// A custom salesperson order number is invalid when, after trim and after
+// removing one leading "#", only digits remain. 9052 and #9052 are both
+// rejected. Shopify's 后台订单号 does not use this rule.
+export function isPurelyNumericOrderNumber(value) {
+  return /^\d+$/.test(String(value ?? '').trim().replace(/^#/, ''));
+}
 
 export function normalizeBlowerChoice(value) {
   const text = String(value || '').trim();
@@ -368,7 +376,9 @@ export class TencentDataStore {
     const actor = this.profile(userId);
     if (!actor || actor.disabled_at || actor.role !== 'business') return false;
     const order = this.all('orders').find(row => row.id === orderId);
-    return Boolean(order && !order.deleted_at && order.current_step === SALES_SUPPLEMENT && order.shopify_order_id);
+    if (!order || order.deleted_at) return false;
+    if (order.current_step === SALES_SUPPLEMENT && order.shopify_order_id) return true;
+    return order.current_step === SALESPERSON_DRAFT && order.salesperson_draft === true && order.created_by === userId;
   }
 
   shopifyProductImagePost(userId, body) {
@@ -381,7 +391,15 @@ export class TencentDataStore {
 
   canReadOrder(userId, order) {
     if (!userId || !order || (order.deleted_at && !this.isSupervisor(userId))) return false;
+    // An unsubmitted 新建下单 draft is not an order yet.
+    if (order.current_step === SALESPERSON_DRAFT) return false;
     if (this.canReadAllOrders(userId) || this.ownsOrder(userId, order)) return true;
+    // Manual 新建下单 waits at 待跟单创建订单 where every active account can see it.
+    // Shopify orders at the same step keep ordinary salesperson ownership.
+    if (order.current_step === FOLLOWER_CREATE && order.salesperson_shared === true && !order.shopify_order_id) {
+      const actor = this.profile(userId);
+      return Boolean(actor && !actor.disabled_at);
+    }
     // Only the pre-salesperson stage is visible to every active account.
     // After 下单, normal salesperson ownership applies again.
     if (order.current_step !== SALES_SUPPLEMENT || !order.shopify_order_id) return false;
@@ -397,8 +415,8 @@ export class TencentDataStore {
   }
 
   assertShopifyHandoffWritable(existing, body) {
-    const locked = existing && [SALES_SUPPLEMENT, FOLLOWER_CREATE].includes(existing.current_step);
-    const requested = body && [SALES_SUPPLEMENT, FOLLOWER_CREATE].includes(body.current_step);
+    const locked = existing && [SALES_SUPPLEMENT, FOLLOWER_CREATE, SALESPERSON_DRAFT].includes(existing.current_step);
+    const requested = body && [SALES_SUPPLEMENT, FOLLOWER_CREATE, SALESPERSON_DRAFT].includes(body.current_step);
     if (locked || requested) throw Object.assign(Error('请通过订单交接完成这一步'), { status: 403 });
   }
 
@@ -615,6 +633,110 @@ export class TencentDataStore {
     }
   }
 
+  salespersonOrder(userId, input = {}) {
+    const profile = this.profile(userId);
+    const fail = (message, status = 400) => { throw Object.assign(Error(message), { status }); };
+    if (!profile || profile.disabled_at) fail('请先登录', 401);
+    if (profile.role !== 'business') fail('仅业务员可以新建下单', 403);
+    if (input.action === 'draft') return this.draftSalespersonOrder(profile);
+    if (input.action === 'discard') return this.discardSalespersonOrder(profile, input, fail);
+    if (input.action === 'place') return this.placeSalespersonOrder(profile, input, fail);
+    fail('不支持的操作');
+  }
+
+  draftSalespersonOrder(profile) {
+    const timestamp = now();
+    const saved = this.put('orders', {
+      created_by: profile.id,
+      current_step: SALESPERSON_DRAFT,
+      salesperson_draft: true,
+      status: 'active',
+      inventory_mode: 'production',
+      order_no: '',
+      product_name: '',
+      business_name: '',
+      step_started_at: timestamp,
+      step_deadline: null,
+      created_at: timestamp,
+      updated_at: timestamp
+    });
+    return { id: saved.id };
+  }
+
+  discardSalespersonOrder(profile, input, fail) {
+    const order = this.all('orders').find(row => row.id === input.id);
+    if (!order || order.deleted_at || order.current_step !== SALESPERSON_DRAFT || order.created_by !== profile.id) fail('草稿不存在', 404);
+    this.remove('order_images', this.all('order_images').filter(row => row.order_id === order.id).map(row => row.id));
+    this.remove('order_events', this.all('order_events').filter(row => row.order_id === order.id).map(row => row.id));
+    this.remove('orders', [order.id]);
+    return { id: order.id, discarded: true };
+  }
+
+  placeSalespersonOrder(profile, input, fail) {
+    const order = this.all('orders').find(row => row.id === input.id);
+    if (!order || order.deleted_at || order.current_step !== SALESPERSON_DRAFT || order.salesperson_draft !== true || order.created_by !== profile.id) fail('请重新打开新建下单', 409);
+    const value = key => typeof input[key] === 'string' ? input[key].trim() : '';
+    const orderNo = value('order_no');
+    const product = value('product_name');
+    const quantity = Number(input.quantity);
+    const businessName = value('business_name');
+    const shipping = value('shipping_mode');
+    const blower = normalizeBlowerChoice(value('blower'));
+    const customer = value('customer_info');
+    const note = value('abnormal_note');
+    const hasUploadedImage = this.all('order_images').some(row => row.order_id === order.id && String(row.object_path || '').includes('/product-image-'));
+    if (isPurelyNumericOrderNumber(orderNo)) fail('自定义订单号不能是纯数字');
+    if (!orderNo || !orderNo.replace(/^#/, '') || !product || !hasUploadedImage || !Number.isSafeInteger(quantity) || quantity < 1 || !SALESPERSON_NAMES.includes(businessName) || !SALES_SHIPPING.has(shipping) || !blower || !customer || !note) {
+      fail('请补齐自定义订单号、产品名称、图片、数量、业务员、运输方式、包风机或包气泵、客户信息和订单备注');
+    }
+    if (this.all('orders').some(row => row.id !== order.id && orderNumberKey(row.order_no) === orderNumberKey(orderNo))) fail('订单号已存在', 409);
+    const owners = this.businessOwnersForName(businessName);
+    const timestamp = now();
+    const next = {
+      ...order,
+      order_no: orderNo,
+      product_name: product,
+      quantity,
+      size: value('size'),
+      customer_info: customer,
+      abnormal_note: note,
+      requirements: note,
+      blower,
+      shipping_mode: shipping,
+      business_name: businessName,
+      business_id: owners.length === 1 ? owners[0].id : null,
+      business_user_id: null,
+      current_step: FOLLOWER_CREATE,
+      salesperson_draft: false,
+      salesperson_shared: true,
+      step_started_at: timestamp,
+      step_deadline: null,
+      updated_at: timestamp,
+      status: 'active',
+      inventory_mode: 'production',
+      created_by: profile.id
+    };
+    // 新建下单 matches salesperson 下单: it does not stamp 后台下单时间.
+    delete next.order_date;
+    delete next.shopify_order_id;
+    delete next.shopify_shared;
+    delete next.shopify_image_urls;
+    this.db.exec('begin immediate');
+    try {
+      const saved = this.put('orders', next);
+      for (const event of this.all('order_events').filter(row => row.order_id === order.id && !row.completed_at)) {
+        this.put('order_events', { ...event, completed_at: timestamp, completed_by: profile.id });
+      }
+      this.put('order_events', { order_id: saved.id, step_key: FOLLOWER_CREATE, started_at: timestamp, created_at: timestamp });
+      this.db.exec('commit');
+      return { id: saved.id, current_step: saved.current_step };
+    } catch (error) {
+      this.db.exec('rollback');
+      for (const table of ['orders', 'order_events']) this.tableCache.delete(table);
+      throw error;
+    }
+  }
+
   shopifyHandoff(userId, input = {}) {
     const profile = this.profile(userId);
     const fail = (message, status = 400) => { throw Object.assign(Error(message), { status }); };
@@ -745,8 +867,10 @@ export class TencentDataStore {
       next.duty_prepaid_note = value('duty_prepaid_note') || null;
     }
     next = this.normalizeOrderOwner(this.normalizeOrderDestination(next, userId, order), { business_name: businessName });
-    next.shopify_order_id = order.shopify_order_id;
-    next.shopify_image_urls = order.shopify_image_urls;
+    if (order.shopify_order_id) next.shopify_order_id = order.shopify_order_id;
+    else delete next.shopify_order_id;
+    if (order.shopify_image_urls) next.shopify_image_urls = order.shopify_image_urls;
+    else delete next.shopify_image_urls;
     this.db.exec('begin immediate');
     try {
       const saved = this.put('orders', next);

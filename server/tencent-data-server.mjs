@@ -2,7 +2,7 @@ import http from 'node:http';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize } from 'node:path';
-import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking, shopifyLineSummary, shopifyShippingChoice, shopifyBlowerChoice, shopifyCustomerInfo, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible } from './tencent-data-core.mjs';
+import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking, shopifyLineSummary, shopifyVariantChoices, shopifyCustomerInfo, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible } from './tencent-data-core.mjs';
 
 const PORT = Number(process.env.PORT || 8788);
 const DATA_DIR = process.env.CARGO_PULSE_DATA_DIR || '/var/lib/cargo-pulse/data';
@@ -342,7 +342,7 @@ const orderQuery = `query ImportOrders($query: String!, $after: String) {
       shippingAddress { name firstName lastName phone address1 address2 city province zip country }
       shippingLines(first: 10) { nodes { title code } }
       lineItems(first: 30) {
-        nodes { name quantity variantTitle image { url } customAttributes { key value } }
+        nodes { name quantity variantTitle image { url } customAttributes { key value } variant { title selectedOptions { name value } } }
         pageInfo { hasNextPage endCursor }
       }
     }
@@ -351,7 +351,7 @@ const orderQuery = `query ImportOrders($query: String!, $after: String) {
 const lineQuery = `query ImportOrderItems($id: ID!, $after: String) {
   order(id: $id) {
     lineItems(first: 100, after: $after) {
-      nodes { name quantity variantTitle image { url } customAttributes { key value } }
+      nodes { name quantity variantTitle image { url } customAttributes { key value } variant { title selectedOptions { name value } } }
       pageInfo { hasNextPage endCursor }
     }
   }
@@ -359,7 +359,7 @@ const lineQuery = `query ImportOrderItems($id: ID!, $after: String) {
 
 function mapShopifyOrder(order, items) {
   const attributes = [...(order.customAttributes || []), ...items.flatMap(item => item.customAttributes || [])];
-  const shipping = (order.shippingLines?.nodes || []).map(line=>[line.title,line.code].filter(Boolean).join(' ')).join(' ');
+  const choices = shopifyVariantChoices(order, items);
   const dimensions = /\d+(?:\.\d+)?\s*(?:cm|mm|m|ft|in|米|英尺)?\s*[×xX*]\s*\d+(?:\.\d+)?(?:\s*(?:cm|mm|m|ft|in|米|英尺)?\s*[×xX*]\s*\d+(?:\.\d+)?)?\s*(?:cm|mm|m|ft|in|米|英尺)?/gi;
   const sizes = [...attributes.filter(entry=>/^(size|dimensions?|产品尺寸|尺寸)$/i.test(String(entry.key || '').trim())).map(entry=>entry.value),
     ...items.flatMap(item=>[...(String(item.variantTitle||'').match(dimensions)||[]),...(String(item.name||'').match(dimensions)||[])])];
@@ -373,14 +373,14 @@ function mapShopifyOrder(order, items) {
     image_urls: [...new Set(items.map(item=>item.image?.url).filter(url=>typeof url==='string'&&url.startsWith('https://')))],
     size: [...new Set(sizes.map(size=>String(size||'').trim()).filter(Boolean))].join(' / '),
     requirements: note, abnormal_note: note,
-    blower: shopifyBlowerChoice(shipping),
+    blower: choices.blower,
     customer_info: shopifyCustomerInfo({
       name: address.name || [address.firstName, address.lastName].filter(Boolean).join(' '),
       address: [address.address1, address.address2, address.city, address.province, address.zip, address.country].filter(Boolean).join(', '),
       email: order.email,
       phone: address.phone || order.phone
     }),
-    shipping_mode: shopifyShippingChoice(shipping),
+    shipping_mode: choices.shipping_mode,
     country: address.country || ''
   };
 }

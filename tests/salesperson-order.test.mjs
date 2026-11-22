@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TencentDataStore, isPurelyNumericOrderNumber, beijingOrderDate } from '../server/tencent-data-core.mjs';
+import { TencentDataStore, isPurelyNumericOrderNumber, CUSTOM_ORDER_NUMBER_RULE, beijingOrderDate } from '../server/tencent-data-core.mjs';
 
 function fixture(t) {
   const dir = mkdtempSync(join(tmpdir(), 'cargo-sales-order-'));
@@ -36,6 +36,8 @@ test('custom order numbers reject digits only, including a leading hash', () => 
   assert.equal(isPurelyNumericOrderNumber('  #9052  '), true);
   assert.equal(isPurelyNumericOrderNumber('IZ-9052'), false);
   assert.equal(isPurelyNumericOrderNumber('#IZ-9052'), false);
+  assert.equal(isPurelyNumericOrderNumber('9052A'), false);
+  assert.equal(CUSTOM_ORDER_NUMBER_RULE, '不能是纯数字，也不能是纯 # 加数字');
 });
 
 test('a salesperson 新建下单 lands in 待跟单创建订单 for everyone, without an official order date', t => {
@@ -50,7 +52,7 @@ test('a salesperson 新建下单 lands in 待跟单创建订单 for everyone, wi
   assert.throws(() => store.salespersonOrder(business.id, { action: 'place', id: draft.id, ...fields({ order_no: 'IZ-200' }) }), error => error.status === 400 && /图片/.test(error.message));
   attachImage(store, draft.id);
   for (const order_no of ['9052', '#9052', '  #9052  ']) {
-    assert.throws(() => store.salespersonOrder(business.id, { action: 'place', id: draft.id, ...fields({ order_no }) }), error => error.status === 400 && error.message === '自定义订单号不能是纯数字');
+    assert.throws(() => store.salespersonOrder(business.id, { action: 'place', id: draft.id, ...fields({ order_no }) }), error => error.status === 400 && error.message === '自定义订单号' + CUSTOM_ORDER_NUMBER_RULE);
   }
   assert.throws(() => store.salespersonOrder(business.id, { action: 'place', id: draft.id, ...fields({ order_no: 'IZ-200', abnormal_note: '' }) }), error => error.status === 400);
   store.put('orders', { id: 'taken', order_no: 'IZ-100', business_name: 'Sherry', business_id: other.id, current_step: 'production' });
@@ -105,11 +107,13 @@ test('the salesperson button and custom-number label stay separate from Shopify 
   const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
   assert.match(app, /profile\?\.role==='business'\?`<button class="primary compact-new-order" id="newSalesOrder">＋ 新建下单<\/button>`/);
   assert.match(app, /id="newOrder">＋ 创建订单/);
-  assert.match(app, /<label>自定义订单号 \*<input name="order_no" required><\/label>/);
+  assert.match(app, /<label>自定义订单号 \*<input name="order_no" required><small class="order-no-hint">不能是纯数字，也不能是纯 # 加数字<\/small><span class="order-no-reminder" hidden><\/span><\/label>/);
   assert.match(app, /<label>后台订单号 \*<input name="order_no" required value="/);
   assert.match(app, /<button class="primary" type="submit" disabled>下单<\/button>/);
   assert.match(app, /salespersonOrderForm[\s\S]*submit=form\.querySelector\('button\.primary'\)/);
   assert.match(app, /<h2>待业务员补充信息<\/h2>/);
-  assert.match(app, /自定义订单号不能是纯数字/);
+  assert.match(app, /自定义订单号不能是纯数字，也不能是纯 # 加数字/);
+  const shopifyForm = app.slice(app.indexOf('function openShopifyPlace'), app.indexOf('function openShopifyCreate'));
+  assert.equal(shopifyForm.includes('不能是纯数字，也不能是纯 # 加数字'), false);
   assert.equal(app.includes('后台订单号不能是纯数字'), false);
 });

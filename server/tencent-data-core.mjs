@@ -99,6 +99,8 @@ const BLOWER_ALIASES = { '风机': '包风机', '气泵': '包气泵' };
 // A custom salesperson order number is invalid when, after trim and after
 // removing one leading "#", only digits remain. 9052 and #9052 are both
 // rejected. Shopify's 后台订单号 does not use this rule.
+export const CUSTOM_ORDER_NUMBER_RULE = '不能是纯数字，也不能是纯 # 加数字';
+
 export function isPurelyNumericOrderNumber(value) {
   return /^\d+$/.test(String(value ?? '').trim().replace(/^#/, ''));
 }
@@ -772,7 +774,7 @@ export class TencentDataStore {
     const customer = value('customer_info');
     const note = value('abnormal_note');
     const hasUploadedImage = this.all('order_images').some(row => row.order_id === order.id && String(row.object_path || '').includes('/product-image-'));
-    if (isPurelyNumericOrderNumber(orderNo)) fail('自定义订单号不能是纯数字');
+    if (isPurelyNumericOrderNumber(orderNo)) fail('自定义订单号' + CUSTOM_ORDER_NUMBER_RULE);
     if (!orderNo || !orderNo.replace(/^#/, '') || !product || !hasUploadedImage || !Number.isSafeInteger(quantity) || quantity < 1 || !SALESPERSON_NAMES.includes(businessName) || !SALES_SHIPPING.has(shipping) || !blower || !customer || !note) {
       fail('请补齐自定义订单号、产品名称、图片、数量、业务员、运输方式、包风机或包气泵、客户信息和订单备注');
     }

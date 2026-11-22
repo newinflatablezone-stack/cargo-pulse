@@ -25,7 +25,18 @@ const RETIRED_FEATURE_TABLES = new Set(['tickets', 'ticket_messages', 'ticket_at
 const PUBLIC_RPC = new Set(['lookup_customer_tracking']);
 const SUPERVISOR_EMAIL = '505863160@qq.com';
 const orderNumberKey = value => String(value || '').trim().replace(/^#\s*/, '').toLowerCase();
-const SHOPIFY_SHIPPING_MODES = ['domestic_sea', 'domestic_express', 'domestic_sea_port', 'air_freight', 'overseas_warehouse'];
+const SALES_SUPPLEMENT = 'sales_supplement';
+const FOLLOWER_CREATE = 'follower_create';
+const SALESPERSON_NAMES = ['Ella', 'Sherry', 'Demi', 'Rayna'];
+const SALES_SHIPPING = new Set(['domestic_sea', 'domestic_express', 'other']);
+const ORDER_SHIPPING_MODES = new Set(['domestic_sea', 'domestic_express', 'domestic_sea_port', 'air_freight', 'overseas_warehouse']);
+const present = value => Array.isArray(value) ? value.length > 0 : typeof value === 'number' ? Number.isFinite(value) : value != null && String(value).trim() !== '';
+const httpsUrls = value => {
+  const list = Array.isArray(value) ? value : String(value || '').split(/\s+/);
+  const urls = [...new Set(list.map(item => String(item || '').trim()).filter(Boolean))];
+  if (urls.length > 100 || urls.some(url => { try { return new URL(url).protocol !== 'https:'; } catch { return true; } })) return null;
+  return urls;
+};
 
 export function shopifyLineSummary(items) {
   const names = [];
@@ -40,6 +51,24 @@ export function shopifyLineSummary(items) {
     }
   }
   return { product_name: names.join(' / '), quantity: counted && Number.isSafeInteger(quantity) ? quantity : null };
+}
+
+export function shopifyShippingChoice(text) {
+  const value = String(text || '');
+  const sea = /sea/i.test(value), express = /express/i.test(value);
+  if (sea === express) return '';
+  return sea ? 'domestic_sea' : 'domestic_express';
+}
+
+export function shopifyBlowerChoice(text) {
+  const value = String(text || '');
+  const blower = /blower/i.test(value), pump = /pump/i.test(value);
+  if (blower === pump) return '';
+  return blower ? '风机' : '气泵';
+}
+
+export function shopifyCustomerInfo(parts = {}) {
+  return ['name', 'address', 'email', 'phone'].map(key => String(parts[key] || '').trim()).filter(Boolean).join('\n');
 }
 
 const now = () => new Date().toISOString();
@@ -309,19 +338,24 @@ export class TencentDataStore {
   canReadOrder(userId, order) {
     if (!userId || !order || (order.deleted_at && !this.isSupervisor(userId))) return false;
     if (this.canReadAllOrders(userId) || this.ownsOrder(userId, order)) return true;
-    // Auto-imported Shopify orders have no claimer. The flag is not a general
-    // sharing switch: client writes cannot set or clear it.
-    if (order.shopify_shared !== true) return false;
+    // Only the pre-salesperson stage is visible to every active account.
+    // After 下单, normal salesperson ownership applies again.
+    if (order.current_step !== SALES_SUPPLEMENT || !order.shopify_order_id) return false;
     const actor = this.profile(userId);
     return Boolean(actor && !actor.disabled_at);
   }
 
-  preserveShopifyVisibility(next, previous = null) {
-    if (previous?.shopify_shared === true) next.shopify_shared = true;
-    else delete next.shopify_shared;
+  preserveShopifyIdentity(next, previous = null) {
+    delete next.shopify_shared;
     if (previous?.shopify_order_id) next.shopify_order_id = previous.shopify_order_id;
     else delete next.shopify_order_id;
     return next;
+  }
+
+  assertShopifyHandoffWritable(existing, body) {
+    const locked = existing && [SALES_SUPPLEMENT, FOLLOWER_CREATE].includes(existing.current_step);
+    const requested = body && [SALES_SUPPLEMENT, FOLLOWER_CREATE].includes(body.current_step);
+    if (locked || requested) throw Object.assign(Error('请通过订单交接完成这一步'), { status: 403 });
   }
 
   visibleRows(table, userId) {
@@ -391,9 +425,28 @@ export class TencentDataStore {
       this.all('orders').some(row => row.shopify_order_id === sourceId || row.id === sourceId);
   }
 
-  sharedShopifyOrderFromIntake(row, timestamp = now()) {
+  findShopifyOrder(number, id) {
+    const key = orderNumberKey(number);
+    const sourceId = String(id || '');
+    return this.all('orders').find(order => (key && orderNumberKey(order.order_no) === key) || (sourceId && (order.shopify_order_id === sourceId || order.id === sourceId))) || null;
+  }
+
+  shopifyOrderNeedsRefresh(number, id) {
+    const order = this.findShopifyOrder(number, id);
+    if (order) return !order.deleted_at && order.current_step === SALES_SUPPLEMENT && !order.shopify_source_refreshed_at;
+    const key = orderNumberKey(number);
+    const sourceId = String(id || '');
+    const claimed = this.all('shopify_order_intake').some(row => !row.submitted_at && String(row.claimed_by || '').trim() && ((sourceId && row.id === sourceId) || (key && orderNumberKey(row.order_no) === key)));
+    if (claimed) return false;
+    return Boolean(key || sourceId);
+  }
+
+  shopifyDraft(row, timestamp = now()) {
     const quantity = Number(row?.quantity);
-    const images = Array.isArray(row?.shopify_image_urls) ? row.shopify_image_urls : row?.image_urls;
+    const sourceImages = Array.isArray(row?.shopify_image_urls) ? row.shopify_image_urls : row?.image_urls;
+    const images = httpsUrls((Array.isArray(sourceImages) ? sourceImages : []).filter(url => typeof url === 'string' && url.startsWith('https://'))) || [];
+    const note = String(row?.abnormal_note || row?.requirements || '').trim();
+    const country = classifyDestination(row?.destination_country || row?.country);
     return {
       order_no: String(row?.order_no || '').trim(),
       order_date: typeof row?.order_date === 'string' ? row.order_date : '',
@@ -401,19 +454,21 @@ export class TencentDataStore {
       quantity: Number.isSafeInteger(quantity) && quantity >= 1 ? quantity : null,
       size: String(row?.size || '').trim(),
       customer_info: String(row?.customer_info || '').trim(),
-      requirements: String(row?.requirements || '').trim(),
-      blower: ['包含', '不包含'].includes(row?.blower) ? row.blower : '',
-      shipping_mode: SHOPIFY_SHIPPING_MODES.includes(row?.shipping_mode) ? row.shipping_mode : null,
-      shopify_image_urls: [...new Set((Array.isArray(images) ? images : []).filter(url => typeof url === 'string' && url.startsWith('https://')))].slice(0, 100),
+      requirements: note,
+      abnormal_note: note,
+      blower: ['风机', '气泵'].includes(row?.blower) ? row.blower : '',
+      shipping_mode: SALES_SHIPPING.has(row?.shipping_mode) ? row.shipping_mode : null,
+      shopify_image_urls: images,
       shopify_order_id: String(row?.shopify_order_id || row?.id || '') || null,
-      shopify_shared: true,
+      destination_country: country.mainstream ? country.canonical : '',
+      ...(country.mainstream ? { destination_risk: 'mainstream', destination_risk_acknowledged: false, destination_risk_acknowledged_at: null, destination_risk_acknowledged_by: null } : {}),
       business_id: null,
       business_user_id: null,
       business_name: '',
       created_by: null,
       inventory_mode: 'production',
       status: 'active',
-      current_step: 'business_placed',
+      current_step: SALES_SUPPLEMENT,
       step_started_at: timestamp,
       step_deadline: null,
       created_at: timestamp,
@@ -421,33 +476,80 @@ export class TencentDataStore {
     };
   }
 
-  insertSharedShopifyOrder(row, timestamp = now()) {
-    const order = this.put('orders', this.sharedShopifyOrderFromIntake(row, timestamp));
-    this.put('order_events', { order_id: order.id, step_key: 'business_placed', started_at: timestamp, created_at: timestamp });
-    return order;
+  applyLiveShopifyFields(order, draft) {
+    const next = { ...order };
+    for (const key of ['order_no', 'order_date', 'product_name', 'size', 'customer_info', 'requirements', 'abnormal_note', 'blower', 'shipping_mode', 'destination_country']) {
+      if (present(draft[key])) next[key] = draft[key];
+    }
+    if (present(draft.quantity)) next.quantity = draft.quantity;
+    if (present(draft.shopify_image_urls)) next.shopify_image_urls = draft.shopify_image_urls;
+    if (draft.destination_risk === 'mainstream' && present(draft.destination_country)) {
+      next.destination_risk = 'mainstream';
+      next.destination_risk_acknowledged = false;
+      next.destination_risk_acknowledged_at = null;
+      next.destination_risk_acknowledged_by = null;
+    }
+    if (!next.shopify_order_id && draft.shopify_order_id) next.shopify_order_id = draft.shopify_order_id;
+    return next;
   }
 
-  importShopifyOrder(row) {
+  closeUnclaimedShopifyIntake(number, id, orderId, timestamp) {
+    const key = orderNumberKey(number);
+    const sourceId = String(id || '');
+    for (const row of this.all('shopify_order_intake')) {
+      if (row.submitted_at || String(row.claimed_by || '').trim()) continue;
+      if (!((sourceId && row.id === sourceId) || (key && orderNumberKey(row.order_no) === key))) continue;
+      this.put('shopify_order_intake', { ...row, submitted_at: timestamp, promoted_order_id: orderId });
+    }
+  }
+
+  importShopifyOrder(row, options = {}) {
+    const live = options.live !== false;
     this.db.exec('begin immediate');
     try {
-      if (!row || this.hasShopifyOrder(row.order_no) || this.hasShopifyOrderId(row.id)) {
+      if (!row || !orderNumberKey(row.order_no)) {
         this.db.exec('commit');
         return null;
       }
-      const order = this.insertSharedShopifyOrder(row);
+      const existing = this.findShopifyOrder(row.order_no, row.shopify_order_id || row.id);
+      const timestamp = now();
+      if (existing) {
+        if (existing.deleted_at || existing.current_step !== SALES_SUPPLEMENT || existing.shopify_source_refreshed_at) {
+          this.db.exec('commit');
+          return null;
+        }
+        const next = this.applyLiveShopifyFields(existing, this.shopifyDraft(row, timestamp));
+        next.updated_at = timestamp;
+        if (live) next.shopify_source_refreshed_at = timestamp;
+        const saved = this.put('orders', next);
+        this.closeUnclaimedShopifyIntake(saved.order_no, saved.shopify_order_id, saved.id, timestamp);
+        this.db.exec('commit');
+        return saved;
+      }
+      const key = orderNumberKey(row.order_no);
+      const sourceId = String(row.shopify_order_id || row.id || '');
+      const claimed = this.all('shopify_order_intake').some(record => !record.submitted_at && String(record.claimed_by || '').trim() && ((sourceId && record.id === sourceId) || orderNumberKey(record.order_no) === key));
+      if (claimed) {
+        this.db.exec('commit');
+        return null;
+      }
+      const draft = this.shopifyDraft(row, timestamp);
+      if (live) draft.shopify_source_refreshed_at = timestamp;
+      const order = this.put('orders', draft);
+      this.put('order_events', { order_id: order.id, step_key: SALES_SUPPLEMENT, started_at: timestamp, created_at: timestamp });
+      this.closeUnclaimedShopifyIntake(order.order_no, order.shopify_order_id, order.id, timestamp);
       this.db.exec('commit');
       return order;
     } catch (error) {
       this.db.exec('rollback');
-      for (const table of ['orders', 'order_events']) this.tableCache.delete(table);
+      for (const table of ['orders', 'order_events', 'shopify_order_intake']) this.tableCache.delete(table);
       throw error;
     }
   }
 
-  // Moves open, unclaimed intake rows into the same shared in-progress orders
-  // that auto-import now creates. Claimed and already submitted rows stay put.
-  // Existing orders with the same number are left unchanged and the intake row
-  // is only closed, so a second run does not insert a duplicate.
+  // Turns every open, unclaimed intake row into 待业务员补充信息.
+  // The following Shopify sync still pulls the whole window and fills gaps.
+  // Claimed rows and orders that already exist are not rewritten or deleted.
   promoteOpenShopifyIntake() {
     const result = { converted: [], already_present: [], skipped: [] };
     this.db.exec('begin immediate');
@@ -459,15 +561,15 @@ export class TencentDataStore {
           result.skipped.push({ id: row.id, reason: 'missing_order_no' });
           continue;
         }
-        const sourceId = String(row.id || '');
-        const existing = this.all('orders').find(order => orderNumberKey(order.order_no) === key || (sourceId && (order.shopify_order_id === sourceId || order.id === sourceId)));
+        const existing = this.findShopifyOrder(row.order_no, row.id);
         const timestamp = now();
         if (existing) {
           this.put('shopify_order_intake', { ...row, submitted_at: timestamp, promoted_order_id: existing.id });
           result.already_present.push({ id: existing.id, order_no: existing.order_no, intake_id: row.id });
           continue;
         }
-        const order = this.insertSharedShopifyOrder(row, timestamp);
+        const order = this.put('orders', this.shopifyDraft(row, timestamp));
+        this.put('order_events', { order_id: order.id, step_key: SALES_SUPPLEMENT, started_at: timestamp, created_at: timestamp });
         this.put('shopify_order_intake', { ...row, submitted_at: timestamp, promoted_order_id: order.id });
         result.converted.push({ id: order.id, order_no: order.order_no, intake_id: row.id });
       }
@@ -476,6 +578,154 @@ export class TencentDataStore {
     } catch (error) {
       this.db.exec('rollback');
       for (const table of ['orders', 'order_events', 'shopify_order_intake']) this.tableCache.delete(table);
+      throw error;
+    }
+  }
+
+  shopifyHandoff(userId, input = {}) {
+    const profile = this.profile(userId);
+    const fail = (message, status = 400) => { throw Object.assign(Error(message), { status }); };
+    if (!profile || profile.disabled_at) fail('请先登录', 401);
+    const order = this.all('orders').find(row => row.id === input.id);
+    if (!order || order.deleted_at) fail('订单不存在', 404);
+    if (input.action === 'place') return this.placeShopifyOrder(profile, order, input, fail);
+    if (input.action === 'create') return this.createShopifyOrder(userId, profile, order, input, fail);
+    fail('不支持的操作');
+  }
+
+  placeShopifyOrder(profile, order, input, fail) {
+    if (profile.role !== 'business') fail('仅业务员可以下单', 403);
+    if (order.current_step !== SALES_SUPPLEMENT) fail('订单已不在待业务员补充信息', 409);
+    const value = key => typeof input[key] === 'string' ? input[key].trim() : '';
+    const orderNo = value('order_no') || String(order.order_no || '').trim();
+    const product = value('product_name');
+    const quantity = Number(input.quantity);
+    const businessName = value('business_name');
+    const shipping = value('shipping_mode');
+    const blower = value('blower');
+    const customer = value('customer_info');
+    const note = value('abnormal_note');
+    const urls = httpsUrls(input.image_urls ?? input.shopify_image_urls ?? order.shopify_image_urls);
+    if (!orderNo || !product || !urls?.length || !Number.isSafeInteger(quantity) || quantity < 1 || !SALESPERSON_NAMES.includes(businessName) || !SALES_SHIPPING.has(shipping) || !['风机', '气泵'].includes(blower) || !customer || !note) {
+      fail('请补齐订单号、产品名称、图片、数量、业务员、运输方式、风机或气泵、客户信息和订单备注');
+    }
+    if (this.all('orders').some(row => row.id !== order.id && orderNumberKey(row.order_no) === orderNumberKey(orderNo))) fail('订单号已存在', 409);
+    const owners = this.businessOwnersForName(businessName);
+    const timestamp = now();
+    this.db.exec('begin immediate');
+    try {
+      const saved = this.put('orders', {
+        ...order,
+        order_no: orderNo,
+        product_name: product,
+        quantity,
+        size: value('size') || order.size || '',
+        customer_info: customer,
+        abnormal_note: note,
+        requirements: note,
+        blower,
+        shipping_mode: shipping,
+        shopify_image_urls: urls,
+        business_name: businessName,
+        business_id: owners.length === 1 ? owners[0].id : null,
+        business_user_id: null,
+        current_step: FOLLOWER_CREATE,
+        step_started_at: timestamp,
+        step_deadline: null,
+        updated_at: timestamp
+      });
+      for (const event of this.all('order_events').filter(row => row.order_id === order.id && !row.completed_at)) {
+        this.put('order_events', { ...event, completed_at: timestamp, completed_by: profile.id });
+      }
+      this.put('order_events', { order_id: saved.id, step_key: FOLLOWER_CREATE, started_at: timestamp, created_at: timestamp });
+      this.db.exec('commit');
+      return { id: saved.id, current_step: saved.current_step };
+    } catch (error) {
+      this.db.exec('rollback');
+      for (const table of ['orders', 'order_events']) this.tableCache.delete(table);
+      throw error;
+    }
+  }
+
+  createShopifyOrder(userId, profile, order, input, fail) {
+    if (profile.role !== 'follower') fail('仅跟单可以创建订单', 403);
+    if (order.current_step !== FOLLOWER_CREATE) fail('订单已不在待跟单创建订单', 409);
+    const value = key => typeof input[key] === 'string' ? input[key].trim() : '';
+    const orderNo = value('order_no');
+    const orderDate = value('order_date');
+    const product = value('product_name');
+    const size = value('size');
+    const customer = value('customer_info');
+    const businessName = value('business_name');
+    const quantity = Number(input.quantity);
+    const validDate = /^\d{4}-\d{2}-\d{2}$/.test(orderDate) && !Number.isNaN(Date.parse(orderDate)) && new Date(orderDate).toISOString().slice(0, 10) === orderDate;
+    if (!orderNo || !validDate || !product || !size || !customer || !SALESPERSON_NAMES.includes(businessName) || !Number.isSafeInteger(quantity) || quantity < 1 || !value('destination_country')) {
+      fail('请按新建订单补齐订单号、日期、产品名称、尺寸、数量、客户信息、目的国家和负责业务员');
+    }
+    if (this.all('orders').some(row => row.id !== order.id && orderNumberKey(row.order_no) === orderNumberKey(orderNo))) fail('订单号已存在', 409);
+    const shipping = value('shipping_mode');
+    if (shipping && shipping !== 'other' && !ORDER_SHIPPING_MODES.has(shipping)) fail('发货方式不正确');
+    const inventory = value('inventory_mode') === 'stock' ? 'stock' : 'production';
+    const needsRendering = input.needs_rendering === true || input.needs_rendering === 'true';
+    const expectedStep = inventory === 'stock' ? 'shipping_selection' : needsRendering ? 'rendering' : 'production';
+    if (input.current_step !== expectedStep || !input.step_started_at || !input.step_deadline) fail('下一阶段不正确，请刷新订单', 409);
+    const timestamp = now();
+    const names = [...new Set([...(Array.isArray(input.factory_names) ? input.factory_names : []), value('factory_name')].map(name => String(name || '').trim()).filter(Boolean))];
+    let next = {
+      ...order,
+      order_no: orderNo,
+      order_date: orderDate,
+      product_name: product,
+      size,
+      quantity,
+      customer_info: customer,
+      blower: value('blower'),
+      requirements: value('requirements'),
+      business_name: businessName,
+      inventory_mode: inventory,
+      needs_rendering: needsRendering,
+      split_shipping: input.split_shipping === true || input.split_shipping === 'true',
+      shipping_mode: !shipping || shipping === 'other' ? null : shipping,
+      sea_region: value('sea_region') || null,
+      overseas_method: value('overseas_method') || null,
+      factory_name: names[0] || null,
+      destination_country: value('destination_country'),
+      destination_risk: input.destination_risk,
+      destination_risk_acknowledged: input.destination_risk_acknowledged === true || input.destination_risk_acknowledged === 'true',
+      destination_risk_acknowledged_at: input.destination_risk_acknowledged_at || null,
+      destination_risk_acknowledged_by: input.destination_risk_acknowledged_by || null,
+      current_step: expectedStep,
+      step_started_at: input.step_started_at,
+      step_deadline: input.step_deadline,
+      created_by: userId,
+      updated_at: timestamp,
+      status: 'active'
+    };
+    if (Object.hasOwn(input, 'duty_prepaid')) {
+      next.duty_prepaid = input.duty_prepaid === true || input.duty_prepaid === 'true';
+      next.duty_prepaid_note = value('duty_prepaid_note') || null;
+    }
+    next = this.normalizeOrderOwner(this.normalizeOrderDestination(next, userId, order), { business_name: businessName });
+    next.shopify_order_id = order.shopify_order_id;
+    next.shopify_image_urls = order.shopify_image_urls;
+    this.db.exec('begin immediate');
+    try {
+      const saved = this.put('orders', next);
+      for (const event of this.all('order_events').filter(row => row.order_id === order.id && !row.completed_at)) {
+        this.put('order_events', { ...event, completed_at: timestamp, completed_by: userId });
+      }
+      this.put('order_events', { order_id: saved.id, step_key: expectedStep, started_at: saved.step_started_at, deadline_at: saved.step_deadline, created_at: timestamp });
+      if (inventory !== 'stock') {
+        const active = expectedStep === 'production';
+        for (const factory_name of names) {
+          this.put('order_factories', { order_id: saved.id, factory_name, started_at: active ? saved.step_started_at : null, deadline_at: active ? saved.step_deadline : null });
+        }
+      }
+      this.db.exec('commit');
+      return { id: saved.id, current_step: saved.current_step };
+    } catch (error) {
+      this.db.exec('rollback');
+      for (const table of ['orders', 'order_events', 'order_factories']) this.tableCache.delete(table);
       throw error;
     }
   }
@@ -686,8 +936,9 @@ export class TencentDataStore {
         if (!row.id && !['app_settings', 'internal_resource_tables'].includes(table)) row.id = randomUUID();
         if (!row.created_at) row.created_at = now();
         if (table === 'orders') {
+          this.assertShopifyHandoffWritable(null, row);
           if (!row.created_by) row.created_by = userId;
-          const normalized = this.preserveShopifyVisibility(this.normalizeOrderOwner(this.normalizeOrderDestination(row, userId), value));
+          const normalized = this.preserveShopifyIdentity(this.normalizeOrderOwner(this.normalizeOrderDestination(row, userId), value));
           if (normalized !== row) {
             for (const key of Object.keys(row)) delete row[key];
             Object.assign(row, normalized);
@@ -704,11 +955,16 @@ export class TencentDataStore {
     mutationUrl.searchParams.delete('select');
     let matchesRows = this.query(table, mutationUrl);
     if (method === 'PATCH') return matchesRows.map(row => {
+      if (table === 'orders') this.assertShopifyHandoffWritable(row, body);
       let next = { ...row, ...body };
-      if (table === 'orders') next = this.preserveShopifyVisibility(this.normalizeOrderOwner(this.normalizeOrderDestination(next, userId, row), body), row);
+      if (table === 'orders') next = this.preserveShopifyIdentity(this.normalizeOrderOwner(this.normalizeOrderDestination(next, userId, row), body), row);
       return project(this.put(table, next), url.searchParams.get('select'));
     });
-    if (method === 'DELETE') { this.remove(table, matchesRows.map(row => row.id ?? row.key ?? row.resource_key)); return matchesRows.map(row => project(row, url.searchParams.get('select'))); }
+    if (method === 'DELETE') {
+      if (table === 'orders') matchesRows.forEach(row => this.assertShopifyHandoffWritable(row, null));
+      this.remove(table, matchesRows.map(row => row.id ?? row.key ?? row.resource_key));
+      return matchesRows.map(row => project(row, url.searchParams.get('select')));
+    }
     return matchesRows;
   }
 
@@ -778,7 +1034,7 @@ export function lookupCustomerTracking(store, value) {
   const email = String(value ?? '').trim().toLowerCase();
   if (email.length < 5 || email.length > 254 || email.indexOf('@') <= 0) return { found: false };
   const emailPattern = /[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+/g;
-  const matches = store.all('orders').filter(row => !row.deleted_at &&
+  const matches = store.all('orders').filter(row => !row.deleted_at && !['sales_supplement', 'follower_create'].includes(row.current_step) &&
     (String(row.customer_info || '').toLowerCase().match(emailPattern) || []).includes(email));
   matches.sort((a, b) => compare(['order_date', 'created_at'])(b, a));
   const order = matches[0];

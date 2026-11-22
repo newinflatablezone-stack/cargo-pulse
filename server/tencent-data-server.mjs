@@ -2,7 +2,7 @@ import http from 'node:http';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize } from 'node:path';
-import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking, shopifyLineSummary } from './tencent-data-core.mjs';
+import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking, shopifyLineSummary, shopifyShippingChoice, shopifyBlowerChoice, shopifyCustomerInfo } from './tencent-data-core.mjs';
 
 const PORT = Number(process.env.PORT || 8788);
 const DATA_DIR = process.env.CARGO_PULSE_DATA_DIR || '/var/lib/cargo-pulse/data';
@@ -126,6 +126,10 @@ async function rpc(req, res, name, body, user) {
     if (req.method !== 'POST') throw Object.assign(Error('请使用 POST 请求'), {status:405});
     return send(res, 200, store.shopifyIntake(user.id, body));
   }
+  if (name === 'shopify_order_handoff') {
+    if (req.method !== 'POST') throw Object.assign(Error('请使用 POST 请求'), {status:405});
+    return send(res, 200, store.shopifyHandoff(user.id, body));
+  }
   if (name === 'home_bootstrap') return send(res, 200, store.homeSnapshot(user.id));
   if (name === 'home_core') return send(res, 200, store.homeCoreSnapshot(user.id));
   if (name === 'internal_resource_permissions') return send(res, 200, store.internalResourcePermissions(user.id));
@@ -166,6 +170,7 @@ async function rpc(req, res, name, body, user) {
     store.setUserActive(target.id, Boolean(body.active));
   } else if (name === 'transition_order_stage') {
     if (!order || order.deleted_at) throw Object.assign(Error('订单不存在'), { status: 404 });
+    if (['sales_supplement', 'follower_create'].includes(order.current_step)) throw Object.assign(Error('请通过订单交接完成这一步'), {status:409});
     if (order.current_step === 'business_placed' && !String(order.factory_name || '').trim()) throw Object.assign(Error('请先填写主工厂，再确认向工厂下单'), {status:400});
     if (order.current_step === 'completed') throw Object.assign(Error('已完成订单不能继续推进'), { status: 409 });
     if (body.target_next_step !== 'completed' && !body.target_deadline) throw Object.assign(Error('进行中的步骤必须有截止时间'), { status: 400 });
@@ -318,15 +323,19 @@ const server = http.createServer((req, res) => {
 // Deadline reminders and retry delivery run in the dedicated systemd worker.
 // Keeping those provider calls out of this process protects the core API.
 
+// Beijing time 2026-11-21 00:00 (China Standard Time, UTC+8).
+// Every Shopify order created at or after this instant, and not already stored
+// as a Cargo Pulse order, is imported. This is the full sync window, not a
+// list of individual order numbers.
 const shopifyImportStart = '2026-11-20T16:00:00Z';
 const period = 30 * 60 * 1000;
 const orderQuery = `query ImportOrders($query: String!, $after: String) {
   orders(first: 25, after: $after, query: $query, sortKey: CREATED_AT) {
     pageInfo { hasNextPage endCursor }
     nodes {
-      id name createdAt note
+      id name createdAt note email phone
       customAttributes { key value }
-      shippingAddress { address1 address2 city province zip country }
+      shippingAddress { name firstName lastName phone address1 address2 city province zip country }
       shippingLines(first: 10) { nodes { title code } }
       lineItems(first: 30) {
         nodes { name quantity variantTitle image { url } customAttributes { key value } }
@@ -346,29 +355,29 @@ const lineQuery = `query ImportOrderItems($id: ID!, $after: String) {
 
 function mapShopifyOrder(order, items) {
   const attributes = [...(order.customAttributes || []), ...items.flatMap(item => item.customAttributes || [])];
-  const allText = [order.note, ...attributes.map(({key,value}) => key+' '+value), ...items.map(item=>item.name)].filter(Boolean);
-  const mentions = new Set();
-  for (const text of allText) {
-    if (/不\s*包含/.test(text)) mentions.add('不包含');
-    if (/包含/.test(text.replace(/不\s*包含/g,''))) mentions.add('包含');
-  }
-  const shipping = (order.shippingLines?.nodes || []).map(line=>[line.title,line.code].join(' ')).join(' ');
-  const sea = /\bsea\b/i.test(shipping), express = /\bexpress\b/i.test(shipping);
+  const shipping = (order.shippingLines?.nodes || []).map(line=>[line.title,line.code].filter(Boolean).join(' ')).join(' ');
   const dimensions = /\d+(?:\.\d+)?\s*(?:cm|mm|m|ft|in|米|英尺)?\s*[×xX*]\s*\d+(?:\.\d+)?(?:\s*(?:cm|mm|m|ft|in|米|英尺)?\s*[×xX*]\s*\d+(?:\.\d+)?)?\s*(?:cm|mm|m|ft|in|米|英尺)?/gi;
-  const sizes = [...attributes.filter(entry=>/^(size|dimensions?|产品尺寸|尺寸)$/i.test(entry.key.trim())).map(entry=>entry.value),
+  const sizes = [...attributes.filter(entry=>/^(size|dimensions?|产品尺寸|尺寸)$/i.test(String(entry.key || '').trim())).map(entry=>entry.value),
     ...items.flatMap(item=>[...(String(item.variantTitle||'').match(dimensions)||[]),...(String(item.name||'').match(dimensions)||[])])];
-  const address = order.shippingAddress;
+  const address = order.shippingAddress || {};
   const summary = shopifyLineSummary(items);
+  const note = order.note || '';
   return {
     id: order.id, order_no: String(order.name || '').trim(),
     order_date: new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(order.createdAt)),
     product_name: summary.product_name, quantity: summary.quantity,
     image_urls: [...new Set(items.map(item=>item.image?.url).filter(url=>typeof url==='string'&&url.startsWith('https://')))],
     size: [...new Set(sizes.map(size=>String(size||'').trim()).filter(Boolean))].join(' / '),
-    requirements: order.note || '',
-    blower: mentions.size === 1 ? [...mentions][0] : '',
-    customer_info: address ? [address.address1,address.address2,address.city,address.province,address.zip,address.country].filter(Boolean).join(', ') : '',
-    shipping_mode: sea === express ? '' : sea ? 'domestic_sea' : 'domestic_express'
+    requirements: note, abnormal_note: note,
+    blower: shopifyBlowerChoice(shipping),
+    customer_info: shopifyCustomerInfo({
+      name: address.name || [address.firstName, address.lastName].filter(Boolean).join(' '),
+      address: [address.address1, address.address2, address.city, address.province, address.zip, address.country].filter(Boolean).join(', '),
+      email: order.email,
+      phone: address.phone || order.phone
+    }),
+    shipping_mode: shopifyShippingChoice(shipping),
+    country: address.country || ''
   };
 }
 
@@ -406,11 +415,11 @@ function startShopifySync(store, env = process.env) {
     running=true;
     try {
       const search = "created_at:>='"+shopifyImportStart+"'";
-      let after = null;
+      let after = null, changed = 0;
       do {
         const {orders} = await query(orderQuery,{query:search,after});
         for(const order of orders.nodes){
-          if(Date.parse(order.createdAt)<Date.parse(shopifyImportStart)||store.hasShopifyOrder(order.name)||store.hasShopifyOrderId(order.id))continue;
+          if(Date.parse(order.createdAt)<Date.parse(shopifyImportStart)||!store.shopifyOrderNeedsRefresh(order.name, order.id))continue;
           let connection=order.lineItems;
           const items=[...connection.nodes];
           while(connection.pageInfo.hasNextPage){
@@ -418,10 +427,11 @@ function startShopifySync(store, env = process.env) {
             connection=result.order.lineItems;
             items.push(...connection.nodes);
           }
-          store.importShopifyOrder(mapShopifyOrder(order,items));
+          if(store.importShopifyOrder(mapShopifyOrder(order,items))) changed += 1;
         }
         after=orders.pageInfo.hasNextPage?orders.pageInfo.endCursor:null;
       }while(after);
+      if(changed) console.log('Shopify 自北京时间 2026-11-21 00:00 起、系统中尚未建档的订单已写入待业务员补充信息：'+changed+' 单');
     }catch(error){console.warn('Shopify 自动导入失败',error.message);}
     finally{running=false;}
   }
@@ -434,7 +444,7 @@ function promoteUnclaimedShopifyOrders(store) {
     const promoted = store.promoteOpenShopifyIntake();
     const converted = promoted.converted.map(row => row.order_no);
     const linked = promoted.already_present.map(row => row.order_no);
-    if (converted.length || linked.length) console.log('Shopify 未认领订单已转入进行中 ' + JSON.stringify({ converted, already_present: linked }));
+    if (converted.length || linked.length) console.log('Shopify 未认领订单已转入待业务员补充信息 ' + JSON.stringify({ converted, already_present: linked }));
     if (promoted.skipped.length) console.warn('Shopify 未认领订单缺少订单号，未转入 ' + promoted.skipped.map(row => row.id).join(', '));
   } catch (error) {
     console.warn('Shopify 未认领订单转入失败', error.message);

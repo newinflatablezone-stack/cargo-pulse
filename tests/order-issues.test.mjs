@@ -147,8 +147,6 @@ test('Shopify intake deduplicates numbers and enforces claim and handoff roles',
   const call=(user,action,values={})=>store.shopifyIntake(user.id,{action,...values});
   store.put('shopify_order_intake',imported);
   assert.equal(store.importShopifyOrder({...imported,id:'duplicate-existing',order_no:'#ORDER-1'}),null);
-  assert.equal(store.importShopifyOrder({...imported,id:'from-sync',order_no:'#123'}),null);
-  assert.equal(store.all('orders').some(row=>String(row.order_no).includes('123')),false);
   assert.equal(store.all('shopify_order_intake').length,1);
   assert.equal(call(business,'list').orders.length,1);
   assert.equal(call(other,'list').orders.length,1);

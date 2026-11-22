@@ -123,8 +123,8 @@ function optionLabel(option) {
 }
 
 // Checkout shipping is often only "Free Shipping". Sea/express and blower/pump
-// come from variant options named Shipping, Air Blower, or AIR PUMP, and from
-// the combined variant title.
+// are read from the line-item name and variantTitle, which order access can
+// already see. selectedOptions are used only when a caller already has them.
 export function shopifyVariantChoices(order, items = []) {
   const shippingParts = [];
   const equipmentParts = [];
@@ -146,6 +146,16 @@ export function shopifyVariantChoices(order, items = []) {
     shipping_mode: shopifyShippingChoice(shippingParts.join('\n')),
     blower: blowers.length === 1 ? blowers[0] : ''
   };
+}
+
+export function shopifyGraphqlErrorDetail(errors) {
+  const list = Array.isArray(errors) ? errors : [];
+  return list.slice(0, 5).map(error => {
+    const code = typeof error?.extensions?.code === 'string' ? error.extensions.code : '';
+    const path = Array.isArray(error?.path) ? error.path.map(part => String(part)).join('.') : '';
+    const message = String(error?.message || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    return [code, path, message].filter(Boolean).join(' ');
+  }).filter(Boolean).join('; ');
 }
 
 export function shopifyCustomerInfo(parts = {}) {

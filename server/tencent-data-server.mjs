@@ -444,8 +444,8 @@ function promoteUnclaimedShopifyOrders(store) {
     const promoted = store.promoteOpenShopifyIntake();
     const converted = promoted.converted.map(row => row.order_no);
     const linked = promoted.already_present.map(row => row.order_no);
-    if (converted.length || linked.length) console.log('Shopify 未认领订单已转入待业务员补充信息 ' + JSON.stringify({ converted, already_present: linked }));
-    if (promoted.skipped.length) console.warn('Shopify 未认领订单缺少订单号，未转入 ' + promoted.skipped.map(row => row.id).join(', '));
+    if (converted.length || linked.length) console.log('Shopify 未提交导入单已转入待业务员补充信息 ' + JSON.stringify({ converted, already_present: linked }));
+    if (promoted.skipped.length) console.warn('Shopify 未提交导入单缺少订单号，未转入 ' + promoted.skipped.map(row => row.id).join(', '));
   } catch (error) {
     console.warn('Shopify 未认领订单转入失败', error.message);
   }

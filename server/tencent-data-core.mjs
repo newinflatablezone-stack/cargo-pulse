@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
+import { customerInfoReminder } from './customer-info.mjs';
 
 // Keep the data service self-contained: older production deployers install
 // this core file directly and may not yet copy newly added helper modules.
@@ -775,6 +776,7 @@ export class TencentDataStore {
     const note = value('abnormal_note');
     const hasUploadedImage = this.all('order_images').some(row => row.order_id === order.id && String(row.object_path || '').includes('/product-image-'));
     if (isPurelyNumericOrderNumber(orderNo)) fail('自定义订单号' + CUSTOM_ORDER_NUMBER_RULE);
+    if (customer && customerInfoReminder(customer)) fail(customerInfoReminder(customer), 400);
     if (!orderNo || !orderNo.replace(/^#/, '') || !product || !hasUploadedImage || !Number.isSafeInteger(quantity) || quantity < 1 || !SALESPERSON_NAMES.includes(businessName) || !SALES_SHIPPING.has(shipping) || !blower || !customer || !note) {
       fail('请补齐自定义订单号、产品名称、图片、数量、业务员、运输方式、包风机或包气泵、客户信息和订单备注');
     }
@@ -853,6 +855,7 @@ export class TencentDataStore {
     const urls = suppliedImages ? httpsUrls(input.image_urls ?? input.shopify_image_urls) : (httpsUrls(order.shopify_image_urls) || []);
     const hasUploadedImage = this.all('order_images').some(row => row.order_id === order.id && String(row.object_path || '').includes('/product-image-'));
     if (suppliedImages && urls === null) fail('图片地址须为 HTTPS 链接');
+    if (customer && customerInfoReminder(customer)) fail(customerInfoReminder(customer), 400);
     if (!orderNo || !product || !(urls?.length || hasUploadedImage) || !Number.isSafeInteger(quantity) || quantity < 1 || !SALESPERSON_NAMES.includes(businessName) || !SALES_SHIPPING.has(shipping) || !blower || !customer || !note) {
       fail('请补齐订单号、产品名称、图片、数量、业务员、运输方式、包风机或包气泵、客户信息和订单备注');
     }
@@ -904,6 +907,7 @@ export class TencentDataStore {
     const customer = value('customer_info');
     const businessName = value('business_name');
     const quantity = Number(input.quantity);
+    if (customer && customerInfoReminder(customer)) fail(customerInfoReminder(customer), 400);
     if (!orderNo || !product || !size || !customer || !SALESPERSON_NAMES.includes(businessName) || !Number.isSafeInteger(quantity) || quantity < 1 || !value('destination_country')) {
       fail('请按新建订单补齐订单号、产品名称、尺寸、数量、客户信息、目的国家和负责业务员');
     }
@@ -1192,6 +1196,8 @@ export class TencentDataStore {
           this.assertShopifyHandoffWritable(null, row);
           if (!row.created_by) row.created_by = userId;
           const normalized = this.preserveShopifyIdentity(this.normalizeOrderOwner(this.normalizeOrderDestination(row, userId), value));
+          const reminder = customerInfoReminder(normalized.customer_info);
+          if (reminder) throw Object.assign(Error(reminder), { status: 400 });
           if (normalized !== row) {
             for (const key of Object.keys(row)) delete row[key];
             Object.assign(row, normalized);

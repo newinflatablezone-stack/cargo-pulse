@@ -25,6 +25,18 @@ const RETIRED_FEATURE_TABLES = new Set(['tickets', 'ticket_messages', 'ticket_at
 const PUBLIC_RPC = new Set(['lookup_customer_tracking']);
 const SUPERVISOR_EMAIL = '505863160@qq.com';
 const orderNumberKey = value => String(value || '').trim().replace(/^#\s*/, '').toLowerCase();
+// Beijing time 2026-11-21 00:00. General sync stays on this instant.
+// #9050 was created at 2026-11-20T15:55:03Z, five minutes earlier, and is the
+// only order pulled in addition to the window.
+export const SHOPIFY_IMPORT_START = '2026-11-20T16:00:00Z';
+export const SHOPIFY_EXPLICIT_ORDER_NUMBERS = ['9050'];
+
+export function shopifySyncEligible(order) {
+  const number = orderNumberKey(order?.name ?? order?.order_no);
+  if (SHOPIFY_EXPLICIT_ORDER_NUMBERS.includes(number)) return true;
+  const created = Date.parse(order?.createdAt);
+  return Number.isFinite(created) && created >= Date.parse(SHOPIFY_IMPORT_START);
+}
 const SALES_SUPPLEMENT = 'sales_supplement';
 const FOLLOWER_CREATE = 'follower_create';
 const SALESPERSON_NAMES = ['Ella', 'Sherry', 'Demi', 'Rayna'];

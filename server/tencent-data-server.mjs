@@ -2,7 +2,7 @@ import http from 'node:http';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize } from 'node:path';
-import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking, shopifyLineSummary, shopifyShippingChoice, shopifyBlowerChoice, shopifyCustomerInfo } from './tencent-data-core.mjs';
+import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking, shopifyLineSummary, shopifyShippingChoice, shopifyBlowerChoice, shopifyCustomerInfo, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible } from './tencent-data-core.mjs';
 
 const PORT = Number(process.env.PORT || 8788);
 const DATA_DIR = process.env.CARGO_PULSE_DATA_DIR || '/var/lib/cargo-pulse/data';
@@ -323,11 +323,9 @@ const server = http.createServer((req, res) => {
 // Deadline reminders and retry delivery run in the dedicated systemd worker.
 // Keeping those provider calls out of this process protects the core API.
 
-// Beijing time 2026-11-21 00:00 (China Standard Time, UTC+8).
-// Every Shopify order created at or after this instant, and not already stored
-// as a Cargo Pulse order, is imported. This is the full sync window, not a
-// list of individual order numbers.
-const shopifyImportStart = '2026-11-20T16:00:00Z';
+// General sync stays at Beijing time 2026-11-21 00:00 (SHOPIFY_IMPORT_START).
+// Order 9050 is five minutes earlier and is requested by name, not by moving
+// that window backward.
 const period = 30 * 60 * 1000;
 const orderQuery = `query ImportOrders($query: String!, $after: String) {
   orders(first: 25, after: $after, query: $query, sortKey: CREATED_AT) {
@@ -414,24 +412,28 @@ function startShopifySync(store, env = process.env) {
     if(running)return;
     running=true;
     try {
-      const search = "created_at:>='"+shopifyImportStart+"'";
-      let after = null, changed = 0;
-      do {
-        const {orders} = await query(orderQuery,{query:search,after});
-        for(const order of orders.nodes){
-          if(Date.parse(order.createdAt)<Date.parse(shopifyImportStart)||!store.shopifyOrderNeedsRefresh(order.name, order.id))continue;
-          let connection=order.lineItems;
-          const items=[...connection.nodes];
-          while(connection.pageInfo.hasNextPage){
-            const result=await query(lineQuery,{id:order.id,after:connection.pageInfo.endCursor});
-            connection=result.order.lineItems;
-            items.push(...connection.nodes);
+      let changed = 0;
+      async function importSearch(search) {
+        let after = null;
+        do {
+          const {orders} = await query(orderQuery,{query:search,after});
+          for(const order of orders.nodes){
+            if(!shopifySyncEligible(order)||!store.shopifyOrderNeedsRefresh(order.name, order.id))continue;
+            let connection=order.lineItems;
+            const items=[...connection.nodes];
+            while(connection.pageInfo.hasNextPage){
+              const result=await query(lineQuery,{id:order.id,after:connection.pageInfo.endCursor});
+              connection=result.order.lineItems;
+              items.push(...connection.nodes);
+            }
+            if(store.importShopifyOrder(mapShopifyOrder(order,items))) changed += 1;
           }
-          if(store.importShopifyOrder(mapShopifyOrder(order,items))) changed += 1;
-        }
-        after=orders.pageInfo.hasNextPage?orders.pageInfo.endCursor:null;
-      }while(after);
-      if(changed) console.log('Shopify 自北京时间 2026-11-21 00:00 起、系统中尚未建档的订单已写入待业务员补充信息：'+changed+' 单');
+          after=orders.pageInfo.hasNextPage?orders.pageInfo.endCursor:null;
+        }while(after);
+      }
+      await importSearch("created_at:>='"+SHOPIFY_IMPORT_START+"'");
+      for (const number of SHOPIFY_EXPLICIT_ORDER_NUMBERS) await importSearch('name:#'+number);
+      if(changed) console.log('Shopify 自北京时间 2026-11-21 00:00 起、以及指定的 9050，系统中尚未建档的订单已写入待业务员补充信息：'+changed+' 单');
     }catch(error){console.warn('Shopify 自动导入失败',error.message);}
     finally{running=false;}
   }

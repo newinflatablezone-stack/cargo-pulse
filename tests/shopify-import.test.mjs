@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TencentDataStore, shopifyLineSummary, shopifyShippingChoice, shopifyBlowerChoice, shopifyCustomerInfo, lookupCustomerTracking } from '../server/tencent-data-core.mjs';
+import { TencentDataStore, shopifyLineSummary, shopifyShippingChoice, shopifyBlowerChoice, shopifyCustomerInfo, lookupCustomerTracking, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible } from '../server/tencent-data-core.mjs';
 import { overallDeadline } from '../workflow.js';
 
 function fixture(t) {
@@ -39,11 +39,38 @@ test('Shopify shipping, blower and customer text map onto existing order fields'
   assert.equal(overallDeadline({ order_date: '2026-11-21', current_step: 'follower_create' }), null);
 });
 
-test('the Shopify sync window stays Beijing 2026-11-21 00:00 and is not a two-order list', () => {
+test('the Shopify sync window stays Beijing 2026-11-21 00:00 and also includes order 9050 exactly', () => {
   const source = readFileSync(new URL('../server/tencent-data-server.mjs', import.meta.url), 'utf8');
-  assert.match(source, /const shopifyImportStart = '2026-11-20T16:00:00Z'/);
-  assert.match(source, /shopifyOrderNeedsRefresh/);
-  assert.doesNotMatch(source, /#9051/);
+  assert.equal(SHOPIFY_IMPORT_START, '2026-11-20T16:00:00Z');
+  assert.deepEqual(SHOPIFY_EXPLICIT_ORDER_NUMBERS, ['9050']);
+  assert.match(source, /shopifySyncEligible/);
+  assert.match(source, /created_at:>='"\+SHOPIFY_IMPORT_START\+"'/);
+  assert.equal(shopifySyncEligible({ name: '#9050', createdAt: '2026-11-20T15:55:03Z' }), true);
+  assert.equal(shopifySyncEligible({ name: '9050', createdAt: '2026-11-20T15:55:03Z' }), true);
+  assert.equal(shopifySyncEligible({ name: '#9049', createdAt: '2026-11-20T15:55:03Z' }), false);
+  assert.equal(shopifySyncEligible({ name: '#9048', createdAt: '2026-11-20T15:59:59Z' }), false);
+  assert.equal(shopifySyncEligible({ name: '#9051', createdAt: '2026-11-20T16:00:00Z' }), true);
+  assert.equal(shopifySyncEligible({ name: '#9051', createdAt: '2026-11-20T15:59:59Z' }), false);
+});
+
+test('order 9050 imports once into 待业务员补充信息 and an existing later-stage order is left alone', t => {
+  const { store } = fixture(t);
+  store.put('orders', { id: 'kept-9054', order_no: '#9054', current_step: 'shipping_selection', product_name: 'Keep me' });
+  const created = store.importShopifyOrder({
+    id: 'gid://shopify/Order/9050', order_no: '#9050', order_date: '2026-11-20', product_name: 'Arch 9050', quantity: 1,
+    image_urls: ['https://cdn.shopify.com/9050.jpg'], customer_info: 'Ada', shipping_mode: 'domestic_sea', blower: '风机'
+  });
+  assert.equal(created.current_step, 'sales_supplement');
+  assert.equal(created.order_no, '#9050');
+  assert.equal(created.shopify_order_id, 'gid://shopify/Order/9050');
+  assert.equal(Boolean(created.shopify_source_refreshed_at), true);
+  assert.equal(store.all('orders').filter(row => row.order_no === '#9050').length, 1);
+  assert.equal(store.shopifyOrderNeedsRefresh('#9050', created.shopify_order_id), false);
+  assert.equal(store.importShopifyOrder({ id: created.shopify_order_id, order_no: '9050', product_name: 'Again', quantity: 8 }), null);
+  assert.equal(store.all('orders').find(row => row.id === created.id).product_name, 'Arch 9050');
+  assert.equal(store.importShopifyOrder({ id: 'gid://shopify/Order/9054', order_no: '#9054', product_name: 'Rewrite', quantity: 2 }), null);
+  assert.equal(store.all('orders').find(row => row.id === 'kept-9054').current_step, 'shipping_selection');
+  assert.equal(store.all('orders').find(row => row.id === 'kept-9054').product_name, 'Keep me');
 });
 
 test('every in-window order missing from Cargo Pulse becomes 待业务员补充信息, including intake rows and new orders', t => {

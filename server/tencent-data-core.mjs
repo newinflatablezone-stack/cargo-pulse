@@ -68,9 +68,29 @@ export function shopifyLineSummary(items) {
 
 export function shopifyShippingChoice(text) {
   const value = String(text || '');
-  const sea = /sea/i.test(value), express = /express/i.test(value);
+  // Whole words, so "overseas" or "season" is not 海运. Both words together,
+  // such as "Sea Express", stay empty instead of inventing another mode.
+  const sea = /\bsea\b/i.test(value), express = /\bexpress\b/i.test(value);
   if (sea === express) return '';
   return sea ? 'domestic_sea' : 'domestic_express';
+}
+
+const BLOWER_WORD = /\bblower\b|风机/i;
+const PUMP_WORD = /\bpump\b|气泵/i;
+
+function equipmentKinds(text) {
+  const value = String(text || '');
+  const kinds = [];
+  if (BLOWER_WORD.test(value)) kinds.push('blower');
+  if (PUMP_WORD.test(value)) kinds.push('pump');
+  return kinds;
+}
+
+function equipmentExcluded(text, kind) {
+  const word = kind === 'blower' ? '(?:blower|风机)' : '(?:pump|气泵)';
+  const value = String(text || '');
+  return new RegExp(`\\b(?:without|no|not)\\b[\\s\\S]{0,40}${word}`, 'i').test(value)
+    || new RegExp(`(?:不包含|不含有|不含|不带|不包|没有|无)\\s*${kind === 'blower' ? '风机' : '气泵'}`).test(value);
 }
 
 export const BLOWER_OPTIONS = ['包风机', '包气泵', '不包风机', '不包气泵'];
@@ -90,10 +110,42 @@ export function normalizeBlowerChoice(value) {
 }
 
 export function shopifyBlowerChoice(text) {
-  const value = String(text || '');
-  const blower = /blower/i.test(value), pump = /pump/i.test(value);
-  if (blower === pump) return '';
-  return blower ? '包风机' : '包气泵';
+  const kinds = equipmentKinds(text);
+  // One order field cannot represent both a blower and a pump.
+  if (kinds.length !== 1) return '';
+  const excluded = equipmentExcluded(text, kinds[0]);
+  if (kinds[0] === 'blower') return excluded ? '不包风机' : '包风机';
+  return excluded ? '不包气泵' : '包气泵';
+}
+
+function optionLabel(option) {
+  return [option?.name, option?.value].map(part => String(part || '').trim()).filter(Boolean).join(' ');
+}
+
+// Checkout shipping is often only "Free Shipping". Sea/express and blower/pump
+// come from variant options named Shipping, Air Blower, or AIR PUMP, and from
+// the combined variant title.
+export function shopifyVariantChoices(order, items = []) {
+  const shippingParts = [];
+  const equipmentParts = [];
+  const lines = order?.shippingLines?.nodes || order?.shipping_lines || [];
+  for (const line of lines) shippingParts.push([line?.title, line?.code].filter(Boolean).join(' '));
+  for (const item of items || []) {
+    const options = item?.variant?.selectedOptions || item?.selectedOptions || [];
+    for (const option of options) {
+      const text = optionLabel(option);
+      if (/ship|运输|freight|delivery/i.test(String(option?.name || ''))) shippingParts.push(text);
+      if (equipmentKinds(text).length) equipmentParts.push(text);
+    }
+    const title = [item?.variantTitle, item?.variant?.title, item?.name].map(part => String(part || '').trim()).filter(Boolean).join(' ');
+    if (/\bsea\b|\bexpress\b/i.test(title)) shippingParts.push(title);
+    if (equipmentKinds(title).length) equipmentParts.push(title);
+  }
+  const blowers = [...new Set(equipmentParts.map(part => shopifyBlowerChoice(part)).filter(Boolean))];
+  return {
+    shipping_mode: shopifyShippingChoice(shippingParts.join('\n')),
+    blower: blowers.length === 1 ? blowers[0] : ''
+  };
 }
 
 export function shopifyCustomerInfo(parts = {}) {
@@ -495,7 +547,12 @@ export class TencentDataStore {
 
   shopifyOrderNeedsRefresh(number, id) {
     const order = this.findShopifyOrder(number, id);
-    if (order) return !order.deleted_at && order.current_step === SALES_SUPPLEMENT && !order.shopify_source_refreshed_at;
+    if (order) {
+      if (order.deleted_at || order.current_step !== SALES_SUPPLEMENT) return false;
+      // One later pass fills 运输方式 and 风机/气泵 from variant options on
+      // orders whose first import only saw "Free Shipping".
+      return !order.shopify_source_refreshed_at || !order.shopify_variant_mapped_at;
+    }
     return Boolean(orderNumberKey(number) || String(id || ''));
   }
 
@@ -572,20 +629,40 @@ export class TencentDataStore {
       const existing = this.findShopifyOrder(row.order_no, row.shopify_order_id || row.id);
       const timestamp = now();
       if (existing) {
-        if (existing.deleted_at || existing.current_step !== SALES_SUPPLEMENT || existing.shopify_source_refreshed_at) {
+        if (existing.deleted_at || existing.current_step !== SALES_SUPPLEMENT) {
           this.db.exec('commit');
           return null;
         }
-        const next = this.applyLiveShopifyFields(existing, this.shopifyDraft(row, timestamp));
-        next.updated_at = timestamp;
-        if (live) next.shopify_source_refreshed_at = timestamp;
-        const saved = this.put('orders', next);
-        this.closeOpenShopifyIntake(saved.order_no, saved.shopify_order_id, saved.id, timestamp);
+        const draft = this.shopifyDraft(row, timestamp);
+        if (!existing.shopify_source_refreshed_at) {
+          const next = this.applyLiveShopifyFields(existing, draft);
+          next.updated_at = timestamp;
+          if (live) {
+            next.shopify_source_refreshed_at = timestamp;
+            next.shopify_variant_mapped_at = timestamp;
+          }
+          const saved = this.put('orders', next);
+          this.closeOpenShopifyIntake(saved.order_no, saved.shopify_order_id, saved.id, timestamp);
+          this.db.exec('commit');
+          return saved;
+        }
+        if (!existing.shopify_variant_mapped_at) {
+          const next = { ...existing, updated_at: timestamp };
+          if (draft.shipping_mode) next.shipping_mode = draft.shipping_mode;
+          if (draft.blower) next.blower = draft.blower;
+          if (live) next.shopify_variant_mapped_at = timestamp;
+          const saved = this.put('orders', next);
+          this.db.exec('commit');
+          return saved;
+        }
         this.db.exec('commit');
-        return saved;
+        return null;
       }
       const draft = this.shopifyDraft(row, timestamp);
-      if (live) draft.shopify_source_refreshed_at = timestamp;
+      if (live) {
+        draft.shopify_source_refreshed_at = timestamp;
+        draft.shopify_variant_mapped_at = timestamp;
+      }
       const order = this.put('orders', draft);
       this.put('order_events', { order_id: order.id, step_key: SALES_SUPPLEMENT, started_at: timestamp, created_at: timestamp });
       this.closeOpenShopifyIntake(order.order_no, order.shopify_order_id, order.id, timestamp);

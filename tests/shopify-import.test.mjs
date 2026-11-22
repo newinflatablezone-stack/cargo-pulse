@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TencentDataStore, shopifyLineSummary, shopifyShippingChoice, shopifyBlowerChoice, shopifyCustomerInfo, lookupCustomerTracking, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible, normalizeBlowerChoice, beijingOrderDate } from '../server/tencent-data-core.mjs';
+import { TencentDataStore, shopifyLineSummary, shopifyShippingChoice, shopifyBlowerChoice, shopifyVariantChoices, shopifyCustomerInfo, lookupCustomerTracking, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible, normalizeBlowerChoice, beijingOrderDate } from '../server/tencent-data-core.mjs';
 import { overallDeadline } from '../workflow.js';
 
 function fixture(t) {
@@ -33,6 +33,9 @@ test('Shopify shipping, blower and customer text map onto existing order fields'
   assert.equal(shopifyBlowerChoice('Includes blower'), '包风机');
   assert.equal(shopifyBlowerChoice('Air Pump shipping'), '包气泵');
   assert.equal(shopifyBlowerChoice('blower and pump'), '');
+  assert.equal(shopifyBlowerChoice('Please blow up before use'), '');
+  assert.equal(shopifyShippingChoice('Free Shipping'), '');
+  assert.equal(shopifyShippingChoice('By express door to door'), 'domestic_express');
   assert.equal(normalizeBlowerChoice('风机'), '包风机');
   assert.equal(normalizeBlowerChoice('气泵'), '包气泵');
   assert.equal(normalizeBlowerChoice('不包风机'), '不包风机');
@@ -41,6 +44,43 @@ test('Shopify shipping, blower and customer text map onto existing order fields'
   assert.deepEqual(shopifyLineSummary([{ name: 'Arch', quantity: 2 }, { name: 'Arch', quantity: 1 }]), { product_name: 'Arch', quantity: 3 });
   assert.equal(overallDeadline({ order_date: '2026-11-21', current_step: 'sales_supplement' }), null);
   assert.equal(overallDeadline({ order_date: '2026-11-21', current_step: 'follower_create' }), null);
+});
+
+test('variant options fill 海运 and 包风机/包气泵, including the four live orders', () => {
+  const sea = 'By sea door to door (production time 6 business days + shipping time 39 business days)';
+  const choice = options => shopifyVariantChoices(
+    { shippingLines: { nodes: [{ title: 'Free Shipping', code: 'Free Shipping' }] } },
+    [{ name: 'Product', variantTitle: options.map(option => option.value).join(' / '), variant: { selectedOptions: options } }]
+  );
+  assert.deepEqual(choice([
+    { name: 'Shipping', value: sea },
+    { name: 'Air Blower', value: 'Without air blower' }
+  ]), { shipping_mode: 'domestic_sea', blower: '不包风机' });
+  assert.deepEqual(choice([
+    { name: 'Shipping', value: sea },
+    { name: 'Air Blower', value: 'With air blower' }
+  ]), { shipping_mode: 'domestic_sea', blower: '包风机' });
+  assert.deepEqual(choice([
+    { name: 'Size', value: '20ft x 6ft x 8in (6mx1.8mx0.2m)' },
+    { name: 'AIR PUMP', value: 'COME WITH NO AIR PUMP' },
+    { name: 'Shipping', value: sea }
+  ]), { shipping_mode: 'domestic_sea', blower: '不包气泵' });
+  assert.deepEqual(choice([
+    { name: 'Size', value: '7X4.5M /23X15FT' },
+    { name: 'Air Blower', value: 'Without air blower' },
+    { name: 'Shipping', value: sea }
+  ]), { shipping_mode: 'domestic_sea', blower: '不包风机' });
+  assert.deepEqual(choice([{ name: 'Shipping', value: 'By express door to door' }]), { shipping_mode: 'domestic_express', blower: '' });
+  assert.deepEqual(choice([{ name: 'Shipping', value: 'Free Shipping' }, { name: 'Size', value: '3m' }]), { shipping_mode: '', blower: '' });
+  assert.deepEqual(choice([{ name: 'Shipping', value: 'Sea Express' }]), { shipping_mode: '', blower: '' });
+  assert.equal(shopifyVariantChoices(
+    { shippingLines: { nodes: [{ title: 'Free Shipping', code: 'Free Shipping' }] } },
+    [{ name: 'Please blow up before use', variantTitle: 'blow up', variant: { selectedOptions: [{ name: 'Note', value: 'blow up' }] } }]
+  ).blower, '');
+  const source = readFileSync(new URL('../server/tencent-data-server.mjs', import.meta.url), 'utf8');
+  assert.match(source, /selectedOptions \{ name value \}/);
+  assert.match(source, /shopifyVariantChoices/);
+  assert.equal(source.includes("created_at:>='" ), true);
 });
 
 test('the Shopify sync window stays Beijing 2026-11-21 00:00 and also includes order 9050 exactly', () => {
@@ -166,6 +206,49 @@ test('claimed but unsubmitted intake #9052 becomes 待业务员补充信息 and 
   assert.equal(store.shopifyOrderNeedsRefresh('#9052', order.shopify_order_id), false);
   assert.equal(store.importShopifyOrder({ id: order.shopify_order_id, order_no: '#9052', product_name: 'Again', quantity: 9 }), null);
   assert.equal(store.all('orders').find(row => row.id === order.id).quantity, 3);
+});
+
+test('a later sync fills shipping and blower on open sales_supplement orders without duplicating or touching later stages', t => {
+  const { store } = fixture(t);
+  const created = store.importShopifyOrder({
+    id: 'gid://shopify/Order/9050', order_no: '#9050', order_date: '2026-11-20', product_name: 'Arch 9050', quantity: 1
+  });
+  const stored = store.all('orders').find(row => row.id === created.id);
+  delete stored.shopify_variant_mapped_at;
+  stored.shipping_mode = null;
+  stored.blower = '';
+  store.put('orders', stored);
+  assert.equal(store.shopifyOrderNeedsRefresh('#9050', created.shopify_order_id), true);
+  const refreshed = store.importShopifyOrder({
+    id: created.shopify_order_id, order_no: '#9050', order_date: '2020-01-01', product_name: 'Changed', quantity: 9,
+    shipping_mode: 'domestic_sea', blower: '不包风机'
+  });
+  assert.equal(refreshed.id, created.id);
+  assert.equal(refreshed.current_step, 'sales_supplement');
+  assert.equal(refreshed.product_name, 'Arch 9050');
+  assert.equal(refreshed.quantity, 1);
+  assert.equal(refreshed.order_date, '2026-11-20');
+  assert.equal(refreshed.shipping_mode, 'domestic_sea');
+  assert.equal(refreshed.blower, '不包风机');
+  assert.equal(store.all('orders').filter(row => row.order_no === '#9050').length, 1);
+  assert.equal(store.shopifyOrderNeedsRefresh('#9050', created.shopify_order_id), false);
+  assert.equal(store.importShopifyOrder({ id: created.shopify_order_id, order_no: '#9050', product_name: 'Again', shipping_mode: 'domestic_express', blower: '包气泵' }), null);
+  assert.equal(store.all('orders').find(row => row.id === created.id).shipping_mode, 'domestic_sea');
+  const later = store.importShopifyOrder({ id: 'gid://shopify/Order/9060', order_no: '#9060', order_date: '2026-11-22', product_name: 'Later', quantity: 1 });
+  const placed = store.all('orders').find(row => row.id === later.id);
+  delete placed.shopify_variant_mapped_at;
+  placed.current_step = 'follower_create';
+  placed.shipping_mode = null;
+  placed.blower = '';
+  store.put('orders', placed);
+  assert.equal(store.shopifyOrderNeedsRefresh('#9060', later.shopify_order_id), false);
+  assert.equal(store.importShopifyOrder({ id: later.shopify_order_id, order_no: '#9060', product_name: 'Nope', shipping_mode: 'domestic_sea', blower: '包风机' }), null);
+  const untouched = store.all('orders').find(row => row.id === later.id);
+  assert.equal(untouched.current_step, 'follower_create');
+  assert.equal(untouched.product_name, 'Later');
+  assert.equal(untouched.order_date, '2026-11-22');
+  assert.equal(untouched.shipping_mode, null);
+  assert.equal(untouched.blower, '');
 });
 
 test('salesperson 下单 then merchandiser 创建订单 follows the normal order path', t => {

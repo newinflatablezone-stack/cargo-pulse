@@ -2,7 +2,7 @@ import http from 'node:http';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize } from 'node:path';
-import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking } from './tencent-data-core.mjs';
+import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking, shopifyLineSummary } from './tencent-data-core.mjs';
 
 const PORT = Number(process.env.PORT || 8788);
 const DATA_DIR = process.env.CARGO_PULSE_DATA_DIR || '/var/lib/cargo-pulse/data';
@@ -329,7 +329,7 @@ const orderQuery = `query ImportOrders($query: String!, $after: String) {
       shippingAddress { address1 address2 city province zip country }
       shippingLines(first: 10) { nodes { title code } }
       lineItems(first: 30) {
-        nodes { name variantTitle image { url } customAttributes { key value } }
+        nodes { name quantity variantTitle image { url } customAttributes { key value } }
         pageInfo { hasNextPage endCursor }
       }
     }
@@ -338,7 +338,7 @@ const orderQuery = `query ImportOrders($query: String!, $after: String) {
 const lineQuery = `query ImportOrderItems($id: ID!, $after: String) {
   order(id: $id) {
     lineItems(first: 100, after: $after) {
-      nodes { name variantTitle image { url } customAttributes { key value } }
+      nodes { name quantity variantTitle image { url } customAttributes { key value } }
       pageInfo { hasNextPage endCursor }
     }
   }
@@ -358,9 +358,11 @@ function mapShopifyOrder(order, items) {
   const sizes = [...attributes.filter(entry=>/^(size|dimensions?|产品尺寸|尺寸)$/i.test(entry.key.trim())).map(entry=>entry.value),
     ...items.flatMap(item=>[...(String(item.variantTitle||'').match(dimensions)||[]),...(String(item.name||'').match(dimensions)||[])])];
   const address = order.shippingAddress;
+  const summary = shopifyLineSummary(items);
   return {
     id: order.id, order_no: String(order.name || '').trim(),
     order_date: new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(order.createdAt)),
+    product_name: summary.product_name, quantity: summary.quantity,
     image_urls: [...new Set(items.map(item=>item.image?.url).filter(url=>typeof url==='string'&&url.startsWith('https://')))],
     size: [...new Set(sizes.map(size=>String(size||'').trim()).filter(Boolean))].join(' / '),
     requirements: order.note || '',
@@ -408,7 +410,7 @@ function startShopifySync(store, env = process.env) {
       do {
         const {orders} = await query(orderQuery,{query:search,after});
         for(const order of orders.nodes){
-          if(Date.parse(order.createdAt)<Date.parse(shopifyImportStart)||store.hasShopifyOrder(order.name))continue;
+          if(Date.parse(order.createdAt)<Date.parse(shopifyImportStart)||store.hasShopifyOrder(order.name)||store.hasShopifyOrderId(order.id))continue;
           let connection=order.lineItems;
           const items=[...connection.nodes];
           while(connection.pageInfo.hasNextPage){
@@ -427,5 +429,18 @@ function startShopifySync(store, env = process.env) {
   setInterval(sync,period).unref();
 }
 
+function promoteUnclaimedShopifyOrders(store) {
+  try {
+    const promoted = store.promoteOpenShopifyIntake();
+    const converted = promoted.converted.map(row => row.order_no);
+    const linked = promoted.already_present.map(row => row.order_no);
+    if (converted.length || linked.length) console.log('Shopify 未认领订单已转入进行中 ' + JSON.stringify({ converted, already_present: linked }));
+    if (promoted.skipped.length) console.warn('Shopify 未认领订单缺少订单号，未转入 ' + promoted.skipped.map(row => row.id).join(', '));
+  } catch (error) {
+    console.warn('Shopify 未认领订单转入失败', error.message);
+  }
+}
+
+promoteUnclaimedShopifyOrders(store);
 startShopifySync(store);
 server.listen(PORT, '127.0.0.1', () => console.log(`Cargo Pulse Tencent data service listening on 127.0.0.1:${PORT}`));

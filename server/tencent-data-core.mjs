@@ -25,6 +25,23 @@ const RETIRED_FEATURE_TABLES = new Set(['tickets', 'ticket_messages', 'ticket_at
 const PUBLIC_RPC = new Set(['lookup_customer_tracking']);
 const SUPERVISOR_EMAIL = '505863160@qq.com';
 const orderNumberKey = value => String(value || '').trim().replace(/^#\s*/, '').toLowerCase();
+const SHOPIFY_SHIPPING_MODES = ['domestic_sea', 'domestic_express', 'domestic_sea_port', 'air_freight', 'overseas_warehouse'];
+
+export function shopifyLineSummary(items) {
+  const names = [];
+  let quantity = 0;
+  let counted = false;
+  for (const item of Array.isArray(items) ? items : []) {
+    const name = String(item?.name || '').trim();
+    if (name && !names.includes(name)) names.push(name);
+    if (Number.isSafeInteger(item?.quantity) && item.quantity > 0) {
+      quantity += item.quantity;
+      counted = true;
+    }
+  }
+  return { product_name: names.join(' / '), quantity: counted && Number.isSafeInteger(quantity) ? quantity : null };
+}
+
 const now = () => new Date().toISOString();
 const tokenHash = value => createHash('sha256').update(value).digest('hex');
 const json = value => JSON.stringify(value ?? null);
@@ -291,7 +308,20 @@ export class TencentDataStore {
 
   canReadOrder(userId, order) {
     if (!userId || !order || (order.deleted_at && !this.isSupervisor(userId))) return false;
-    return this.canReadAllOrders(userId) || this.ownsOrder(userId, order);
+    if (this.canReadAllOrders(userId) || this.ownsOrder(userId, order)) return true;
+    // Auto-imported Shopify orders have no claimer. The flag is not a general
+    // sharing switch: client writes cannot set or clear it.
+    if (order.shopify_shared !== true) return false;
+    const actor = this.profile(userId);
+    return Boolean(actor && !actor.disabled_at);
+  }
+
+  preserveShopifyVisibility(next, previous = null) {
+    if (previous?.shopify_shared === true) next.shopify_shared = true;
+    else delete next.shopify_shared;
+    if (previous?.shopify_order_id) next.shopify_order_id = previous.shopify_order_id;
+    else delete next.shopify_order_id;
+    return next;
   }
 
   visibleRows(table, userId) {
@@ -354,16 +384,98 @@ export class TencentDataStore {
       this.all(table).some(row => orderNumberKey(row.order_no) === key));
   }
 
+  hasShopifyOrderId(id) {
+    const sourceId = String(id || '');
+    if (!sourceId) return false;
+    return this.all('shopify_order_intake').some(row => row.id === sourceId) ||
+      this.all('orders').some(row => row.shopify_order_id === sourceId || row.id === sourceId);
+  }
+
+  sharedShopifyOrderFromIntake(row, timestamp = now()) {
+    const quantity = Number(row?.quantity);
+    const images = Array.isArray(row?.shopify_image_urls) ? row.shopify_image_urls : row?.image_urls;
+    return {
+      order_no: String(row?.order_no || '').trim(),
+      order_date: typeof row?.order_date === 'string' ? row.order_date : '',
+      product_name: String(row?.product_name || '').trim(),
+      quantity: Number.isSafeInteger(quantity) && quantity >= 1 ? quantity : null,
+      size: String(row?.size || '').trim(),
+      customer_info: String(row?.customer_info || '').trim(),
+      requirements: String(row?.requirements || '').trim(),
+      blower: ['包含', '不包含'].includes(row?.blower) ? row.blower : '',
+      shipping_mode: SHOPIFY_SHIPPING_MODES.includes(row?.shipping_mode) ? row.shipping_mode : null,
+      shopify_image_urls: [...new Set((Array.isArray(images) ? images : []).filter(url => typeof url === 'string' && url.startsWith('https://')))].slice(0, 100),
+      shopify_order_id: String(row?.shopify_order_id || row?.id || '') || null,
+      shopify_shared: true,
+      business_id: null,
+      business_user_id: null,
+      business_name: '',
+      created_by: null,
+      inventory_mode: 'production',
+      status: 'active',
+      current_step: 'business_placed',
+      step_started_at: timestamp,
+      step_deadline: null,
+      created_at: timestamp,
+      updated_at: timestamp
+    };
+  }
+
+  insertSharedShopifyOrder(row, timestamp = now()) {
+    const order = this.put('orders', this.sharedShopifyOrderFromIntake(row, timestamp));
+    this.put('order_events', { order_id: order.id, step_key: 'business_placed', started_at: timestamp, created_at: timestamp });
+    return order;
+  }
+
   importShopifyOrder(row) {
     this.db.exec('begin immediate');
     try {
-      if (!this.hasShopifyOrder(row.order_no) && !this.all('shopify_order_intake').some(record=>record.id===row.id)) {
-        this.put('shopify_order_intake', row);
+      if (!row || this.hasShopifyOrder(row.order_no) || this.hasShopifyOrderId(row.id)) {
+        this.db.exec('commit');
+        return null;
       }
+      const order = this.insertSharedShopifyOrder(row);
       this.db.exec('commit');
+      return order;
     } catch (error) {
       this.db.exec('rollback');
-      this.tableCache.delete('shopify_order_intake');
+      for (const table of ['orders', 'order_events']) this.tableCache.delete(table);
+      throw error;
+    }
+  }
+
+  // Moves open, unclaimed intake rows into the same shared in-progress orders
+  // that auto-import now creates. Claimed and already submitted rows stay put.
+  // Existing orders with the same number are left unchanged and the intake row
+  // is only closed, so a second run does not insert a duplicate.
+  promoteOpenShopifyIntake() {
+    const result = { converted: [], already_present: [], skipped: [] };
+    this.db.exec('begin immediate');
+    try {
+      const open = this.all('shopify_order_intake').filter(row => !row.submitted_at && !String(row.claimed_by || '').trim());
+      for (const row of open) {
+        const key = orderNumberKey(row.order_no);
+        if (!key) {
+          result.skipped.push({ id: row.id, reason: 'missing_order_no' });
+          continue;
+        }
+        const sourceId = String(row.id || '');
+        const existing = this.all('orders').find(order => orderNumberKey(order.order_no) === key || (sourceId && (order.shopify_order_id === sourceId || order.id === sourceId)));
+        const timestamp = now();
+        if (existing) {
+          this.put('shopify_order_intake', { ...row, submitted_at: timestamp, promoted_order_id: existing.id });
+          result.already_present.push({ id: existing.id, order_no: existing.order_no, intake_id: row.id });
+          continue;
+        }
+        const order = this.insertSharedShopifyOrder(row, timestamp);
+        this.put('shopify_order_intake', { ...row, submitted_at: timestamp, promoted_order_id: order.id });
+        result.converted.push({ id: order.id, order_no: order.order_no, intake_id: row.id });
+      }
+      this.db.exec('commit');
+      return result;
+    } catch (error) {
+      this.db.exec('rollback');
+      for (const table of ['orders', 'order_events', 'shopify_order_intake']) this.tableCache.delete(table);
       throw error;
     }
   }
@@ -575,7 +687,11 @@ export class TencentDataStore {
         if (!row.created_at) row.created_at = now();
         if (table === 'orders') {
           if (!row.created_by) row.created_by = userId;
-          Object.assign(row, this.normalizeOrderOwner(this.normalizeOrderDestination(row, userId), value));
+          const normalized = this.preserveShopifyVisibility(this.normalizeOrderOwner(this.normalizeOrderDestination(row, userId), value));
+          if (normalized !== row) {
+            for (const key of Object.keys(row)) delete row[key];
+            Object.assign(row, normalized);
+          }
         }
         if (table === 'order_images' && !row.uploaded_by) row.uploaded_by = userId;
         return this.put(table, row);
@@ -589,7 +705,7 @@ export class TencentDataStore {
     let matchesRows = this.query(table, mutationUrl);
     if (method === 'PATCH') return matchesRows.map(row => {
       let next = { ...row, ...body };
-      if (table === 'orders') next = this.normalizeOrderOwner(this.normalizeOrderDestination(next, userId, row), body);
+      if (table === 'orders') next = this.preserveShopifyVisibility(this.normalizeOrderOwner(this.normalizeOrderDestination(next, userId, row), body), row);
       return project(this.put(table, next), url.searchParams.get('select'));
     });
     if (method === 'DELETE') { this.remove(table, matchesRows.map(row => row.id ?? row.key ?? row.resource_key)); return matchesRows.map(row => project(row, url.searchParams.get('select'))); }

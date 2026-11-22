@@ -145,9 +145,11 @@ test('Shopify intake deduplicates numbers and enforces claim and handoff roles',
   const {store,business,other,follower}=fixture(t);
   const imported={id:'shopify-1',order_no:' #123 ',order_date:'2026-11-21',size:'',image_urls:[]};
   const call=(user,action,values={})=>store.shopifyIntake(user.id,{action,...values});
-  store.importShopifyOrder({...imported,id:'duplicate-existing',order_no:'#ORDER-1'});
-  store.importShopifyOrder(imported);
-  store.importShopifyOrder({...imported,id:'duplicate',order_no:'123'});
+  store.put('shopify_order_intake',imported);
+  assert.equal(store.importShopifyOrder({...imported,id:'duplicate-existing',order_no:'#ORDER-1'}),null);
+  assert.equal(store.importShopifyOrder({...imported,id:'from-sync',order_no:'#123'}),null);
+  assert.equal(store.all('orders').some(row=>String(row.order_no).includes('123')),false);
+  assert.equal(store.all('shopify_order_intake').length,1);
   assert.equal(call(business,'list').orders.length,1);
   assert.equal(call(other,'list').orders.length,1);
   assert.throws(()=>call(follower,'list'),error=>error.status===403);
@@ -162,6 +164,9 @@ test('Shopify intake deduplicates numbers and enforces claim and handoff roles',
   const order=store.visibleRows('orders',follower.id).find(row=>row.id===id);
   assert.equal(order.current_step,'business_placed');
   assert.equal(order.business_id,business.id);
+  assert.equal(order.shopify_shared,undefined);
+  assert.equal(store.canReadOrder(business.id,order),true);
+  assert.equal(store.canReadOrder(other.id,order),false);
   assert.equal(store.all('order_events').find(row=>row.order_id===id).step_key,'business_placed');
   assert.throws(()=>call(business,'submit',{id:imported.id}),error=>error.status===409);
 });

@@ -1457,3 +1457,6 @@ main.internal-resource-page-shell{width:100%;max-width:none!important;min-height
 .q-shopify-images img{width:84px;height:84px;object-fit:cover;border-radius:8px;background:#eef3ef}
 .shopify-image-upload{display:inline-flex;align-items:center;gap:8px;margin-top:6px;color:#52665f;font-size:12px}
 .shopify-image-upload input{font-size:12px}
+.order-no-hint{color:#52665f;font-size:12px;line-height:1.4}
+.order-no-reminder{color:#b84735;font-size:12px;font-weight:700;line-height:1.4}
+.order-no-reminder[hidden]{display:none}

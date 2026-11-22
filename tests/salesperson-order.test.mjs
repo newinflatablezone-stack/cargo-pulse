@@ -21,7 +21,7 @@ function fixture(t) {
 function fields(extra = {}) {
   return {
     product_name: 'Castle', quantity: 2, size: '3 x 2 m', business_name: 'Demi',
-    shipping_mode: 'domestic_sea', blower: '包风机', customer_info: 'Ada\n1 Road', abnormal_note: '请加急',
+    shipping_mode: 'domestic_sea', blower: '包风机', customer_info: 'Ada\n1 Main St, Austin, TX 78701\nada@example.com\n+1 5551234567', abnormal_note: '请加急',
     ...extra
   };
 }
@@ -78,7 +78,7 @@ test('a salesperson 新建下单 lands in 待跟单创建订单 for everyone, wi
   const beforeCreate = Date.now();
   const created = store.shopifyHandoff(follower.id, {
     action: 'create', id: waiting.id, order_no: 'IZ-200', order_date: '2020-01-01', product_name: 'Castle',
-    size: '3 x 2 m', quantity: 2, customer_info: 'Ada\n1 Road', business_name: 'Demi', destination_country: '美国',
+    size: '3 x 2 m', quantity: 2, customer_info: 'Ada\n1 Main St, Austin, TX 78701\nada@example.com\n+1 5551234567', business_name: 'Demi', destination_country: '美国',
     inventory_mode: 'production', needs_rendering: false, shipping_mode: 'domestic_sea', blower: '包风机',
     requirements: '请加急', factory_name: 'Factory A', factory_names: ['Factory A'], current_step: 'production'
   });
@@ -94,12 +94,13 @@ test('a salesperson 新建下单 lands in 待跟单创建订单 for everyone, wi
   assert.equal(store.canReadOrder(business.id, order), true);
   assert.equal(store.canReadOrder(follower.id, order), true);
   const manual = store.mutate('orders', 'POST', new URL('http://local/rest/v1/orders'), {
-    order_no: 'MANUAL-9', order_date: '2026-11-22', product_name: 'Manual', quantity: 1, business_name: 'Demi', current_step: 'production'
+    order_no: 'MANUAL-9', order_date: '2026-11-22', product_name: 'Manual', quantity: 1, business_name: 'Demi', current_step: 'production',
+    customer_info: 'Ada\n1 Main St, Austin, TX 78701\nada@example.com\n+1 5551234567'
   }, follower.id)[0];
   assert.equal(manual.order_date, '2026-11-22');
   assert.equal(manual.current_step, 'production');
   const shopify = store.importShopifyOrder({ id: 'gid://shopify/Order/9052', order_no: '#9052', product_name: 'Mat', quantity: 1, image_urls: ['https://cdn.shopify.com/9052.jpg'] });
-  store.shopifyHandoff(business.id, { action: 'place', id: shopify.id, order_no: '#9052', product_name: 'Mat', quantity: 1, business_name: 'Demi', shipping_mode: 'other', blower: '包风机', customer_info: 'Ada', abnormal_note: '备注' });
+  store.shopifyHandoff(business.id, { action: 'place', id: shopify.id, order_no: '#9052', product_name: 'Mat', quantity: 1, business_name: 'Demi', shipping_mode: 'other', blower: '包风机', customer_info: 'Ada\n1 Main St, Austin, TX 78701\nada@example.com\n+1 5551234567', abnormal_note: '备注' });
   assert.equal(store.all('orders').find(row => row.id === shopify.id).order_no, '#9052');
 });
 
@@ -116,4 +117,13 @@ test('the salesperson button and custom-number label stay separate from Shopify 
   const shopifyForm = app.slice(app.indexOf('function openShopifyPlace'), app.indexOf('function openShopifyCreate'));
   assert.equal(shopifyForm.includes('不能是纯数字，也不能是纯 # 加数字'), false);
   assert.equal(app.includes('后台订单号不能是纯数字'), false);
+  assert.match(app, /客户地址和联系信息 \*<textarea name="customer_info" required><\/textarea><small class="customer-info-hint">必须包含地址、邮箱和电话<\/small>/);
+  assert.match(app, /客户地址和联系信息 \*<textarea name="customer_info" required>\$\{esc\(o\.customer_info\|\|''\)\}<\/textarea><small class="customer-info-hint">必须包含地址、邮箱和电话<\/small>/);
+  assert.match(app, /customerRule\?'<small class="customer-info-hint">必须包含地址、邮箱和电话<\/small>/);
+  assert.match(app, /openSalespersonOrder[\s\S]*bindCustomerInfoRule\(form\)/);
+  assert.match(app, /openShopifyPlace[\s\S]*bindCustomerInfoRule\(form\)/);
+  assert.match(app, /orderForm\(true,true\)/);
+  const edit = app.slice(app.indexOf('function editExisting'), app.indexOf('function editExisting') + 1800);
+  assert.equal(edit.includes('bindCustomerInfoRule'), false);
+  assert.equal(edit.includes('customerInfoReminder'), false);
 });

@@ -12,7 +12,7 @@ if [ ! -s "$SOURCE/server/tencent-data-server.mjs" ]; then
   TEMP_SOURCE="$(mktemp -d)"
   trap 'rm -rf -- "$TEMP_SOURCE"' EXIT
   git -C /opt/cargo-pulse archive origin/main \
-    server/tencent-data-core.mjs server/tencent-data-server.mjs server/destination-risk.mjs \
+    server/tencent-data-core.mjs server/tencent-data-server.mjs server/destination-risk.mjs server/customer-info.mjs \
     scripts/migrate-supabase-to-tencent.mjs scripts/backup-tencent-data.mjs \
     deploy/tencent/cargo-pulse-deploy | tar -xf - -C "$TEMP_SOURCE"
   SOURCE="$TEMP_SOURCE"
@@ -25,6 +25,11 @@ cp -n "$CONFIG_DIR/config.json" "$CONFIG_DIR/legacy-config.json"
 install -m 644 "$SOURCE/server/tencent-data-core.mjs" "$RUNTIME/tencent-data-core.mjs"
 install -m 644 "$SOURCE/server/destination-risk.mjs" "$RUNTIME/destination-risk.mjs"
 install -m 644 "$SOURCE/server/tencent-data-server.mjs" "$RUNTIME/tencent-data-server.mjs"
+# Not imported by the data service. Present for a future deployer that copies
+# the frontend source module; startup does not require this file.
+if [ -s "$SOURCE/server/customer-info.mjs" ]; then
+  install -m 644 "$SOURCE/server/customer-info.mjs" "$RUNTIME/customer-info.mjs"
+fi
 install -m 644 "$SOURCE/scripts/migrate-supabase-to-tencent.mjs" "$RUNTIME/migrate-supabase-to-tencent.mjs"
 install -m 644 "$SOURCE/scripts/backup-tencent-data.mjs" "$RUNTIME/backup-tencent-data.mjs"
 install -m 755 "$SOURCE/deploy/tencent/cargo-pulse-deploy" /usr/local/bin/cargo-pulse-deploy

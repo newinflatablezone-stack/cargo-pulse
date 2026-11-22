@@ -25,15 +25,16 @@ test('非主流目的地必须确认并由服务端记录确认账号和时间',
       () => store.mutate('orders', 'POST', url, { order_no: 'RISK-1', destination_country: 'Brazil' }, follower.id),
       /非主流地址/
     );
+    const customer_info = 'Ada\n1 Main St, Austin, TX 78701\nada@example.com\n+1 5551234567';
     const [created] = store.mutate('orders', 'POST', url, {
-      order_no: 'RISK-2', destination_country: 'Brazil', destination_risk_acknowledged: true
+      order_no: 'RISK-2', destination_country: 'Brazil', destination_risk_acknowledged: true, customer_info
     }, follower.id);
     assert.equal(created.destination_risk, 'non_mainstream');
     assert.equal(created.destination_risk_acknowledged_by, 'follower@example.com');
     assert.ok(created.destination_risk_acknowledged_at);
 
     const [mainstream] = store.mutate('orders', 'POST', url, {
-      order_no: 'MAIN-1', destination_country: 'USA', destination_risk_acknowledged: true
+      order_no: 'MAIN-1', destination_country: 'USA', destination_risk_acknowledged: true, customer_info
     }, follower.id);
     assert.equal(mainstream.destination_country, '美国');
     assert.equal(mainstream.destination_risk, 'mainstream');

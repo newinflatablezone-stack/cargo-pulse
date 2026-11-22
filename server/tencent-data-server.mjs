@@ -130,6 +130,10 @@ async function rpc(req, res, name, body, user) {
     if (req.method !== 'POST') throw Object.assign(Error('请使用 POST 请求'), {status:405});
     return send(res, 200, store.shopifyHandoff(user.id, body));
   }
+  if (name === 'salesperson_order') {
+    if (req.method !== 'POST') throw Object.assign(Error('请使用 POST 请求'), {status:405});
+    return send(res, 200, store.salespersonOrder(user.id, body));
+  }
   if (name === 'home_bootstrap') return send(res, 200, store.homeSnapshot(user.id));
   if (name === 'home_core') return send(res, 200, store.homeCoreSnapshot(user.id));
   if (name === 'internal_resource_permissions') return send(res, 200, store.internalResourcePermissions(user.id));

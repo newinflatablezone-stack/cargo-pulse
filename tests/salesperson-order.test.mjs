@@ -107,6 +107,8 @@ test('the salesperson button and custom-number label stay separate from Shopify 
   assert.match(app, /id="newOrder">＋ 创建订单/);
   assert.match(app, /<label>自定义订单号 \*<input name="order_no" required><\/label>/);
   assert.match(app, /<label>后台订单号 \*<input name="order_no" required value="/);
+  assert.match(app, /<button class="primary" type="submit" disabled>下单<\/button>/);
+  assert.match(app, /salespersonOrderForm[\s\S]*submit=form\.querySelector\('button\.primary'\)/);
   assert.match(app, /<h2>待业务员补充信息<\/h2>/);
   assert.match(app, /自定义订单号不能是纯数字/);
   assert.equal(app.includes('后台订单号不能是纯数字'), false);

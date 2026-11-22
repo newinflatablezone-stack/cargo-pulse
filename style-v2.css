@@ -1453,3 +1453,7 @@ main.internal-resource-page-shell{width:100%;max-width:none!important;min-height
     white-space: nowrap;
   }
 }
+.q-shopify-images{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.q-shopify-images img{width:84px;height:84px;object-fit:cover;border-radius:8px;background:#eef3ef}
+.shopify-image-upload{display:inline-flex;align-items:center;gap:8px;margin-top:6px;color:#52665f;font-size:12px}
+.shopify-image-upload input{font-size:12px}

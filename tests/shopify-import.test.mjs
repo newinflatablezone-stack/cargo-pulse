@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TencentDataStore, shopifyLineSummary, shopifyShippingChoice, shopifyBlowerChoice, shopifyCustomerInfo, lookupCustomerTracking, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible } from '../server/tencent-data-core.mjs';
+import { TencentDataStore, shopifyLineSummary, shopifyShippingChoice, shopifyBlowerChoice, shopifyCustomerInfo, lookupCustomerTracking, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible, normalizeBlowerChoice } from '../server/tencent-data-core.mjs';
 import { overallDeadline } from '../workflow.js';
 
 function fixture(t) {
@@ -30,9 +30,13 @@ test('Shopify shipping, blower and customer text map onto existing order fields'
   assert.equal(shopifyShippingChoice('DHL Express'), 'domestic_express');
   assert.equal(shopifyShippingChoice('Sea Express'), '');
   assert.equal(shopifyShippingChoice('Pickup'), '');
-  assert.equal(shopifyBlowerChoice('Includes blower'), '风机');
-  assert.equal(shopifyBlowerChoice('Air Pump shipping'), '气泵');
+  assert.equal(shopifyBlowerChoice('Includes blower'), '包风机');
+  assert.equal(shopifyBlowerChoice('Air Pump shipping'), '包气泵');
   assert.equal(shopifyBlowerChoice('blower and pump'), '');
+  assert.equal(normalizeBlowerChoice('风机'), '包风机');
+  assert.equal(normalizeBlowerChoice('气泵'), '包气泵');
+  assert.equal(normalizeBlowerChoice('不包风机'), '不包风机');
+  assert.equal(normalizeBlowerChoice('包含'), '');
   assert.equal(shopifyCustomerInfo({ name: 'Ada', address: '1 Main St', email: 'ada@example.com', phone: '' }), 'Ada\n1 Main St\nada@example.com');
   assert.deepEqual(shopifyLineSummary([{ name: 'Arch', quantity: 2 }, { name: 'Arch', quantity: 1 }]), { product_name: 'Arch', quantity: 3 });
   assert.equal(overallDeadline({ order_date: '2026-11-21', current_step: 'sales_supplement' }), null);
@@ -118,7 +122,7 @@ test('every in-window order missing from Cargo Pulse becomes 待业务员补充�
   assert.equal(refreshed.product_name, 'Arch');
   assert.equal(refreshed.size, '3 x 2 m');
   assert.equal(refreshed.customer_info.includes('ada@example.com'), true);
-  assert.equal(refreshed.blower, '气泵');
+  assert.equal(refreshed.blower, '包气泵');
   assert.equal(Boolean(refreshed.shopify_source_refreshed_at), true);
   assert.equal(store.canReadOrder(other.id, store.all('orders').find(row => row.id === 'private-order')), false);
   assert.equal(lookupCustomerTracking(store, 'ada@example.com').found, false);
@@ -178,6 +182,7 @@ test('salesperson 下单 then merchandiser 创建订单 follows the normal order
   assert.equal(placed.current_step, 'follower_create');
   assert.equal(placed.business_id, other.id);
   assert.equal(placed.requirements, '请加急');
+  assert.equal(placed.blower, '包气泵');
   assert.equal(store.canReadOrder(other.id, placed), true);
   assert.equal(store.canReadOrder(business.id, placed), false);
   assert.equal(store.canReadOrder(follower.id, placed), true);
@@ -208,6 +213,33 @@ test('salesperson 下单 then merchandiser 创建订单 follows the normal order
   assert.equal(store.canReadOrder(supervisor.id, deleted), true);
   store.setUserActive(other.id, false);
   assert.equal(store.visibleRows('orders', other.id).length, 0);
+});
+
+test('salesperson can add a product image without pasting a URL, and old blower words still submit', t => {
+  const { store, business, follower } = fixture(t);
+  const order = store.importShopifyOrder({ id: 'gid://shopify/Order/img', order_no: '#9088', product_name: 'Photo', quantity: 1, image_urls: [] });
+  const path = order.id + '/product-image-photo.jpg';
+  assert.equal(store.canUploadShopifyProductImage(business.id, path), true);
+  assert.equal(store.canUploadShopifyProductImage(business.id, order.id + '/delivery-proof-photo.jpg'), false);
+  assert.equal(store.canUploadShopifyProductImage(follower.id, path), false);
+  const url = new URL('http://local/rest/v1/order_images');
+  store.mutate('order_images', 'POST', url, { order_id: order.id, object_path: path, file_name: '产品图片' }, business.id);
+  assert.throws(() => store.mutate('order_images', 'POST', url, { order_id: order.id, object_path: order.id + '/delivery-proof-photo.jpg', file_name: '签收证明' }, business.id), error => error.status === 403);
+  const placed = store.shopifyHandoff(business.id, { action: 'place', id: order.id, order_no: '#9088', product_name: 'Photo', quantity: 1, business_name: 'Demi', shipping_mode: 'other', blower: '不包气泵', customer_info: 'Ada', abnormal_note: '备注' });
+  assert.equal(store.all('orders').find(row => row.id === placed.id).blower, '不包气泵');
+  const legacy = store.importShopifyOrder({ id: 'gid://shopify/Order/old', order_no: '#9089', product_name: 'Old', quantity: 1, image_urls: ['https://cdn.shopify.com/old.jpg'], blower: '风机' });
+  assert.equal(legacy.blower, '包风机');
+  store.shopifyHandoff(business.id, { action: 'place', id: legacy.id, order_no: '#9089', product_name: 'Old', quantity: 1, business_name: 'Demi', shipping_mode: 'domestic_sea', blower: '气泵', customer_info: 'Ada', abnormal_note: '备注', image_urls: 'https://cdn.shopify.com/old.jpg' });
+  assert.equal(store.all('orders').find(row => row.id === legacy.id).blower, '包气泵');
+});
+
+test('salesperson card opens the supplement form directly and the form shows images instead of URL text', () => {
+  const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
+  assert.match(app, /current_step==='sales_supplement'&&profile\?\.role==='business'\)\{openShopifyPlace\(o\);return\}/);
+  assert.match(app, /包风机/);
+  assert.match(app, /不包气泵/);
+  assert.match(app, /type="file" accept="image\/\*"/);
+  assert.equal(app.includes('name="image_urls"'), false);
 });
 
 test('ordinary orders cannot be made visible by posing as a Shopify handoff', t => {

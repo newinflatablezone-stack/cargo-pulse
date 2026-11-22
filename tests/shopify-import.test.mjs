@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TencentDataStore, shopifyLineSummary, shopifyShippingChoice, shopifyBlowerChoice, shopifyCustomerInfo, lookupCustomerTracking, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible, normalizeBlowerChoice } from '../server/tencent-data-core.mjs';
+import { TencentDataStore, shopifyLineSummary, shopifyShippingChoice, shopifyBlowerChoice, shopifyCustomerInfo, lookupCustomerTracking, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible, normalizeBlowerChoice, beijingOrderDate } from '../server/tencent-data-core.mjs';
 import { overallDeadline } from '../workflow.js';
 
 function fixture(t) {
@@ -183,19 +183,27 @@ test('salesperson 下单 then merchandiser 创建订单 follows the normal order
   assert.equal(placed.business_id, other.id);
   assert.equal(placed.requirements, '请加急');
   assert.equal(placed.blower, '包气泵');
+  assert.equal(placed.order_date, '2026-11-22');
   assert.equal(store.canReadOrder(other.id, placed), true);
   assert.equal(store.canReadOrder(business.id, placed), false);
   assert.equal(store.canReadOrder(follower.id, placed), true);
   assert.throws(() => store.shopifyHandoff(other.id, { action: 'create', id: imported.id }), error => error.status === 403);
+  const beforeCreate = Date.now();
   const created = store.shopifyHandoff(follower.id, {
-    action: 'create', id: imported.id, order_no: '#9053', order_date: '2026-11-22', product_name: 'Arch',
+    action: 'create', id: imported.id, order_no: '#9053', order_date: '2020-01-01', product_name: 'Arch',
     size: '3 x 2 m', quantity: 2, customer_info: placeFields.customer_info, business_name: 'Sherry',
     destination_country: '美国', inventory_mode: 'production', needs_rendering: false, shipping_mode: 'domestic_express',
     blower: '气泵', requirements: '请加急', factory_name: 'Factory A', factory_names: ['Factory A'],
-    current_step: 'production', step_started_at: '2026-11-22T00:00:00.000Z', step_deadline: '2026-12-02T00:00:00.000Z'
+    current_step: 'production', step_started_at: '2020-01-01T00:00:00.000Z', step_deadline: '2020-01-11T00:00:00.000Z'
   });
   const order = store.all('orders').find(row => row.id === created.id);
   assert.equal(order.current_step, 'production');
+  assert.equal(order.order_date, beijingOrderDate());
+  assert.notEqual(order.order_date, '2020-01-01');
+  const started = Date.parse(order.step_started_at);
+  assert.ok(started >= beforeCreate && started <= Date.now());
+  assert.equal(Date.parse(order.step_deadline) - started, 10 * 86400000);
+  assert.equal(store.all('order_events').find(row => row.order_id === order.id && row.step_key === 'production' && !row.completed_at).started_at, order.step_started_at);
   assert.equal(order.business_id, other.id);
   assert.equal(order.factory_name, 'Factory A');
   assert.equal(order.shopify_order_id, 'gid://shopify/Order/9053');
@@ -253,6 +261,7 @@ test('ordinary orders cannot be made visible by posing as a Shopify handoff', t 
     business_name: 'Demi', shopify_shared: true, shopify_order_id: 'gid://shopify/Order/manual', current_step: 'production'
   }, follower.id)[0];
   assert.equal(created.shopify_shared, undefined);
+  assert.equal(created.order_date, '2026-11-22');
   assert.equal(created.shopify_order_id, undefined);
   assert.equal(store.canReadOrder(other.id, created), false);
   assert.equal(store.canReadOrder(business.id, created), true);

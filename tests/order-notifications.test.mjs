@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { TencentDataStore, beijingOrderDate } from '../server/tencent-data-core.mjs';
 
 const CUSTOMER = 'Ada\n1 Main St, Austin, TX 78701\nada@example.com\n+1 5551234567';
@@ -172,7 +173,8 @@ test('the bell, supplement entry, and reusable write API stay in the existing pa
   const server = readFileSync(new URL('../server/tencent-data-server.mjs', import.meta.url), 'utf8');
   const core = readFileSync(new URL('../server/tencent-data-core.mjs', import.meta.url), 'utf8');
   assert.match(app, /current_step==='sales_supplement'&&profile\?\.role==='business'\)\{openShopifyPlace\(o\);return\}/);
-  assert.match(app, /current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}let d=\$\('#detail'\);d\.innerHTML=detailHtml\(o\);d\.showModal\(\)/);
+  assert.match(app, /current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}/);
+  assert.match(app, /current_step!=='sales_supplement'&&o\.current_step!=='follower_create'&&isOrderSalesperson\(o\)&&!isSupervisor\(\)\)\{openSalespersonSupplement\(o\);return\}let d=\$\('#detail'\);d\.innerHTML=detailHtml\(o\);d\.showModal\(\)/);
   assert.match(app, /o\.current_step==='follower_create'&&follower\?`<div class="actions"><button class="primary" id="shopifyCreate">创建订单<\/button><\/div>`/);
   assert.match(app, /#shopifyCreate'\)\?\.addEventListener\('click',\(\)=>openShopifyCreate\(o,d\)\)/);
   assert.match(app, /id="supplementOrder">修改\/补充信息<\/button>/);
@@ -182,6 +184,7 @@ test('the bell, supplement entry, and reusable write API stay in the existing pa
   assert.match(app, /class="order-notify-dot"/);
   assert.match(app, /function openSalespersonSupplement/);
   const form = app.slice(app.indexOf('function openSalespersonSupplement'), app.indexOf('async function openSalespersonOrder'));
+  assert.match(form, /issued=o\.current_step!=='follower_create',heading=issued\?'修改\/补充信息':'待业务员补充信息'/);
   assert.match(form, /textarea name="customer_info" required>\$\{esc\(o\.customer_info\|\|''\)\}/);
   assert.match(form, /name="product_name" required value="\$\{esc\(o\.product_name\|\|''\)\}"/);
   assert.match(form, /name="abnormal_note" required>\$\{esc\(o\.abnormal_note\|\|o\.requirements\|\|''\)\}/);
@@ -197,4 +200,65 @@ test('the bell, supplement entry, and reusable write API stay in the existing pa
   assert.equal(core.includes("user_notifications'") && core.includes("TABLES = ["), true);
   const tables = core.slice(core.indexOf('export const TABLES'), core.indexOf('];', core.indexOf('export const TABLES')));
   assert.equal(tables.includes('user_notifications'), false);
+});
+
+function clickOrderCard(order, person) {
+  const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
+  const marker = "document.querySelectorAll('[data-order]').forEach(c=>c.onclick=event=>{";
+  const start = app.indexOf(marker);
+  const end = app.indexOf("let d=$('#detail')", start);
+  assert.ok(start > 0 && end > start);
+  const identity = app.slice(app.indexOf('function salespersonChoice('), app.indexOf('function orderHasUnreadNotification('));
+  const supervisor = app.slice(app.indexOf('const SUPERVISOR_EMAIL='), app.indexOf('function storedSupervisorSession('));
+  const follow = app.slice(app.indexOf('function canFollowOrders('), app.indexOf('const factoryExportSelection'));
+  const opened = [];
+  const ctx = {
+    profile: { ...person },
+    session: { user: { email: person.email, id: person.id } },
+    orders: [order],
+    event: { target: { closest() { return null; } } },
+    c: { dataset: { order: order.id } },
+    opened,
+    openShopifyPlace(row) { opened.push('place:' + row.id); },
+    openShopifyCreate(row) { opened.push('create:' + row.id); },
+    openSalespersonSupplement(row) { opened.push('supplement:' + row.current_step + ':' + row.id); },
+    markOrderNotificationsRead(id) { opened.push('read:' + id); }
+  };
+  runInNewContext(supervisor + follow + identity + 'function click(event, c){\n' + app.slice(start + marker.length, end) + '\nopened.push("detail:"+c.dataset.order);\n}\nclick(event, c);', ctx);
+  return opened;
+}
+
+test('the order salesperson lands on the prefilled form from the card, before and after 创建订单', () => {
+  const owner = { id: 'demi-1', role: 'business', email: 'demi@inflatable-zone.com', display_name: 'Demi' };
+  const other = { id: 'ella-1', role: 'business', email: 'sales@inflatable-zone.com', display_name: 'Ella' };
+  const follower = { id: 'follower-1', role: 'follower', email: 'follow@example.com' };
+  const supervisor = { id: 'boss-1', role: 'follower', email: '505863160@qq.com' };
+  const waiting = { id: 'wait-1', current_step: 'follower_create', deleted_at: null, business_id: 'demi-1', business_name: 'Demi', product_name: 'Castle' };
+  const issued = { id: 'prod-1', current_step: 'production', deleted_at: null, business_id: 'demi-1', business_name: 'Demi', product_name: 'Castle' };
+  const completed = { id: 'done-1', current_step: 'completed', deleted_at: null, business_id: 'demi-1', business_name: 'Demi', product_name: 'Castle' };
+  const supplement = { id: 'sup-1', current_step: 'sales_supplement', deleted_at: null, business_id: 'demi-1', business_name: 'Demi' };
+  const deleted = { id: 'del-1', current_step: 'production', deleted_at: '2026-11-01', business_id: 'demi-1', business_name: 'Demi' };
+
+  assert.deepEqual(clickOrderCard(waiting, owner), ['read:wait-1', 'supplement:follower_create:wait-1']);
+  assert.deepEqual(clickOrderCard(waiting, follower), ['read:wait-1', 'create:wait-1']);
+  const supervisorWaiting = { id: 'wait-boss', current_step: 'follower_create', deleted_at: null, business_id: 'boss-1', business_name: 'Demi' };
+  assert.deepEqual(clickOrderCard(supervisorWaiting, { ...supervisor, role: 'business', display_name: 'Demi' }), ['read:wait-boss', 'create:wait-boss']);
+  assert.deepEqual(clickOrderCard(issued, owner), ['read:prod-1', 'supplement:production:prod-1']);
+  assert.deepEqual(clickOrderCard(completed, owner), ['read:done-1', 'supplement:completed:done-1']);
+  assert.deepEqual(clickOrderCard(issued, other), ['read:prod-1', 'detail:prod-1']);
+  assert.deepEqual(clickOrderCard(waiting, other), ['read:wait-1', 'detail:wait-1']);
+  assert.deepEqual(clickOrderCard(issued, follower), ['read:prod-1', 'detail:prod-1']);
+  assert.deepEqual(clickOrderCard(issued, supervisor), ['read:prod-1', 'detail:prod-1']);
+  const supervisorOwned = { id: 'boss-order', current_step: 'production', deleted_at: null, business_id: 'boss-1', business_name: 'Demi', product_name: 'Castle' };
+  assert.deepEqual(clickOrderCard(supervisorOwned, { ...supervisor, role: 'business', display_name: 'Demi' }), ['read:boss-order', 'detail:boss-order']);
+  assert.deepEqual(clickOrderCard(supplement, owner), ['read:sup-1', 'place:sup-1']);
+  assert.deepEqual(clickOrderCard(deleted, owner), ['read:del-1', 'detail:del-1']);
+
+  const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
+  const clickStart = app.indexOf("document.querySelectorAll('[data-order]')");
+  const click = app.slice(clickStart, app.indexOf("let d=$('#detail')", clickStart));
+  const createGate = click.indexOf("current_step==='follower_create'&&canFollowOrders()){openShopifyCreate(o);return}");
+  const waitingGate = click.indexOf("current_step==='follower_create'&&profile?.role==='business'&&isOrderSalesperson(o)");
+  const issuedGate = click.indexOf("current_step!=='sales_supplement'&&o.current_step!=='follower_create'&&isOrderSalesperson(o)&&!isSupervisor()");
+  assert.ok(createGate > 0 && waitingGate > createGate && issuedGate > waitingGate);
 });

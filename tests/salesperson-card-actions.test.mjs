@@ -153,7 +153,7 @@ test('pending orders open the place form directly; other cards keep their existi
   assert.deepEqual(clickCard(supplement, owner, 'place').opened, ['read:sup-1', 'place:sup-1']);
   for (const order_date of ['', '2026-11-22', '2026-11-23']) {
     const pending = {...supplement,order_date};
-    assert.deepEqual(buttonLabels(cardHtml(pending,owner)), ['下单']);
+    assert.deepEqual(buttonLabels(cardHtml(pending,owner)), ['认领下单']);
     assert.deepEqual(clickCard(pending,owner).opened, ['read:sup-1','place:sup-1']);
     assert.deepEqual(clickCard(pending,follower).opened, ['read:sup-1','detail:sup-1']);
   }
@@ -185,7 +185,7 @@ test('merchandiser and supervisor cards keep 查看详情 and their existing cli
   assert.deepEqual(clickCard(current, other).opened, ['read:order-1', 'detail:order-1']);
 
   const sharedSupplement = order({ id: 'shared-1', current_step: 'sales_supplement', business_id: 'demi-1' });
-  assert.deepEqual(buttonLabels(cardHtml(sharedSupplement, other)), ['下单']);
+  assert.deepEqual(buttonLabels(cardHtml(sharedSupplement, other)), ['认领下单']);
   assert.deepEqual(clickCard(sharedSupplement, other).opened, ['read:shared-1', 'place:shared-1']);
   assert.deepEqual(clickCard(sharedSupplement, other, 'place').opened, ['read:shared-1', 'place:shared-1']);
 

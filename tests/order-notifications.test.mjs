@@ -241,7 +241,7 @@ test('the bell, supplement entry, and reusable write API stay in the existing pa
   assert.match(app, /class="order-notify-dot"/);
   assert.match(app, /function openSalespersonSupplement/);
   const form = app.slice(app.indexOf('function openSalespersonSupplement'), app.indexOf('async function openSalespersonOrder'));
-  assert.match(form, /issued=o\.current_step!=='follower_create',heading=issued\?'修改\/补充信息':'待业务员补充信息'/);
+  assert.match(form, /issued=o\.current_step!=='follower_create',heading=issued\?'修改\/补充信息':'待业务员认领下单'/);
   assert.match(form, /textarea name="customer_info" required>\$\{esc\(o\.customer_info\|\|''\)\}/);
   assert.match(form, /name="product_name" required value="\$\{esc\(o\.product_name\|\|''\)\}"/);
   assert.match(form, /name="abnormal_note" required>\$\{esc\(o\.abnormal_note\|\|o\.requirements\|\|''\)\}/);

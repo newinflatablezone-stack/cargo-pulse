@@ -840,7 +840,7 @@ export class TencentDataStore {
     }
   }
 
-  // Turns every intake row that was never submitted into 待业务员补充信息.
+  // Turns every intake row that was never submitted into 待业务员认领下单.
   // A claim no longer keeps the order off the salesperson list. Rows that
   // already have an orders record are only linked, not rewritten or deleted.
   promoteOpenShopifyIntake() {
@@ -1009,7 +1009,7 @@ export class TencentDataStore {
 
   placeShopifyOrder(profile, order, input, fail) {
     if (profile.role !== 'business') fail('仅业务员可以下单', 403);
-    if (order.current_step !== SALES_SUPPLEMENT) fail('订单已不在待业务员补充信息', 409);
+    if (order.current_step !== SALES_SUPPLEMENT) fail('订单已不在待业务员认领下单', 409);
     const products = this.readOrderProducts(order,input,fail);
     const value = key => typeof input[key] === 'string' ? input[key].trim() : '';
     const orderNo = value('order_no') || String(order.order_no || '').trim();

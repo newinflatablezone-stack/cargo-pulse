@@ -115,7 +115,7 @@ test('the Shopify sync window stays Beijing 2026-11-21 00:00 and also includes o
   assert.equal(shopifySyncEligible({ name: '#9051', createdAt: '2026-11-20T15:59:59Z' }), false);
 });
 
-test('order 9050 imports once into 待业务员补充信息 and an existing later-stage order is left alone', t => {
+test('order 9050 imports once into 待业务员认领下单 and an existing later-stage order is left alone', t => {
   const { store } = fixture(t);
   store.put('orders', { id: 'kept-9054', order_no: '#9054', current_step: 'shipping_selection', product_name: 'Keep me' });
   const created = store.importShopifyOrder({
@@ -135,7 +135,7 @@ test('order 9050 imports once into 待业务员补充信息 and an existing late
   assert.equal(store.all('orders').find(row => row.id === 'kept-9054').product_name, 'Keep me');
 });
 
-test('every in-window order missing from Cargo Pulse becomes 待业务员补充信息, including intake rows and new orders', t => {
+test('every in-window order missing from Cargo Pulse becomes 待业务员认领下单, including intake rows and new orders', t => {
   const { store, business, other, follower } = fixture(t);
   const intake = (id, order_no, extra = {}) => store.put('shopify_order_intake', {
     id, order_no, order_date: '2026-11-21', size: '', image_urls: ['https://cdn.shopify.com/' + order_no + '.jpg', 'http://insecure.example/x.jpg'],
@@ -186,7 +186,7 @@ test('every in-window order missing from Cargo Pulse becomes 待业务员补充�
   assert.equal(lookupCustomerTracking(store, 'ada@example.com').found, false);
 });
 
-test('claimed but unsubmitted intake #9052 becomes 待业务员补充信息 and the first live refresh fills empty Shopify fields', t => {
+test('claimed but unsubmitted intake #9052 becomes 待业务员认领下单 and the first live refresh fills empty Shopify fields', t => {
   const { store, business } = fixture(t);
   store.put('orders', { id: 'earlier-9054', order_no: '#9054', current_step: 'shipping_selection', business_name: 'Demi', business_id: business.id, product_name: 'Keep me' });
   store.put('shopify_order_intake', {

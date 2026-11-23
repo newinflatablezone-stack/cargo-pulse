@@ -473,7 +473,7 @@ function startShopifySync(store, env = process.env) {
       }
       await importSearch("created_at:>='"+SHOPIFY_IMPORT_START+"'");
       for (const number of SHOPIFY_EXPLICIT_ORDER_NUMBERS) await importSearch('name:#'+number);
-      if(changed) console.log('Shopify 自北京时间 2026-11-21 00:00 起、以及指定的 9050，系统中尚未建档的订单已写入待业务员补充信息：'+changed+' 单');
+      if(changed) console.log('Shopify 自北京时间 2026-11-21 00:00 起、以及指定的 9050，系统中尚未建档的订单已写入待业务员认领下单：'+changed+' 单');
     }catch(error){console.warn('Shopify 自动导入失败',error.message);}
     finally{running=false;}
   }
@@ -486,7 +486,7 @@ function promoteUnclaimedShopifyOrders(store) {
     const promoted = store.promoteOpenShopifyIntake();
     const converted = promoted.converted.map(row => row.order_no);
     const linked = promoted.already_present.map(row => row.order_no);
-    if (converted.length || linked.length) console.log('Shopify 未提交导入单已转入待业务员补充信息 ' + JSON.stringify({ converted, already_present: linked }));
+    if (converted.length || linked.length) console.log('Shopify 未提交导入单已转入待业务员认领下单 ' + JSON.stringify({ converted, already_present: linked }));
     if (promoted.skipped.length) console.warn('Shopify 未提交导入单缺少订单号，未转入 ' + promoted.skipped.map(row => row.id).join(', '));
   } catch (error) {
     console.warn('Shopify 未认领订单转入失败', error.message);

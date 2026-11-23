@@ -223,7 +223,7 @@ test('the salesperson forms show one Chinese-only error and 创建订单 does no
     const at = source.indexOf('产品名称 *');
     return source.slice(at, source.indexOf('</label>', at) + '</label>'.length);
   };
-  assert.match(place, /<h2>待业务员补充信息<\/h2>/);
+  assert.match(place, /<h2>待业务员认领下单<\/h2>/);
   assert.match(place, /name="product_name" required value="\$\{esc\(o\.product_name\|\|''\)\}"/);
   assert.match(field(place), reminderMarkup);
   assert.equal(field(place).includes('product-name-hint'), false);

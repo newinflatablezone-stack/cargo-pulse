@@ -375,7 +375,7 @@ test('按当前流程 adds the early statuses without a new tab, and 待主管�
   const options = [...html.matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map(match => ({ value: match[1], text: match[2] }));
   assert.deepEqual(options.map(option => option.value), ['all', ...steps]);
   assert.equal(options[0].text, '全部流程');
-  assert.equal(options[1].text, '待业务员补充信息 (1)');
+  assert.equal(options[1].text, '待业务员认领下单 (1)');
   assert.equal(options[2].text, '待主管选择工厂 (2)');
   assert.equal(options[3].text, TAB_LABEL + ' (1)');
   assert.equal(options.length, 4);

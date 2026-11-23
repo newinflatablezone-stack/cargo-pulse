@@ -1207,7 +1207,7 @@ export class TencentDataStore {
     this.db.exec('begin immediate');
     try {
       const saved = this.put('orders', next);
-      this.notifyOrderSupplement(saved);
+      this.notifyOrderSupplement(saved, order);
       this.db.exec('commit');
       return { id: saved.id, current_step: saved.current_step };
     } catch (error) {
@@ -1217,8 +1217,11 @@ export class TencentDataStore {
     }
   }
 
-  notifyOrderSupplement(order) {
-    const recipients = this.all('profiles').filter(row => row.role === 'follower' && !row.disabled_at).map(row => row.id);
+  // Salesperson 修改/补充信息 still notifies merchandisers. A changed 订单号 is
+  // the same event, except the supervisor is not a recipient for that change.
+  notifyOrderSupplement(order, previous = null) {
+    const orderNumberChanged = previous != null && orderNumberKey(previous.order_no) !== orderNumberKey(order.order_no);
+    const recipients = this.all('profiles').filter(row => row.role === 'follower' && !row.disabled_at && !(orderNumberChanged && this.isSupervisor(row.id))).map(row => row.id);
     if (!recipients.length) return { notifications: [] };
     const orderNo = String(order.order_no || '').trim() || '未编号';
     const title = '订单信息更新';

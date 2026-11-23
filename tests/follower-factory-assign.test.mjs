@@ -175,6 +175,7 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
     line('followerFactoryChoices'),
     line('followerFactoryFields'),
     line('followerFactoryAssignHtml'),
+    line('orderAwaitingFactory'),
     line('supervisorAwaitingFactoryDetail'),
     line('salespersonOrderNoLabel'),
     line('salespersonShippingLabel'),

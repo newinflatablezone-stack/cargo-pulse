@@ -422,3 +422,19 @@ test('按当前流程 adds the early statuses without a new tab, and 待主管�
   assert.equal(ctx.statusFilter, 'delivered');
   assert.equal(ctx.workflowStepFilter, 'completed');
 });
+
+test('supervisor home puts pending factory assignments first until a factory is saved', () => {
+  const compare = runInNewContext(
+    ['followerFactorySaved','orderAwaitingFactory','compareHomeOrders'].map(lineFunction).join('\n') + '\ncompareHomeOrders',
+    {orderMoment: order => order.order_date}
+  );
+  const normal = {id:'normal', current_step:'production', order_date:'2026-11-23'};
+  const pending = {id:'pending', current_step:'follower_create', order_date:'2026-11-21'};
+  const newerPending = {...pending,id:'newer-pending',order_date:'2026-11-22',factory_name:' '};
+  const sorted = (orders, direction, supervisor) => [...orders].sort((a,b)=>compare(a,b,direction,supervisor)).map(order=>order.id);
+  assert.deepEqual(sorted([normal,pending,newerPending],'desc',true),['newer-pending','pending','normal']);
+  assert.deepEqual(sorted([normal,pending,newerPending],'asc',true),['pending','newer-pending','normal']);
+  assert.deepEqual(sorted([normal,pending,newerPending],'desc',false),['normal','newer-pending','pending']);
+  assert.deepEqual(sorted([normal,{...pending,factory_name:'工厂 A'},newerPending],'desc',true),['newer-pending','normal','pending']);
+  assert.deepEqual(sorted([normal,{...pending,deleted_at:'2026-11-23'}],'desc',true),['normal','pending']);
+});

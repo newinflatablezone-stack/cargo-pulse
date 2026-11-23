@@ -101,19 +101,30 @@ test('a merchandiser cannot create 待跟单创建订单 until the supervisor sa
   );
 });
 
-test('the supervisor factory step uses the existing factory list and blocks the create form until it is saved', () => {
-  const assign = app.slice(app.indexOf('function openFollowerFactoryAssign'), app.indexOf('function openShopifyPlace'));
+function line(name) {
+  const found = app.split('\n').find(item => item.startsWith('function ' + name + '('));
+  assert.ok(found, name);
+  return found;
+}
+
+test('a supervisor opens the full order and saves a catalog factory at the bottom', () => {
+  const catalog = app.slice(app.indexOf('function followerFactoryChoices'), app.indexOf('function openShopifyPlace'));
   const gate = app.slice(app.indexOf('function openFollowerCreate'), app.indexOf('const factoryExportSelection'));
   const create = app.slice(app.indexOf('function openShopifyCreate'), app.indexOf('function detailHtml'));
-  assert.match(assign, /partners\.filter\(p=>p\.kind==='factory'&&p\.active!==false\)/);
-  assert.match(assign, /id="followerFactoryForm"/);
-  assert.match(assign, /<h2>选择工厂<\/h2>/);
-  assert.match(assign, /select name="factory_name"/);
-  assert.match(assign, /保存工厂/);
-  assert.match(assign, /action:'assign_factory',id:o\.id,factory_name/);
-  assert.match(assign, /还没有可选工厂/);
+  assert.match(catalog, /partners\.filter\(p=>p\.kind==='factory'&&p\.active!==false\)/);
+  assert.match(catalog, /id="followerFactoryForm"/);
+  assert.match(catalog, /<h3>选择工厂<\/h3>/);
+  assert.match(catalog, /select name="factory_name"/);
+  assert.match(catalog, /保存工厂/);
+  assert.match(catalog, /action:'assign_factory',id:o\.id,factory_name/);
+  assert.match(catalog, /还没有可选工厂/);
+  assert.match(gate, /if\(isSupervisor\(\)\)return false/);
+  assert.equal(gate.includes('openFollowerFactoryAssign'), false);
   assert.match(gate, /alert\(FOLLOWER_FACTORY_REQUIRED\)/);
   assert.match(gate, /followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}/);
+  assert.match(app, /d\.innerHTML=detailHtml\(o\);d\.showModal\(\);bindFollowerFactoryAssign\(d\.querySelector\('#followerFactoryForm'\),o,d\)/);
+  assert.match(app, /supervisor&&!followerFactorySaved\(o\)\?followerFactoryAssignHtml\(o\)/);
+  assert.equal(create.includes('openFollowerFactoryAssign(o,detailDialog);return'), false);
   assert.match(create, /input\.readOnly=true/);
   assert.match(create, /工厂由主管选择并保存，跟单不能修改/);
   assert.match(create, /id='changeFollowerFactory'/);
@@ -122,53 +133,112 @@ test('the supervisor factory step uses the existing factory list and blocks the 
   assert.equal(create.includes('openShopifyPlace'), false);
   assert.equal(create.includes('bindProductNameRule'), false);
 
+  const partners = [
+    { kind: 'factory', name: 'Factory A', active: true },
+    { kind: 'factory', name: 'Factory B', active: false },
+    { kind: 'forwarder', name: 'Forwarder A', active: true }
+  ];
+  const order = {
+    id: 'wait-1', order_no: '#9053', product_name: 'Arch', quantity: 2, size: '3 x 2 m',
+    customer_info: CUSTOMER, abnormal_note: '请加急', requirements: '请加急', business_name: 'Demi',
+    current_step: 'follower_create', factory_name: '', forwarder_name: ''
+  };
+  const sandbox = {
+    partners,
+    profile: { role: 'business', email: '505863160@qq.com' },
+    STEP_LABELS: { follower_create: '待跟单创建订单' },
+    flowFor: () => ['production', 'completed'],
+    stableStepKey: step => step,
+    esc: value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])),
+    orderQuantityLabel: row => row.quantity ?? '',
+    returningCustomerHtml: () => '',
+    badge: () => '<span class="alert normal">正常</span>',
+    factoryProductionHtml: () => '',
+    batchShippingHtml: () => '',
+    overallDeadline: () => null,
+    factoryDisplay: () => '-',
+    trackingEntries: () => [],
+    proofApplies: () => false,
+    needsDeliveryProof: () => false,
+    proofRecord: () => null,
+    isOrderSalesperson: () => false,
+    allFactoriesCompleted: () => true,
+    trackingForStep: () => ''
+  };
+  const source = [
+    line('followerFactorySaved'),
+    line('followerFactoryChoices'),
+    line('followerFactoryFields'),
+    line('followerFactoryAssignHtml'),
+    line('detailHtml'),
+    line('bindFollowerFactoryAssign'),
+    line('orderMatchesStatusTab'),
+    line('displayStepLabel')
+  ].join('\n');
+  const view = runInNewContext(source + '\n({html:detailHtml(order),label:displayStepLabel(order),tab:orderMatchesStatusTab(order,"follower_create"),active:orderMatchesStatusTab(order,"active")})', { ...sandbox, order, displayStepKey: row => row.current_step });
+  const customerAt = view.html.indexOf('Ada');
+  const productAt = view.html.indexOf('<h2>Arch');
+  const stepAt = view.html.indexOf('当前步骤');
+  const formAt = view.html.indexOf('id="followerFactoryForm"');
+  const saveAt = view.html.indexOf('保存工厂');
+  assert.ok(productAt >= 0 && stepAt > productAt && customerAt > stepAt && formAt > customerAt && saveAt > formAt);
+  assert.match(view.html, /<h2>Arch × 2<\/h2>/);
+  assert.match(view.html, /3 x 2 m/);
+  assert.match(view.html, /请加急/);
+  assert.match(view.html, /<h3>选择工厂<\/h3>/);
+  assert.equal(view.html.includes('<h2>选择工厂</h2>'), false);
+  assert.equal(view.html.includes('id="shopifyCreate"'), false);
+  assert.match(view.html, /<option value="Factory A"/);
+  assert.equal(view.html.includes('Factory B'), false);
+  assert.equal(view.html.includes('Forwarder A'), false);
+  assert.equal(view.label, '待主管选择工厂');
+  assert.equal(view.tab, false);
+  assert.equal(view.active, true);
+  const shown = view.html.replace(/(<dt>当前步骤<\/dt><dd>).*?(<\/dd>)/, '$1' + view.label + '$2');
+  assert.ok(shown.indexOf('待主管选择工厂') > stepAt);
+  assert.match(app, /label=esc\(displayStepLabel\(o\)\)/);
+
+  sandbox.profile = { role: 'follower', email: 'follow@example.com' };
+  const merchandiser = runInNewContext(source + '\ndetailHtml(order)', { ...sandbox, order });
+  assert.equal(merchandiser.includes('followerFactoryForm'), false);
+  assert.match(merchandiser, /id="shopifyCreate">创建订单/);
+
+  const savedOrder = { ...order, factory_name: 'Factory A' };
+  sandbox.profile = { role: 'follower', email: '505863160@qq.com' };
+  const ready = runInNewContext(source + '\n({html:detailHtml(order),tab:orderMatchesStatusTab(order,"follower_create"),label:displayStepLabel(order)})', { ...sandbox, order: savedOrder, displayStepKey: row => row.current_step });
+  assert.equal(ready.html.includes('followerFactoryForm'), false);
+  assert.match(ready.html, /id="shopifyCreate">创建订单/);
+  assert.equal(ready.tab, true);
+  assert.equal(ready.label, '待跟单创建订单');
+
   const calls = [];
   const button = { disabled: false };
   const error = { textContent: '' };
+  const dialog = { open: true, close() { this.open = false; } };
   const form = {
     onsubmit: null,
+    closest() { return dialog; },
     querySelector(selector) {
       if (selector === 'button.primary') return button;
       if (selector === '.error') return error;
       return null;
     }
   };
-  const dialog = {
-    innerHTML: '',
-    open: false,
-    showModal() { this.open = true; },
-    close() { this.open = false; },
-    querySelector(selector) {
-      if (selector === 'form') return form;
-      if (selector === '.x') return {};
-      return null;
-    }
-  };
-  const orders = [{ id: 'wait-1', current_step: 'follower_create', factory_name: '' }];
-  runInNewContext(assign + '\nopenFollowerFactoryAssign(order);', {
-    order: orders[0],
+  const orders = [order];
+  runInNewContext(line('bindFollowerFactoryAssign') + '\nbindFollowerFactoryAssign(form, order, dialog);', {
+    form,
+    order,
+    dialog,
     orders,
-    partners: [
-      { kind: 'factory', name: 'Factory A', active: true },
-      { kind: 'factory', name: 'Factory B', active: false },
-      { kind: 'forwarder', name: 'Forwarder A', active: true }
-    ],
-    esc: value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])),
-    $: () => dialog,
     api: async (path, options) => {
       calls.push({ path, body: JSON.parse(options.body) });
-      return { factory_name: 'Factory A' };
+      return { factory_name: 'Factory A', current_step: 'follower_create' };
     },
     refresh: async () => { calls.push({ path: 'refresh' }); },
     FormData: class {
       get(name) { return name === 'factory_name' ? 'Factory A' : ''; }
     }
   });
-  assert.equal(dialog.open, true);
-  assert.match(dialog.innerHTML, /<option value="Factory A"/);
-  assert.equal(dialog.innerHTML.includes('Factory B'), false);
-  assert.equal(dialog.innerHTML.includes('Forwarder A'), false);
-  assert.match(dialog.innerHTML, />保存工厂</);
   return form.onsubmit({ preventDefault() {} }).then(() => {
     assert.deepEqual(calls[0], {
       path: '/rest/v1/rpc/shopify_order_handoff',
@@ -176,6 +246,14 @@ test('the supervisor factory step uses the existing factory list and blocks the 
     });
     assert.equal(calls[1].path, 'refresh');
     assert.equal(dialog.open, false);
-    assert.equal(orders[0].factory_name, 'Factory A');
+    assert.equal(order.factory_name, 'Factory A');
+    assert.equal(order.current_step, 'follower_create');
+    const after = runInNewContext(line('followerFactorySaved') + '\n' + line('orderMatchesStatusTab') + '\n' + line('displayStepLabel') + '\n({tab:orderMatchesStatusTab(order,"follower_create"),label:displayStepLabel(order)})', {
+      order,
+      STEP_LABELS: { follower_create: '待跟单创建订单' },
+      displayStepKey: row => row.current_step
+    });
+    assert.equal(after.tab, true);
+    assert.equal(after.label, '待跟单创建订单');
   });
 });

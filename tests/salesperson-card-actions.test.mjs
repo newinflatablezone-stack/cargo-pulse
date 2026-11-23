@@ -105,19 +105,20 @@ test('salesperson cards on or after 2026-11-23 show 查看详情 and 下单详�
   assert.equal(app.split(LEGACY).length, 2);
 });
 
-test('salesperson cards before 2026-11-23 show only 订单详情', () => {
+test('salesperson cards before 2026-11-23 show only 查看详情', () => {
   for (const order_date of ['2026-11-22', '2026-11-22T15:59:59.000Z', '', undefined]) {
     const html = cardHtml(order({ order_date }), owner);
-    assert.deepEqual(buttonLabels(html), ['订单详情'], order_date || '(blank)');
+    assert.deepEqual(buttonLabels(html), ['查看详情'], order_date || '(blank)');
     assert.equal(html.includes('下单详情'), false, order_date || '(blank)');
-    assert.equal(html.includes('查看详情'), false, order_date || '(blank)');
+    assert.equal(html.includes('订单详情'), false, order_date || '(blank)');
+    assert.match(html, /data-order-view="detail">查看详情<\/button>/);
     assert.equal(html.includes('data-order-view="place"'), false);
   }
   const beijingStart = cardHtml(order({ order_date: '2026-11-22T16:00:00.000Z' }), owner);
   assert.deepEqual(buttonLabels(beijingStart), ['查看详情', '下单详情']);
 });
 
-test('查看详情, 订单详情, and the card open the order detail popup; only 下单详情 opens the place form', () => {
+test('查看详情 and the card open the order detail popup; only 下单详情 opens the place form', () => {
   const current = order();
   const earlier = order({ id: 'old-1', order_date: '2026-11-22' });
   const supplement = order({ id: 'sup-1', current_step: 'sales_supplement' });

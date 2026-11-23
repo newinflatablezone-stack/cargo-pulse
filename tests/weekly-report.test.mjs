@@ -268,11 +268,12 @@ test('shared monthly summary is the same for viewers and salespeople, and a week
   assert.equal(submit.includes('data-access="submit"'), true);
   assert.equal(submit.includes('导出 Excel'), false);
   assert.equal(view.includes('导出 Excel'), false);
-  assert.equal(submit.match(/<input /g).length, 12);
+  assert.equal(submit.match(/<input /g), null);
   assert.equal(submit.includes('<textarea'), false);
-  assert.equal(submit.match(/class="weekly-report-save"/g).length, 3);
+  assert.equal(submit.includes('weekly-report-save'), false);
   const own = submit.slice(submit.indexOf('data-own="true"'), submit.indexOf('</tbody>', submit.indexOf('data-own="true"')));
   assert.match(own, />Sherry</);
+  assert.equal(own.includes('<input'), false);
   assert.deepEqual([...own.matchAll(/data-metric="(inquiries|unpaid_orders|calls|performance)"/g)].map(match => match[1]).filter((metric, index, all) => all.indexOf(metric) === index), ['inquiries', 'unpaid_orders', 'calls', 'performance']);
   const labels = [...own.matchAll(/<th class="sheet-label">([^<]+)<\/th>/g)].map(match => match[1]);
   assert.deepEqual(labels, ['询盘', '下单未付', '电话', '业绩', '备注']);
@@ -283,10 +284,13 @@ test('shared monthly summary is the same for viewers and salespeople, and a week
     today: '2026-11-16',
     viewerId: 'Sherry'
   });
-  assert.match(kept, /data-body="已有正文"/);
+  assert.equal(kept.includes('weekly-report-save'), false);
+  assert.equal(kept.includes('data-body="已有正文"'), false);
   assert.equal(kept.includes('<textarea'), false);
-  assert.match(submit, /value="22"/);
-  assert.match(submit, /value="24176"/);
+  assert.match(submit, />22</);
+  assert.match(submit, />24176</);
+  assert.equal(submit.includes('value="22"'), false);
+  assert.equal(submit.includes('value="24176"'), false);
   assert.equal(submit.includes('value="809.73"'), false);
   assert.equal(own.includes('name="note"'), false);
   assert.equal(submit.includes('尚未保存'), false);
@@ -309,6 +313,27 @@ test('shared monthly summary is the same for viewers and salespeople, and a week
   assert.match(unsaved, /2026年11月/);
   assert.equal((unsaved.match(/data-own="true"/g) || []).length, 1);
   assert.equal(unsavedOwn.includes('name="note"'), false);
+  assert.equal(unsavedOwn.includes('name="inquiries" data-week="2026-10-29"'), false);
+  assert.match(unsavedOwn, /name="inquiries" data-week="2026-11-12"/);
+  assert.equal((unsavedOwn.match(/class="weekly-report-save"/g) || []).length, 1);
+  const currentOpen = renderWeeklyReport({
+    access: 'submit',
+    reports: history.reports.map(row => ({ ...row, user_id: row.salesperson_name })),
+    today: '2026-11-23',
+    viewerId: 'Sherry'
+  });
+  assert.match(currentOpen, /尚未保存/);
+  assert.equal(currentOpen.match(/class="weekly-report-save"/g).length, 1);
+  assert.match(currentOpen, /data-week="2026-11-19"/);
+  const currentOwn = currentOpen.slice(currentOpen.indexOf('data-own="true"'), currentOpen.indexOf('</tbody>', currentOpen.indexOf('data-own="true"')));
+  assert.equal(currentOwn.match(/<input /g).length, 4);
+  assert.equal(currentOwn.includes('value="22"'), false);
+  assert.match(currentOwn, />22</);
+  assert.match(currentOwn, />15149</);
+  assert.equal(currentOpen.includes('value="809.73"'), false);
+  const otherBlocks = currentOpen.replace(currentOwn, '');
+  assert.equal(otherBlocks.includes('<input'), false);
+  assert.equal(otherBlocks.includes('weekly-report-save'), false);
 });
 
 test('the spreadsheet keeps other months separate and uses 合计 when the people are not exactly the three', () => {

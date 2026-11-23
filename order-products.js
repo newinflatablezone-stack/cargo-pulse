@@ -29,10 +29,10 @@ export function productRowsHtml(order) {
 
 export function mountOrderProductEditor(form, order, {upload, listUploads, sign}) {
   const optional = Boolean(order?.shopify_order_id);
-  for (const name of ['product_name','quantity','size','blower']) form.elements[name]?.closest('label')?.remove();
+  for (const name of ['product_name','quantity','size','blower','abnormal_note']) form.elements[name]?.closest('label')?.remove();
   form.querySelector('.shopify-product-images')?.remove();
   if (optional) {
-    for (const name of ['shipping_mode','customer_info','abnormal_note']) {
+    for (const name of ['shipping_mode','customer_info']) {
       form.elements[name].required=false;
       const label=form.elements[name].closest('label');
       if (label?.firstChild?.nodeType===3) label.firstChild.textContent=label.firstChild.textContent.replace(/\s*\*\s*$/,'');

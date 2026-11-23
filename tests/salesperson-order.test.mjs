@@ -139,7 +139,7 @@ test('manual multi-product orders preserve line quantities, requirements and ind
     {product_name:'城堡',quantity:2,size:'3 米',blower:'包风机',requirements:'红色',image_paths:[photoA]},
     {product_name:'拱门',quantity:3,size:'5 米',blower:'不包气泵',requirements:'蓝色',image_paths:[photoB]}
   ];
-  const common=fields({order_no:'MULTI-1'});
+  const {abnormal_note: _note, ...common}=fields({order_no:'MULTI-1'});
   assert.throws(()=>store.salespersonOrder(business.id,{...common,action:'place',id,products:[{...products[0],image_paths:['other/product-image.jpg']}]}),/图片无效/);
   assert.throws(()=>store.salespersonOrder(business.id,{...common,action:'place',id,products:[products[0],{...products[1],requirements:''}]}),/第 2 行/);
   assert.throws(()=>store.salespersonOrder(business.id,{...common,action:'place',id,products:[products[0],{...products[1],product_name:'Arch'}]}),/产品名称必须为中文/);

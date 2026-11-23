@@ -926,13 +926,13 @@ export class TencentDataStore {
     const shipping = value('shipping_mode');
     const blower = normalizeBlowerChoice(value('blower'));
     const customer = value('customer_info');
-    const note = value('abnormal_note');
+    const note = products ? (order.abnormal_note || '') : value('abnormal_note');
     const hasUploadedImage = this.all('order_images').some(row => row.order_id === order.id && String(row.object_path || '').includes('/product-image-'));
     if (isPurelyNumericOrderNumber(orderNo)) fail('自定义订单号' + CUSTOM_ORDER_NUMBER_RULE);
     if (customer && customerInfoReminder(customer)) fail(customerInfoReminder(customer), 400);
     const nameReminder = productNameReminder(product);
     if (!products && nameReminder) fail(nameReminder, 400);
-    if (!orderNo || !orderNo.replace(/^#/, '') || (!products && (!product || !hasUploadedImage || !Number.isSafeInteger(quantity) || quantity < 1)) || !SALESPERSON_NAMES.includes(businessName) || !SALES_SHIPPING.has(shipping) || (!products && !blower) || !customer || !note) {
+    if (!orderNo || !orderNo.replace(/^#/, '') || (!products && (!product || !hasUploadedImage || !Number.isSafeInteger(quantity) || quantity < 1)) || !SALESPERSON_NAMES.includes(businessName) || !SALES_SHIPPING.has(shipping) || (!products && !blower) || !customer || (!products && !note)) {
       fail('请补齐自定义订单号、产品名称、图片、数量、业务员、运输方式、包风机或包气泵、客户信息和订单备注');
     }
     if (this.all('orders').some(row => row.id !== order.id && orderNumberKey(row.order_no) === orderNumberKey(orderNo))) fail('订单号已存在', 409);
@@ -1019,7 +1019,7 @@ export class TencentDataStore {
     const shipping = value('shipping_mode');
     const blower = normalizeBlowerChoice(value('blower'));
     const customer = value('customer_info');
-    const note = value('abnormal_note');
+    const note = products ? (order.abnormal_note || '') : value('abnormal_note');
     const suppliedImages = input.image_urls != null || input.shopify_image_urls != null;
     const urls = suppliedImages ? httpsUrls(input.image_urls ?? input.shopify_image_urls) : (httpsUrls(order.shopify_image_urls) || []);
     const hasUploadedImage = this.all('order_images').some(row => row.order_id === order.id && String(row.object_path || '').includes('/product-image-'));
@@ -1045,7 +1045,7 @@ export class TencentDataStore {
         size: value('size') || order.size || '',
         customer_info: customer,
         abnormal_note: note,
-        requirements: note,
+        requirements: products ? (order.requirements || '') : note,
         blower,
         shipping_mode: shipping,
         shopify_image_urls: urls || [],
@@ -1228,13 +1228,13 @@ export class TencentDataStore {
     const shipping = value('shipping_mode');
     const blower = normalizeBlowerChoice(value('blower'));
     const customer = value('customer_info');
-    const note = value('abnormal_note');
+    const note = products ? (order.abnormal_note || '') : value('abnormal_note');
     const shippingAllowed = SALES_SHIPPING.has(shipping) || (shipping && shipping === String(order.shipping_mode || '') && ORDER_SHIPPING_MODES.has(shipping));
     if (order.salesperson_shared === true && !order.shopify_order_id && isPurelyNumericOrderNumber(orderNo)) fail('自定义订单号' + CUSTOM_ORDER_NUMBER_RULE);
     if (customer && customerInfoReminder(customer)) fail(customerInfoReminder(customer), 400);
     const nameReminder = productNameReminder(product);
     if (!products && nameReminder) fail(nameReminder, 400);
-    if (!orderNo || !SALESPERSON_NAMES.includes(businessName) || (products ? (order.shopify_order_id ? Boolean(shipping && !shippingAllowed) : (!shippingAllowed || !customer || !note)) : (!product || !Number.isSafeInteger(quantity) || quantity < 1 || !shippingAllowed || !blower || !customer || !note))) {
+    if (!orderNo || !SALESPERSON_NAMES.includes(businessName) || (products ? (order.shopify_order_id ? Boolean(shipping && !shippingAllowed) : (!shippingAllowed || !customer)) : (!product || !Number.isSafeInteger(quantity) || quantity < 1 || !shippingAllowed || !blower || !customer || !note))) {
       fail('请补齐订单号、产品名称、数量、业务员、运输方式、包风机或包气泵、客户信息和订单备注');
     }
     if (this.all('orders').some(row => row.id !== order.id && orderNumberKey(row.order_no) === orderNumberKey(orderNo))) fail('订单号已存在', 409);
@@ -1256,7 +1256,7 @@ export class TencentDataStore {
       updated_at: timestamp
     };
     if (products) Object.assign(next,productOrderSummary(products));
-    if (order.current_step === FOLLOWER_CREATE || order.requirements === order.abnormal_note) next.requirements = note;
+    if (!products && (order.current_step === FOLLOWER_CREATE || order.requirements === order.abnormal_note)) next.requirements = note;
     this.db.exec('begin immediate');
     try {
       const saved = this.put('orders', next);

@@ -112,6 +112,7 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
   const gate = app.slice(app.indexOf('function openFollowerCreate'), app.indexOf('const factoryExportSelection'));
   const create = app.slice(app.indexOf('function openShopifyCreate'), app.indexOf('function detailHtml'));
   assert.match(catalog, /partners\.filter\(p=>p\.kind==='factory'&&p\.active!==false\)/);
+  assert.match(catalog, /'库存','海外仓'/);
   assert.match(catalog, /id="followerFactoryForm"/);
   assert.match(catalog, /<h3>选择工厂<\/h3>/);
   assert.match(catalog, /select name="factory_name"/);
@@ -216,6 +217,14 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
   assert.equal((view.html.match(/<select /g) || []).length, 1);
   assert.match(view.html, /select name="factory_name" required/);
   assert.match(view.html, /<option value="Factory A"/);
+  assert.match(view.html, /<option value="库存"/);
+  assert.match(view.html, /<option value="海外仓"/);
+  const factoryA = view.html.indexOf('<option value="Factory A"');
+  const stock = view.html.indexOf('<option value="库存"');
+  const overseas = view.html.indexOf('<option value="海外仓"');
+  assert.ok(factoryA > 0 && factoryA < stock && stock < overseas);
+  assert.equal((view.html.match(/<option value="库存"/g) || []).length, 1);
+  assert.equal((view.html.match(/<option value="海外仓"/g) || []).length, 1);
   assert.equal(view.html.includes('Factory B'), false);
   assert.equal(view.html.includes('Forwarder A'), false);
   assert.equal(view.html.includes('备用要求'), false);
@@ -332,4 +341,84 @@ test('the supervisor review shows every salesperson product image and keeps 保�
   runInNewContext(pin + '\nkeepSupervisorFactoryAtBottom(detail);', { detail });
   assert.equal(detail.children.at(-1), form);
   assert.equal(detail.children[0], panel);
+});
+
+test('库存 and 海外仓 stay with the catalog list, including 更换工厂, without dropping existing factories', () => {
+  const choices = partners => [...runInNewContext(line('followerFactoryChoices') + '\nfollowerFactoryChoices()', { partners })];
+  assert.deepEqual(choices([
+    { kind: 'factory', name: ' Factory A ', active: true },
+    { kind: 'factory', name: 'Factory B', active: false },
+    { kind: 'factory', name: '库存', active: true },
+    { kind: 'factory', name: '   ', active: true },
+    { kind: 'forwarder', name: 'Forwarder A', active: true }
+  ]), ['Factory A', '库存', '海外仓']);
+  assert.deepEqual(choices([]), ['库存', '海外仓']);
+
+  const dialog = {
+    innerHTML: '',
+    open: false,
+    showModal() { this.open = true; },
+    close() { this.open = false; },
+    querySelector() { return {}; }
+  };
+  runInNewContext(
+    [line('followerFactoryChoices'), line('followerFactoryFields'), line('bindFollowerFactoryAssign'), line('openFollowerFactoryAssign')].join('\n') + '\nopenFollowerFactoryAssign(order);',
+    {
+      order: { id: 'wait-1', factory_name: '海外仓' },
+      partners: [
+        { kind: 'factory', name: 'Factory A', active: true },
+        { kind: 'factory', name: 'Factory B', active: false },
+        { kind: 'forwarder', name: '海外仓', active: true }
+      ],
+      esc: value => String(value ?? ''),
+      $: () => dialog
+    }
+  );
+  assert.equal(dialog.open, true);
+  assert.match(dialog.innerHTML, /<h2>选择工厂<\/h2>/);
+  assert.match(dialog.innerHTML, /<option value="Factory A"/);
+  assert.match(dialog.innerHTML, /<option value="库存"/);
+  assert.match(dialog.innerHTML, /<option value="海外仓" selected>/);
+  assert.match(dialog.innerHTML, />保存工厂</);
+  assert.equal(dialog.innerHTML.includes('Factory B'), false);
+  assert.equal(dialog.innerHTML.includes('Forwarder A'), false);
+  assert.equal((dialog.innerHTML.match(/<option value="海外仓"/g) || []).length, 1);
+  const factoryA = dialog.innerHTML.indexOf('<option value="Factory A"');
+  const stock = dialog.innerHTML.indexOf('<option value="库存"');
+  const overseas = dialog.innerHTML.indexOf('<option value="海外仓"');
+  assert.ok(factoryA > 0 && factoryA < stock && stock < overseas);
+});
+
+test('a supervisor can save 库存 or 海外仓, and a merchandiser can then create the order', t => {
+  const { store, follower, supervisor, business } = fixture(t);
+  store.put('partners', { id: 'stock-off', kind: 'factory', name: '库存', active: false });
+  store.put('orders', {
+    id: 'wait-2', order_no: '#9054', current_step: 'follower_create', product_name: 'Arch', quantity: 2,
+    customer_info: CUSTOMER, business_name: 'Demi', business_id: business.id
+  });
+  assert.throws(
+    () => store.shopifyHandoff(follower.id, { action: 'assign_factory', id: 'wait-1', factory_name: '库存' }),
+    error => error.status === 403 && error.message === '仅主管可以选择并保存工厂'
+  );
+  assert.throws(
+    () => store.shopifyHandoff(supervisor.id, { action: 'assign_factory', id: 'wait-1', factory_name: '库存仓' }),
+    error => error.status === 400 && error.message === '请选择已有工厂'
+  );
+  for (const [id, name, orderNo] of [['wait-1', '库存', '#9053'], ['wait-2', '海外仓', '#9054']]) {
+    const saved = store.shopifyHandoff(supervisor.id, { action: 'assign_factory', id, factory_name: ` ${name} ` });
+    assert.equal(saved.factory_name, name);
+    assert.equal(saved.current_step, 'follower_create');
+    const waiting = store.all('orders').find(row => row.id === id);
+    assert.equal(waiting.factory_name, name);
+    assert.equal(waiting.current_step, 'follower_create');
+    assert.equal(waiting.order_no, orderNo);
+    const created = store.shopifyHandoff(follower.id, createPayload({ id, order_no: orderNo, factory_name: name }));
+    assert.equal(created.current_step, 'production');
+    const order = store.all('orders').find(row => row.id === id);
+    assert.equal(order.factory_name, name);
+    assert.equal(order.current_step, 'production');
+    assert.deepEqual(store.all('order_factories').filter(row => row.order_id === id).map(row => row.factory_name), [name]);
+  }
+  assert.equal(store.all('partners').some(partner => partner.active !== false && (partner.name === '库存' || partner.name === '海外仓')), false);
+  assert.equal(store.all('partners').some(partner => partner.kind === 'factory' && partner.name === 'Factory A' && partner.active !== false), true);
 });

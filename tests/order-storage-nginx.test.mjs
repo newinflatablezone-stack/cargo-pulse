@@ -1,8 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {execFileSync} from 'node:child_process';
-test('Nginx 私有目录规则覆盖每个站点、可重复执行，且保留公共资料图片',()=>{
- const result=execFileSync('python3',['-c',`
+import {execFileSync,spawnSync} from 'node:child_process';
+test('Nginx 私有目录规则覆盖每个站点、可重复执行，且保留公共资料图片',t=>{
+ const candidates = [['python3'], ['python'], ['py', '-3']];
+ const python = candidates.find(([command,...args]) =>
+   spawnSync(command,[...args,'-c','import sys; sys.exit(sys.version_info.major != 3)'],{windowsHide:true}).status===0
+ );
+ if (!python && process.platform==='win32') {
+   t.skip('Windows PATH 中没有可用的 Python 3');
+   return;
+ }
+ const [command,...args] = python || ['python3'];
+ const result=execFileSync(command,[...args,'-c',`
 import runpy,tempfile
 from pathlib import Path
 module=runpy.run_path('deploy/tencent/isolate-order-uploads.py')

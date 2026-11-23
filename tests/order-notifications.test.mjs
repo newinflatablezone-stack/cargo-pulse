@@ -68,13 +68,18 @@ test('notifications survive a new store on the same database file', t => {
   const dir = mkdtempSync(join(tmpdir(), 'cargo-notify-persist-'));
   const file = join(dir, 'db.sqlite');
   const store = new TencentDataStore(file);
-  t.after(() => { rmSync(dir, { recursive: true, force: true }); });
+  let reopened;
+  t.after(() => {
+    reopened?.db.close();
+    if (!reopened && store.db.isOpen) store.db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
   const business = store.upsertAccount({ email: 'demi@inflatable-zone.com', role: 'business' });
   store.createNotifications({ user_id: business.id, title: '周报提醒', body: '请填写本周周报', kind: 'weekly_report_reminder' });
   store.db.close();
-  const again = new TencentDataStore(file);
-  t.after(() => again.db.close());
-  const listed = again.userNotifications(business.id, { action: 'list' });
+  reopened = new TencentDataStore(file);
+
+  const listed = reopened.userNotifications(business.id, { action: 'list' });
   assert.equal(listed.unread_count, 1);
   assert.equal(listed.notifications[0].title, '周报提醒');
   assert.equal(listed.notifications[0].kind, 'weekly_report_reminder');

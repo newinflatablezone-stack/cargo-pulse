@@ -56,7 +56,8 @@ test('产品名称 must be Chinese only, with the same message in the browser an
     const start = source.indexOf('const PRODUCT_NAME_HAN_ONLY');
     return source.slice(start, source.indexOf('\n}', start) + 2);
   };
-  assert.equal(ruleText(browser).replace(/\n{2,}/g, '\n'), ruleText(core));
+  const normalize = source => ruleText(source).replace(/\r\n/g, '\n').replace(/\n{2,}/g, '\n');
+  assert.equal(normalize(browser), normalize(core));
   const samples = [
     [IMPORTED, IMPORTED],
     [`  ${IMPORTED}  `, IMPORTED],

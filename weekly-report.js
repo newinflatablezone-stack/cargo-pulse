@@ -293,7 +293,7 @@ export function renderWeeklyReport({ access = 'view', reports = [], today = new 
   const canSubmit = access === 'submit';
   const reminder = canSubmit ? weeklyReminder(todayIso, savedOwnCurrentWeek(reports, current.week_start, viewerId)) : null;
   const reminderHtml = reminder ? `<p class="${reminder.kind === 'due' ? 'weekly-report-reminder' : 'weekly-report-defer'}" role="${reminder.kind === 'due' ? 'alert' : 'status'}">${escapeHtml(reminder.text)}</p>` : '';
-  const heading = `<div class="weekly-report-head"><div><p class="kicker">WEEKLY REPORT</p><h1>周报</h1><p>${canSubmit ? '在月度汇总表中修改并保存本人的周报。不能修改他人的数据或备注。' : '查看各业务员的月度汇总，不能代为保存。'}</p></div><button type="button" id="closeWeeklyReport">← 返回订单中心</button></div>`;
+  const heading = `<div class="weekly-report-head"><div><p class="kicker">WEEKLY REPORT</p><h1>周报</h1><p>${canSubmit ? '在月度汇总表中修改并保存本人的周报。不能修改他人的数据或备注。' : '查看各业务员的月度汇总，不能代为保存。'}</p></div><div class="weekly-report-head-actions"><button type="button" id="exportWeeklyReport">导出 Excel</button><button type="button" id="closeWeeklyReport">← 返回订单中心</button></div></div>`;
   const edit = canSubmit && viewerId ? { canSubmit, viewerId, viewerName: viewerSalesName(reports, viewerId), current } : null;
   return `<section class="weekly-report-shell" data-access="${canSubmit ? 'submit' : 'view'}">${heading}${reminderHtml}<div class="weekly-report-summary">${summaryTables(reports, edit)}</div></section>`;
 }
@@ -306,6 +306,31 @@ export async function mountWeeklyReport(page, { api, onClose, today = () => new 
     page.querySelector('#closeWeeklyReport')?.addEventListener('click', event => {
       event.stopPropagation();
       onClose?.();
+    });
+    page.querySelector('#exportWeeklyReport')?.addEventListener('click', async event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const button = event.currentTarget;
+      const saved = (data.reports || []).filter(row => row?.week_start);
+      if (!saved.length) { alert('还没有可导出的周报'); return; }
+      button.disabled = true;
+      try {
+        const excel = await import('./weekly-report-excel.js');
+        const buffer = await excel.buildWeeklyReportWorkbook(saved);
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = excel.weeklyReportExcelFilename(saved);
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+      } catch (error) {
+        alert(error?.message || '导出失败');
+      } finally {
+        button.disabled = false;
+      }
     });
     page.querySelectorAll('.weekly-report-save').forEach(button => button.addEventListener('click', async event => {
       event.preventDefault();

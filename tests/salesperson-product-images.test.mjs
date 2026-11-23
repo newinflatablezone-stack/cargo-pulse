@@ -311,7 +311,7 @@ test('the salesperson forms keep add and gain a delete control without changing 
   assert.match(create, /showUploadedProductImages\(images,o\.id\)/);
   assert.equal(create.includes('mountSalespersonProductImages'), false);
   assert.equal(create.includes('product-image-delete'), false);
-  assert.match(app, /current_step==='sales_supplement'&&profile\?\.role==='business'\)\{openShopifyPlace\(o\);return\}/);
+  assert.match(app, /current_step==='sales_supplement'&&profile\?\.role==='business'&&!isSupervisor\(\)\)\{openShopifyPlace\(o\);return\}/);
   assert.match(app, /current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}/);
   assert.match(app, /#shopifyCreate'\)\?\.addEventListener\('click',\(\)=>openFollowerCreate\(o,d\)\)/);
   assert.match(app, /Ella<\/option>.*Sherry<\/option>.*Demi<\/option>.*Rayna<\/option>/);

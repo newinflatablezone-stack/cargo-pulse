@@ -344,9 +344,9 @@ test('salesperson can add a product image without pasting a URL, and old blower 
   assert.equal(store.all('orders').find(row => row.id === legacy.id).blower, '包气泵');
 });
 
-test('the salesperson place form opens from 下单详情 and shows images instead of URL text', () => {
+test('the pending salesperson order opens the place form directly and shows images instead of URL text', () => {
   const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
-  assert.match(app, /orderView==='place'&&orderCardDate\(o\)>=SALESPERSON_DETAIL_CUTOFF\)\{if\(o&&!o\.deleted_at&&o\.current_step==='sales_supplement'&&profile\?\.role==='business'\)\{openShopifyPlace\(o\);return\}/);
+  assert.match(app, /if\(o&&!o\.deleted_at&&o\.current_step==='sales_supplement'&&profile\?\.role==='business'&&!isSupervisor\(\)\)\{openShopifyPlace\(o\);return\}/);
   assert.match(app, /包风机/);
   assert.match(app, /不包气泵/);
   assert.match(app, /type="file" accept="image\/\*"/);

@@ -229,7 +229,7 @@ test('the bell, supplement entry, and reusable write API stay in the existing pa
   const page = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const server = readFileSync(new URL('../server/tencent-data-server.mjs', import.meta.url), 'utf8');
   const core = readFileSync(new URL('../server/tencent-data-core.mjs', import.meta.url), 'utf8');
-  assert.match(app, /orderAction\?\.dataset\.orderView==='place'&&orderCardDate\(o\)>=SALESPERSON_DETAIL_CUTOFF\)\{if\(o&&!o\.deleted_at&&o\.current_step==='sales_supplement'&&profile\?\.role==='business'\)\{openShopifyPlace\(o\);return\}/);
+  assert.match(app, /if\(o&&!o\.deleted_at&&o\.current_step==='sales_supplement'&&profile\?\.role==='business'&&!isSupervisor\(\)\)\{openShopifyPlace\(o\);return\}/);
   assert.match(app, /current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}/);
   assert.match(app, /current_step!=='sales_supplement'&&o\.current_step!=='follower_create'&&isOrderSalesperson\(o\)&&!isSupervisor\(\)\)\{openSalespersonSupplement\(o\);return\}return\}if\(openFollowerCreate\(o\)\)return;let d=\$\('#detail'\);d\.innerHTML=detailHtml\(o\);d\.showModal\(\)/);
   assert.match(app, /o\.current_step==='follower_create'&&follower\?`<div class="actions"><button class="primary" id="shopifyCreate">创建订单<\/button><\/div>`/);
@@ -312,7 +312,7 @@ test('the order salesperson card opens the order detail popup, while follower an
   assert.deepEqual(clickOrderCard(issued, supervisor), ['read:prod-1', 'detail:prod-1']);
   const supervisorOwned = { id: 'boss-order', current_step: 'production', deleted_at: null, business_id: 'boss-1', business_name: 'Demi', product_name: 'Castle' };
   assert.deepEqual(clickOrderCard(supervisorOwned, { ...supervisor, role: 'business', display_name: 'Demi' }), ['read:boss-order', 'detail:boss-order']);
-  assert.deepEqual(clickOrderCard(supplement, owner), ['read:sup-1', 'detail:sup-1']);
+  assert.deepEqual(clickOrderCard(supplement, owner), ['read:sup-1', 'place:sup-1']);
   assert.deepEqual(clickOrderCard(deleted, owner), ['read:del-1', 'detail:del-1']);
 
   const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');

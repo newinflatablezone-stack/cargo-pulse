@@ -284,10 +284,10 @@ test('a merchandiser click on 待跟单创建订单 opens the create-order form 
   assert.deepEqual(clickOrder(production, owner), ['read:prod-1', 'detail:prod-1']);
   assert.deepEqual(clickOrder(done, follower), ['read:done-1', 'detail:done-1']);
   assert.deepEqual(clickOrder(supplement, follower), ['read:sup-1', 'detail:sup-1']);
-  assert.deepEqual(clickOrder(supplement, owner), ['read:sup-1', 'detail:sup-1']);
+  assert.deepEqual(clickOrder(supplement, owner), ['read:sup-1', 'place:sup-1']);
   assert.deepEqual(clickOrder(waiting, follower, { closest(selector) { return selector === '.factory-export-check' ? {} : null; } }), []);
 
-  assert.match(app, /if\(o\)void markOrderNotificationsRead\(o\.id\);if\(orderAction\?\.dataset\.orderView==='place'&&orderCardDate\(o\)>=SALESPERSON_DETAIL_CUTOFF\)\{if\(o&&!o\.deleted_at&&o\.current_step==='sales_supplement'&&profile\?\.role==='business'\)\{openShopifyPlace\(o\);return\}if\(o&&!o\.deleted_at&&o\.current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}/);
+  assert.match(app, /if\(o\)void markOrderNotificationsRead\(o\.id\);if\(o&&!o\.deleted_at&&o\.current_step==='sales_supplement'&&profile\?\.role==='business'&&!isSupervisor\(\)\)\{openShopifyPlace\(o\);return\}if\(orderAction\?\.dataset\.orderView==='place'&&orderCardDate\(o\)>=SALESPERSON_DETAIL_CUTOFF\)\{if\(o&&!o\.deleted_at&&o\.current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}/);
   assert.match(app, /openSalespersonSupplement\(o\);return\}return\}if\(openFollowerCreate\(o\)\)return;/);
   assert.match(app, /function openFollowerCreate\(o,detailDialog\)\{if\(!o\|\|o\.deleted_at\|\|o\.current_step!=='follower_create'\|\|!canFollowOrders\(\)\)return false;if\(followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}if\(isSupervisor\(\)\)return false;alert\(FOLLOWER_FACTORY_REQUIRED\);return true\}/);
   assert.equal(app.slice(app.indexOf('function openFollowerCreate'), app.indexOf('const factoryExportSelection')).includes('openFollowerFactoryAssign'), false);

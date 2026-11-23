@@ -118,7 +118,7 @@ test('salesperson cards before 2026-11-23 show only 查看详情', () => {
   assert.deepEqual(buttonLabels(beijingStart), ['查看详情', '下单详情']);
 });
 
-test('查看详情 and the card open the order detail popup; only 下单详情 opens the place form', () => {
+test('pending orders open the place form directly; other cards keep their existing actions', () => {
   const current = order();
   const earlier = order({ id: 'old-1', order_date: '2026-11-22' });
   const supplement = order({ id: 'sup-1', current_step: 'sales_supplement' });
@@ -148,9 +148,15 @@ test('查看详情 and the card open the order detail popup; only 下单详情 o
     assert.equal(result.opened.some(item => item.startsWith('place:') || item.startsWith('supplement:')), false);
   }
 
-  assert.deepEqual(clickCard(supplement, owner).opened, ['read:sup-1', 'detail:sup-1']);
-  assert.deepEqual(clickCard(supplement, owner, 'detail').opened, ['read:sup-1', 'detail:sup-1']);
+  assert.deepEqual(clickCard(supplement, owner).opened, ['read:sup-1', 'place:sup-1']);
+  assert.deepEqual(clickCard(supplement, owner, 'detail').opened, ['read:sup-1', 'place:sup-1']);
   assert.deepEqual(clickCard(supplement, owner, 'place').opened, ['read:sup-1', 'place:sup-1']);
+  for (const order_date of ['', '2026-11-22', '2026-11-23']) {
+    const pending = {...supplement,order_date};
+    assert.deepEqual(buttonLabels(cardHtml(pending,owner)), ['下单']);
+    assert.deepEqual(clickCard(pending,owner).opened, ['read:sup-1','place:sup-1']);
+    assert.deepEqual(clickCard(pending,follower).opened, ['read:sup-1','detail:sup-1']);
+  }
   assert.deepEqual(clickCard(waiting, owner).opened, ['read:wait-1', 'detail:wait-1']);
   assert.deepEqual(clickCard(waiting, owner, 'place').opened, ['read:wait-1', 'supplement:follower_create:wait-1']);
   assert.deepEqual(clickCard(order({ id: 'done-1', current_step: 'completed' }), owner, 'place').opened, ['read:done-1', 'supplement:completed:done-1']);
@@ -179,8 +185,8 @@ test('merchandiser and supervisor cards keep 查看详情 and their existing cli
   assert.deepEqual(clickCard(current, other).opened, ['read:order-1', 'detail:order-1']);
 
   const sharedSupplement = order({ id: 'shared-1', current_step: 'sales_supplement', business_id: 'demi-1' });
-  assert.deepEqual(buttonLabels(cardHtml(sharedSupplement, other)), ['查看详情', '下单详情']);
-  assert.deepEqual(clickCard(sharedSupplement, other).opened, ['read:shared-1', 'detail:shared-1']);
+  assert.deepEqual(buttonLabels(cardHtml(sharedSupplement, other)), ['下单']);
+  assert.deepEqual(clickCard(sharedSupplement, other).opened, ['read:shared-1', 'place:shared-1']);
   assert.deepEqual(clickCard(sharedSupplement, other, 'place').opened, ['read:shared-1', 'place:shared-1']);
 
   assert.match(app, /function openFollowerCreate\(o,detailDialog\)\{if\(!o\|\|o\.deleted_at\|\|o\.current_step!=='follower_create'\|\|!canFollowOrders\(\)\)return false;if\(followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}if\(isSupervisor\(\)\)return false;alert\(FOLLOWER_FACTORY_REQUIRED\);return true\}/);

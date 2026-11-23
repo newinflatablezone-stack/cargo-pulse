@@ -247,7 +247,7 @@ test('the order salesperson lands on the prefilled form from the card, before an
   assert.deepEqual(clickOrderCard(waiting, follower), ['read:wait-1', 'alert:主管须先选择工厂并保存后，跟单才能创建订单。']);
   assert.deepEqual(clickOrderCard({ ...waiting, factory_name: 'Factory A' }, follower), ['read:wait-1', 'create:wait-1']);
   const supervisorWaiting = { id: 'wait-boss', current_step: 'follower_create', deleted_at: null, business_id: 'boss-1', business_name: 'Demi' };
-  assert.deepEqual(clickOrderCard(supervisorWaiting, { ...supervisor, role: 'business', display_name: 'Demi' }), ['read:wait-boss', 'factory:wait-boss']);
+  assert.deepEqual(clickOrderCard(supervisorWaiting, { ...supervisor, role: 'business', display_name: 'Demi' }), ['read:wait-boss', 'detail:wait-boss']);
   assert.deepEqual(clickOrderCard({ ...supervisorWaiting, factory_name: 'Factory A' }, { ...supervisor, role: 'business', display_name: 'Demi' }), ['read:wait-boss', 'create:wait-boss']);
   assert.deepEqual(clickOrderCard(issued, owner), ['read:prod-1', 'supplement:production:prod-1']);
   assert.deepEqual(clickOrderCard(completed, owner), ['read:done-1', 'supplement:completed:done-1']);

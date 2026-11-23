@@ -13,7 +13,11 @@ function lineFunction(name) {
   return line;
 }
 
-const orderMatchesStatusTab = runInNewContext(lineFunction('orderMatchesStatusTab') + '\norderMatchesStatusTab');
+const orderMatchesStatusTab = runInNewContext(lineFunction('followerFactorySaved') + '\n' + lineFunction('orderMatchesStatusTab') + '\norderMatchesStatusTab');
+const displayStepLabel = runInNewContext(
+  lineFunction('followerFactorySaved') + '\n' + lineFunction('displayStepLabel') + '\ndisplayStepLabel',
+  { STEP_LABELS, displayStepKey(order) { return order.current_step; } }
+);
 
 function roleHelpers() {
   const start = app.indexOf("const SUPERVISOR_EMAIL=");
@@ -28,6 +32,7 @@ function statusTabs(statusFilter, follower, activeOrders, deletedOrders) {
   const end = app.indexOf('</div><div class="result-count">') + '</div>'.length;
   const raw = app.slice(start, end);
   return runInNewContext(
+    lineFunction('followerFactorySaved') + '\n' + lineFunction('orderMatchesStatusTab') + '\n' +
     '(function(statusFilter, follower, activeOrders, deletedOrders){ return `' + raw + '`; })'
   )(statusFilter, follower, activeOrders, deletedOrders);
 }
@@ -58,8 +63,10 @@ function tabOrders(rows, status, follower) {
 
 function sampleOrders() {
   const rows = [];
-  for (let index = 0; index < 60; index++) rows.push({ id: 'wait-' + index, order_no: 'W-' + index, current_step: 'follower_create', deleted_at: null });
+  for (let index = 0; index < 60; index++) rows.push({ id: 'wait-' + index, order_no: 'W-' + index, current_step: 'follower_create', deleted_at: null, factory_name: 'Factory A' });
   rows.push(
+    { id: 'await-factory', order_no: 'AF-1', current_step: 'follower_create', deleted_at: null, factory_name: '' },
+    { id: 'await-blank', order_no: 'AF-2', current_step: 'follower_create', deleted_at: null, factory_name: '   ' },
     { id: 'wait-deleted', order_no: 'W-DEL', current_step: 'follower_create', deleted_at: '2026-11-01' },
     { id: 'supplement', order_no: 'SUP', current_step: 'sales_supplement', deleted_at: null },
     { id: 'production', order_no: 'PROD', current_step: 'production', deleted_at: null },
@@ -73,7 +80,7 @@ test('待跟单创建订单 is the existing follower_create step', () => {
   assert.equal(STEP_LABELS.follower_create, TAB_LABEL);
   assert.equal(app.includes("data-status=\"follower_create\">" + TAB_LABEL), true);
   assert.equal(app.includes('data-status="pending_create"'), false);
-  assert.match(app, /function orderMatchesStatusTab\(order,status\)\{if\(status==='trash'\)return true;if\(status==='delivered'\)return order\.current_step==='completed';if\(status==='follower_create'\)return order\.current_step==='follower_create';return order\.current_step!=='completed'\}/);
+  assert.match(app, /function orderMatchesStatusTab\(order,status\)\{if\(status==='trash'\)return true;if\(status==='delivered'\)return order\.current_step==='completed';if\(status==='follower_create'\)return order\.current_step==='follower_create'&&followerFactorySaved\(order\);return order\.current_step!=='completed'\}/);
   assert.match(app, /source=statusFilter==='trash'&&follower\?deletedOrders:activeOrders,filteredList=source\.filter\(o=>orderMatchesStatusTab\(o,statusFilter\)/);
   const filterAt = app.indexOf('filteredList=source.filter(o=>orderMatchesStatusTab(o,statusFilter)');
   const sliceAt = app.indexOf('list=filteredList.slice', filterAt);
@@ -92,8 +99,10 @@ test('the tab is visible to 跟单 and 主管, and hidden from 业务员', () =>
   assert.match(app, /const follower=canFollowOrders\(\),supervisor=isSupervisor\(\);if\(statusFilter==='follower_create'&&!follower\)statusFilter='active'/);
 
   const activeOrders = [
+    { current_step: 'follower_create', factory_name: 'Factory A' },
+    { current_step: 'follower_create', factory_name: 'Factory B' },
     { current_step: 'follower_create' },
-    { current_step: 'follower_create' },
+    { current_step: 'follower_create', factory_name: '   ' },
     { current_step: 'production' },
     { current_step: 'completed' }
   ];
@@ -103,6 +112,7 @@ test('the tab is visible to 跟单 and 主管, and hidden from 业务员', () =>
   assert.ok(pending);
   assert.equal(pending.text, TAB_LABEL + ' 2');
   assert.equal(pending.className, '');
+  assert.equal(button(html, 'active').text, '进行中 5');
   assert.equal(button(html, 'active').className, 'active');
   assert.ok(button(html, 'trash'));
   assert.equal(html.includes('data-status="follower_create"'), true);
@@ -138,6 +148,8 @@ test('clicking 待跟单创建订单 filters every visible order in that step, t
   assert.equal(waiting.some(order => order.id === 'wait-59'), true);
   assert.equal(waiting.some(order => order.id === 'wait-0'), true);
   assert.equal(waiting.some(order => order.id === 'wait-deleted'), false);
+  assert.equal(waiting.some(order => order.id === 'await-factory'), false);
+  assert.equal(waiting.some(order => order.id === 'await-blank'), false);
   assert.equal(waiting.some(order => order.id === 'supplement'), false);
   assert.equal(waiting.some(order => order.id === 'production'), false);
   assert.equal(waiting.some(order => order.id === 'done'), false);
@@ -150,6 +162,8 @@ test('clicking 待跟单创建订单 filters every visible order in that step, t
   assert.equal(active.workflowStepFilter, 'all');
   const inProgress = tabOrders(rows, active.statusFilter, true);
   assert.equal(inProgress.some(order => order.id === 'wait-59'), true);
+  assert.equal(inProgress.some(order => order.id === 'await-factory'), true);
+  assert.equal(inProgress.some(order => order.id === 'await-blank'), true);
   assert.equal(inProgress.some(order => order.id === 'production'), true);
   assert.equal(inProgress.some(order => order.id === 'supplement'), true);
   assert.equal(inProgress.some(order => order.id === 'done'), false);
@@ -182,6 +196,29 @@ test('clicking 待跟单创建订单 filters every visible order in that step, t
   assert.equal(statusFilter, 'active');
   assert.equal(tabOrders(rows, statusFilter, false).some(order => order.current_step === 'production'), true);
   assert.equal(tabOrders(rows, 'follower_create', false).some(order => order.current_step === 'follower_create'), true);
+});
+
+test('orders without a saved factory stay in 进行中 as 待主管选择工厂, then join 待跟单创建订单 after the factory is saved', () => {
+  const waiting = { id: 'await-1', current_step: 'follower_create', deleted_at: null, factory_name: '' };
+  const blank = { id: 'await-2', current_step: 'follower_create', deleted_at: null, factory_name: '   ' };
+  const ready = { id: 'ready-1', current_step: 'follower_create', deleted_at: null, factory_name: 'Factory A' };
+  const production = { id: 'prod-1', current_step: 'production', deleted_at: null, factory_name: 'Factory A' };
+  assert.equal(displayStepLabel(waiting), '待主管选择工厂');
+  assert.equal(displayStepLabel(blank), '待主管选择工厂');
+  assert.equal(displayStepLabel(ready), TAB_LABEL);
+  assert.equal(displayStepLabel(production), '生产');
+  assert.equal(orderMatchesStatusTab(waiting, 'follower_create'), false);
+  assert.equal(orderMatchesStatusTab(blank, 'follower_create'), false);
+  assert.equal(orderMatchesStatusTab(waiting, 'active'), true);
+  assert.equal(orderMatchesStatusTab(blank, 'active'), true);
+  assert.equal(orderMatchesStatusTab(ready, 'follower_create'), true);
+  assert.equal(orderMatchesStatusTab(ready, 'active'), true);
+  assert.equal(orderMatchesStatusTab(production, 'follower_create'), false);
+  waiting.factory_name = 'Factory A';
+  assert.equal(orderMatchesStatusTab(waiting, 'follower_create'), true);
+  assert.equal(displayStepLabel(waiting), TAB_LABEL);
+  assert.match(app, /function displayStepLabel\(o\)\{if\(o\?\.current_step==='follower_create'&&!followerFactorySaved\(o\)\)return '待主管选择工厂'/);
+  assert.match(app, /activeOrders\.filter\(o=>orderMatchesStatusTab\(o,'follower_create'\)\)\.length/);
 });
 
 function clickOrder(order, person, target) {
@@ -231,11 +268,12 @@ test('a merchandiser click on 待跟单创建订单 opens the create-order form 
   assert.deepEqual(clickOrder(blankFactory, follower), ['read:wait-1', blocked]);
   assert.equal(clickOrder(waiting, follower).includes('create:wait-1'), false);
   assert.deepEqual(clickOrder(assigned, follower), ['read:wait-ready', 'create:wait-ready']);
-  assert.deepEqual(clickOrder(waiting, { ...supervisor, role: 'follower' }), ['read:wait-1', 'factory:wait-1']);
-  assert.deepEqual(clickOrder(waiting, supervisor), ['read:wait-1', 'factory:wait-1']);
+  assert.deepEqual(clickOrder(waiting, { ...supervisor, role: 'follower' }), ['read:wait-1', 'detail:wait-1']);
+  assert.deepEqual(clickOrder(waiting, supervisor), ['read:wait-1', 'detail:wait-1']);
+  assert.equal(clickOrder(waiting, supervisor).includes('factory:wait-1'), false);
   assert.deepEqual(clickOrder(assigned, supervisor), ['read:wait-ready', 'create:wait-ready']);
   assert.deepEqual(clickOrder(assigned, { ...supervisor, role: 'follower' }), ['read:wait-ready', 'create:wait-ready']);
-  assert.deepEqual(clickOrder(ownedBySupervisor, supervisor), ['read:wait-boss', 'factory:wait-boss']);
+  assert.deepEqual(clickOrder(ownedBySupervisor, supervisor), ['read:wait-boss', 'detail:wait-boss']);
   assert.deepEqual(clickOrder({ ...ownedBySupervisor, factory_name: 'Factory A' }, supervisor), ['read:wait-boss', 'create:wait-boss']);
   assert.deepEqual(clickOrder(waiting, owner), ['read:wait-1', 'supplement:wait-1']);
   assert.deepEqual(clickOrder(waiting, otherSales), ['read:wait-1', 'detail:wait-1']);
@@ -252,7 +290,10 @@ test('a merchandiser click on 待跟单创建订单 opens the create-order form 
   assert.deepEqual(clickOrder(waiting, follower, { closest(selector) { return selector === '.factory-export-check' ? {} : null; } }), []);
 
   assert.match(app, /if\(o\)void markOrderNotificationsRead\(o\.id\);if\(o&&!o\.deleted_at&&o\.current_step==='sales_supplement'&&profile\?\.role==='business'\)\{openShopifyPlace\(o\);return\}if\(openFollowerCreate\(o\)\)return;if\(o&&!o\.deleted_at&&o\.current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}/);
-  assert.match(app, /function openFollowerCreate\(o,detailDialog\)\{if\(!o\|\|o\.deleted_at\|\|o\.current_step!=='follower_create'\|\|!canFollowOrders\(\)\)return false;if\(followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}if\(isSupervisor\(\)\)\{openFollowerFactoryAssign\(o,detailDialog\);return true\}alert\(FOLLOWER_FACTORY_REQUIRED\);return true\}/);
+  assert.match(app, /function openFollowerCreate\(o,detailDialog\)\{if\(!o\|\|o\.deleted_at\|\|o\.current_step!=='follower_create'\|\|!canFollowOrders\(\)\)return false;if\(followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}if\(isSupervisor\(\)\)return false;alert\(FOLLOWER_FACTORY_REQUIRED\);return true\}/);
+  assert.equal(app.slice(app.indexOf('function openFollowerCreate'), app.indexOf('const factoryExportSelection')).includes('openFollowerFactoryAssign'), false);
+  assert.match(app, /class="step-name">\$\{esc\(displayStepLabel\(o\)\)\}/);
+  assert.match(app, /supervisor&&!followerFactorySaved\(o\)\?followerFactoryAssignHtml\(o\)/);
   const create = app.slice(app.indexOf('function openShopifyCreate'), app.indexOf('function detailHtml'));
   assert.match(create, /d\.innerHTML=orderForm\(true,true\)/);
   assert.match(create, /textContent='创建订单'/);

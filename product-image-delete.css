@@ -4,23 +4,27 @@
   width: 84px;
   height: 84px;
   flex: 0 0 84px;
+  overflow: hidden;
+  border-radius: 8px;
 }
 
 .q-shopify-images .product-image-frame img {
   width: 84px;
   height: 84px;
+  object-fit: cover;
+  display: block;
 }
 
 .product-image-delete {
   position: absolute;
-  left: 6px;
-  right: 6px;
-  bottom: 6px;
+  top: 4px;
+  right: 4px;
+  z-index: 1;
   margin: 0;
-  padding: 2px 0;
+  padding: 1px 6px;
   border: 0;
   border-radius: 6px;
-  background: rgba(14, 89, 73, 0.92);
+  background: rgba(14, 89, 73, 0.94);
   color: #fff;
   font: 700 12px/1.4 Arial, "Microsoft YaHei", sans-serif;
   cursor: pointer;

@@ -244,5 +244,5 @@ test('the order list shows the export only to merchandisers', () => {
   assert.equal(exportFn.includes('/rpc/'), false);
   assert.match(app, /factory-order-export\.js\?v=20261122-10/);
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(html, /\/app-v2\.js\?v=20261123-5"/);
+  assert.match(html, /\/app-v2\.js\?v=20261123-6"/);
 });

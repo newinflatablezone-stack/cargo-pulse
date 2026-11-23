@@ -20,7 +20,7 @@ function fixture(t) {
 }
 
 const placeFields = {
-  order_no: '#9053', product_name: 'Arch', quantity: 2, business_name: 'Sherry',
+  order_no: '#9053', product_name: '拱门', quantity: 2, business_name: 'Sherry',
   shipping_mode: 'domestic_express', blower: '气泵', customer_info: 'Ada\n1 Main St, Austin, TX 78701\nada@example.com\n+1 5551234567',
   abnormal_note: '请加急', image_urls: 'https://cdn.shopify.com/a.jpg'
 };
@@ -336,11 +336,11 @@ test('salesperson can add a product image without pasting a URL, and old blower 
   const url = new URL('http://local/rest/v1/order_images');
   store.mutate('order_images', 'POST', url, { order_id: order.id, object_path: path, file_name: '产品图片' }, business.id);
   assert.throws(() => store.mutate('order_images', 'POST', url, { order_id: order.id, object_path: order.id + '/delivery-proof-photo.jpg', file_name: '签收证明' }, business.id), error => error.status === 403);
-  const placed = store.shopifyHandoff(business.id, { action: 'place', id: order.id, order_no: '#9088', product_name: 'Photo', quantity: 1, business_name: 'Demi', shipping_mode: 'other', blower: '不包气泵', customer_info: 'Ada\n1 Main St, Austin, TX 78701\nada@example.com\n+1 5551234567', abnormal_note: '备注' });
+  const placed = store.shopifyHandoff(business.id, { action: 'place', id: order.id, order_no: '#9088', product_name: '照片', quantity: 1, business_name: 'Demi', shipping_mode: 'other', blower: '不包气泵', customer_info: 'Ada\n1 Main St, Austin, TX 78701\nada@example.com\n+1 5551234567', abnormal_note: '备注' });
   assert.equal(store.all('orders').find(row => row.id === placed.id).blower, '不包气泵');
   const legacy = store.importShopifyOrder({ id: 'gid://shopify/Order/old', order_no: '#9089', product_name: 'Old', quantity: 1, image_urls: ['https://cdn.shopify.com/old.jpg'], blower: '风机' });
   assert.equal(legacy.blower, '包风机');
-  store.shopifyHandoff(business.id, { action: 'place', id: legacy.id, order_no: '#9089', product_name: 'Old', quantity: 1, business_name: 'Demi', shipping_mode: 'domestic_sea', blower: '气泵', customer_info: 'Ada\n1 Main St, Austin, TX 78701\nada@example.com\n+1 5551234567', abnormal_note: '备注', image_urls: 'https://cdn.shopify.com/old.jpg' });
+  store.shopifyHandoff(business.id, { action: 'place', id: legacy.id, order_no: '#9089', product_name: '旧品', quantity: 1, business_name: 'Demi', shipping_mode: 'domestic_sea', blower: '气泵', customer_info: 'Ada\n1 Main St, Austin, TX 78701\nada@example.com\n+1 5551234567', abnormal_note: '备注', image_urls: 'https://cdn.shopify.com/old.jpg' });
   assert.equal(store.all('orders').find(row => row.id === legacy.id).blower, '包气泵');
 });
 

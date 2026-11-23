@@ -102,7 +102,7 @@ test('a salesperson 新建下单 lands in 待跟单创建订单 for everyone, wi
   assert.equal(manual.order_date, '2026-11-22');
   assert.equal(manual.current_step, 'production');
   const shopify = store.importShopifyOrder({ id: 'gid://shopify/Order/9052', order_no: '#9052', product_name: 'Mat', quantity: 1, image_urls: ['https://cdn.shopify.com/9052.jpg'] });
-  store.shopifyHandoff(business.id, { action: 'place', id: shopify.id, order_no: '#9052', product_name: 'Mat', quantity: 1, business_name: 'Demi', shipping_mode: 'other', blower: '包风机', customer_info: 'Ada\n1 Main St, Austin, TX 78701\nada@example.com\n+1 5551234567', abnormal_note: '备注' });
+  store.shopifyHandoff(business.id, { action: 'place', id: shopify.id, order_no: '#9052', product_name: '垫子', quantity: 1, business_name: 'Demi', shipping_mode: 'other', blower: '包风机', customer_info: 'Ada\n1 Main St, Austin, TX 78701\nada@example.com\n+1 5551234567', abnormal_note: '备注' });
   assert.equal(store.all('orders').find(row => row.id === shopify.id).order_no, '#9052');
 });
 

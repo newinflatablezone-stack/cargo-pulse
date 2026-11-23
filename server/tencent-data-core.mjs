@@ -39,6 +39,20 @@ export function customerInfoReminder(value) {
   return missing.length ? `客户信息还缺少：${missing.join('、')}` : '';
 }
 
+// Browser copy lives in product-name.mjs and must stay behavior-identical.
+// The live deployer installs this core file directly and does not copy that module.
+const PRODUCT_NAME_HAN = /[\u3400-\u9fff]/;
+export const PRODUCT_NAME_UNCHANGED_RULE = '请修改产品名称，不能直接提交 Shopify 导入的名称';
+export const PRODUCT_NAME_CHINESE_RULE = '产品名称需要包含中文，英文可以写在中文旁边';
+export function productNameReminder(value, original) {
+  const name = String(value ?? '').trim();
+  const imported = String(original ?? '').trim();
+  if (imported && (!name || name === imported)) return PRODUCT_NAME_UNCHANGED_RULE;
+  if (!name) return '';
+  if (!PRODUCT_NAME_HAN.test(name)) return PRODUCT_NAME_CHINESE_RULE;
+  return '';
+}
+
 // Keep the data service self-contained: older production deployers install
 // this core file directly and may not yet copy newly added helper modules.
 const normalizeDestination = value => String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\u3400-\u9fff]+/g, ' ').trim().replace(/\s+/g, ' ');
@@ -566,6 +580,8 @@ export class TencentDataStore {
     delete next.shopify_shared;
     if (previous?.shopify_order_id) next.shopify_order_id = previous.shopify_order_id;
     else delete next.shopify_order_id;
+    if (previous?.shopify_product_name) next.shopify_product_name = previous.shopify_product_name;
+    else delete next.shopify_product_name;
     return next;
   }
 
@@ -669,6 +685,7 @@ export class TencentDataStore {
       order_no: String(row?.order_no || '').trim(),
       order_date: typeof row?.order_date === 'string' ? row.order_date : '',
       product_name: String(row?.product_name || '').trim(),
+      shopify_product_name: String(row?.product_name || '').trim(),
       quantity: Number.isSafeInteger(quantity) && quantity >= 1 ? quantity : null,
       size: String(row?.size || '').trim(),
       customer_info: String(row?.customer_info || '').trim(),
@@ -696,7 +713,7 @@ export class TencentDataStore {
 
   applyLiveShopifyFields(order, draft) {
     const next = { ...order };
-    for (const key of ['order_no', 'order_date', 'product_name', 'size', 'customer_info', 'requirements', 'abnormal_note', 'blower', 'shipping_mode', 'destination_country']) {
+    for (const key of ['order_no', 'order_date', 'product_name', 'shopify_product_name', 'size', 'customer_info', 'requirements', 'abnormal_note', 'blower', 'shipping_mode', 'destination_country']) {
       if (present(draft[key])) next[key] = draft[key];
     }
     if (present(draft.quantity)) next.quantity = draft.quantity;
@@ -961,6 +978,9 @@ export class TencentDataStore {
     const hasUploadedImage = this.all('order_images').some(row => row.order_id === order.id && String(row.object_path || '').includes('/product-image-'));
     if (suppliedImages && urls === null) fail('图片地址须为 HTTPS 链接');
     if (customer && customerInfoReminder(customer)) fail(customerInfoReminder(customer), 400);
+    const importedName = String(order.shopify_product_name || order.product_name || '').trim();
+    const nameReminder = productNameReminder(product, importedName);
+    if (nameReminder) fail(nameReminder, 400);
     if (!orderNo || !product || !(urls?.length || hasUploadedImage) || !Number.isSafeInteger(quantity) || quantity < 1 || !SALESPERSON_NAMES.includes(businessName) || !SALES_SHIPPING.has(shipping) || !blower || !customer || !note) {
       fail('请补齐订单号、产品名称、图片、数量、业务员、运输方式、包风机或包气泵、客户信息和订单备注');
     }
@@ -973,6 +993,7 @@ export class TencentDataStore {
         ...order,
         order_no: orderNo,
         product_name: product,
+        shopify_product_name: importedName,
         quantity,
         size: value('size') || order.size || '',
         customer_info: customer,
@@ -1160,6 +1181,10 @@ export class TencentDataStore {
     const shippingAllowed = SALES_SHIPPING.has(shipping) || (shipping && shipping === String(order.shipping_mode || '') && ORDER_SHIPPING_MODES.has(shipping));
     if (order.salesperson_shared === true && !order.shopify_order_id && isPurelyNumericOrderNumber(orderNo)) fail('自定义订单号' + CUSTOM_ORDER_NUMBER_RULE);
     if (customer && customerInfoReminder(customer)) fail(customerInfoReminder(customer), 400);
+    if (order.shopify_order_id) {
+      const nameReminder = productNameReminder(product, String(order.shopify_product_name || '').trim());
+      if (nameReminder) fail(nameReminder, 400);
+    }
     if (!orderNo || !product || !Number.isSafeInteger(quantity) || quantity < 1 || !SALESPERSON_NAMES.includes(businessName) || !shippingAllowed || !blower || !customer || !note) {
       fail('请补齐订单号、产品名称、数量、业务员、运输方式、包风机或包气泵、客户信息和订单备注');
     }

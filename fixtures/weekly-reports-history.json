@@ -1,0 +1,110 @@
+{
+  "schema": "weekly_reports.v1",
+  "timezone": "Asia/Shanghai",
+  "week_definition": "Thursday through Wednesday; week_start is the Thursday and week_end is the Wednesday",
+  "currency": null,
+  "identity": "salesperson_name",
+  "attribution": "confirmed: the three 2026-11-20 sources belong to Sherry, Demi, and Rayna",
+  "counting_rule": "inquiries, calls, and unpaid_orders count only that person's own valid totals. Cross-customer, already-ordered, invalid or missing address or email, bounce, duplicate inquiry, self-placed order, logistics-only, and phone-conflict extras stay in note and are not added into those numbers. performance is copied exactly, with no rounding, recalculation, or currency.",
+  "reports": [
+    {
+      "salesperson_name": "Sherry",
+      "week_start": "2026-10-29",
+      "week_end": "2026-11-04",
+      "inquiries": "6",
+      "calls": "6",
+      "unpaid_orders": "3",
+      "performance": "15149",
+      "body": "",
+      "note": "下单未付另+1个 Demi 客户；电话另+2 Demi、+1 Rayna、+1 问物流"
+    },
+    {
+      "salesperson_name": "Sherry",
+      "week_start": "2026-11-05",
+      "week_end": "2026-11-11",
+      "inquiries": "23",
+      "calls": "5",
+      "unpaid_orders": "1",
+      "performance": "18336",
+      "body": "",
+      "note": "询盘另+2个同个客户、+1退信、+1客户自己下单、+1以前客户；下单未付的 1 个是以前客户"
+    },
+    {
+      "salesperson_name": "Sherry",
+      "week_start": "2026-11-12",
+      "week_end": "2026-11-18",
+      "inquiries": "22",
+      "calls": "6",
+      "unpaid_orders": "4",
+      "performance": "24176",
+      "body": "",
+      "note": "询盘另+2地址不存在；下单未付另+1电话冲突"
+    },
+    {
+      "salesperson_name": "Demi",
+      "week_start": "2026-10-29",
+      "week_end": "2026-11-04",
+      "inquiries": "2",
+      "calls": "0",
+      "unpaid_orders": "3",
+      "performance": "5189.15",
+      "body": "",
+      "note": "询盘另+2个是 Sherry 的客户"
+    },
+    {
+      "salesperson_name": "Demi",
+      "week_start": "2026-11-05",
+      "week_end": "2026-11-11",
+      "inquiries": "21",
+      "calls": "1",
+      "unpaid_orders": "1",
+      "performance": "6378.15",
+      "body": "",
+      "note": ""
+    },
+    {
+      "salesperson_name": "Demi",
+      "week_start": "2026-11-12",
+      "week_end": "2026-11-18",
+      "inquiries": "18",
+      "calls": "2",
+      "unpaid_orders": "3",
+      "performance": "809.73",
+      "body": "",
+      "note": ""
+    },
+    {
+      "salesperson_name": "Rayna",
+      "week_start": "2026-10-29",
+      "week_end": "2026-11-04",
+      "inquiries": "4",
+      "calls": "1",
+      "unpaid_orders": "3",
+      "performance": "6821.26",
+      "body": "",
+      "note": "询盘另+1已下单用户；下单未付另+1个 Sherry 客户"
+    },
+    {
+      "salesperson_name": "Rayna",
+      "week_start": "2026-11-05",
+      "week_end": "2026-11-11",
+      "inquiries": "16",
+      "calls": "2",
+      "unpaid_orders": "1",
+      "performance": "8373.65",
+      "body": "",
+      "note": "询盘另+6 Sherry、+1 Demi、+1邮件地址不存在、+2已下单用户；电话另+1 Sherry 客户"
+    },
+    {
+      "salesperson_name": "Rayna",
+      "week_start": "2026-11-12",
+      "week_end": "2026-11-18",
+      "inquiries": "10",
+      "calls": "2",
+      "unpaid_orders": "2",
+      "performance": "879.56",
+      "body": "",
+      "note": "询盘另+3 Sherry、+2 Demi、+1邮件地址不存在"
+    }
+  ]
+}

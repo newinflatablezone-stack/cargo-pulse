@@ -207,6 +207,51 @@ export function beijingOrderDate(value = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value);
 }
 
+// Weekly reports stay in this file. The live deployer copies tencent-data-core.mjs
+// and would crash if this module imported a new helper that it does not install.
+const WEEKLY_REPORTS = 'weekly_reports';
+const WEEKLY_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const WEEKLY_NUMBER = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
+export const EMPTY_WEEKLY_REPORT_MESSAGE = '请先填写周报内容，再保存';
+
+function weeklyCalendarUtc(iso) {
+  if (!WEEKLY_DATE.test(iso)) return null;
+  const [year, month, day] = iso.split('-').map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  if (utc.getUTCFullYear() !== year || utc.getUTCMonth() !== month - 1 || utc.getUTCDate() !== day) return null;
+  return utc;
+}
+
+export function addCalendarDays(iso, days) {
+  const utc = weeklyCalendarUtc(iso);
+  if (!utc || !Number.isInteger(days)) return '';
+  utc.setUTCDate(utc.getUTCDate() + days);
+  return utc.toISOString().slice(0, 10);
+}
+
+// Beijing weeks run Thursday through Wednesday. week_start is the Thursday.
+export function beijingWeekRange(value = new Date()) {
+  const today = typeof value === 'string' ? value : beijingOrderDate(value);
+  const utc = weeklyCalendarUtc(today);
+  if (!utc) throw Object.assign(Error('日期无效'), { status: 400 });
+  const weekStart = addCalendarDays(today, -((utc.getUTCDay() + 7 - 4) % 7));
+  return { week_start: weekStart, week_end: addCalendarDays(weekStart, 6) };
+}
+
+function weeklyThursday(iso) {
+  const utc = weeklyCalendarUtc(iso);
+  if (!utc || utc.getUTCDay() !== 4) throw Object.assign(Error('周报周期必须是北京时间周四至周三，week_start 请填周四'), { status: 400 });
+  return { week_start: iso, week_end: addCalendarDays(iso, 6) };
+}
+
+function parseWeeklyStoredNumber(value, integer, label) {
+  if (value == null || String(value).trim() === '') return null;
+  const text = String(value).trim();
+  if (!WEEKLY_NUMBER.test(text) || text.length > 16) throw Object.assign(Error(`请填写有效的${label}`), { status: 400 });
+  if (integer && text.includes('.')) throw Object.assign(Error(`${label}请填写整数`), { status: 400 });
+  return text.includes('.') ? text.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '') : text;
+}
+
 const now = () => new Date().toISOString();
 const tokenHash = value => createHash('sha256').update(value).digest('hex');
 const json = value => JSON.stringify(value ?? null);
@@ -1156,6 +1201,94 @@ export class TencentDataStore {
     return decorate(updated);
   }
 
+
+  weeklyReportAccess(userId) {
+    const profile = this.profile(userId);
+    if (!profile || profile.disabled_at) return null;
+    if (this.isSupervisor(userId)) return 'view';
+    if (profile.role !== 'business') return null;
+    if (this.isWeeklyReportElla(userId)) return 'view';
+    return 'submit';
+  }
+
+  isWeeklyReportElla(userId) {
+    const profile = this.profile(userId);
+    const email = String(this.accountById(userId)?.email || profile?.email || '').trim().toLowerCase();
+    const aliases = {
+      'sales@inflatable-zone.com': 'Ella',
+      'sherry@inflatable-zone.com': 'Sherry',
+      'demi@inflatable-zone.com': 'Demi',
+      'rayna@inflatable-zone.com': 'Rayna'
+    };
+    if (email === 'sales@inflatable-zone.com') return true;
+    return [aliases[email], profile?.business_name, profile?.display_name, profile?.name]
+      .filter(value => typeof value === 'string' && value.trim())
+      .some(value => value.trim().toLowerCase() === 'ella');
+  }
+
+  weeklyReportView(row) {
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      salesperson_name: row.salesperson_name || this.issueDisplayName(row.user_id),
+      week_start: row.week_start,
+      week_end: row.week_end,
+      inquiries: row.inquiries ?? null,
+      calls: row.calls ?? null,
+      unpaid_orders: row.unpaid_orders ?? null,
+      performance: row.performance ?? null,
+      body: String(row.body || ''),
+      note: String(row.note || ''),
+      updated_at: row.updated_at || null
+    };
+  }
+
+  listWeeklyReports(userId, access) {
+    const visible = this.all(WEEKLY_REPORTS).filter(row => row?.week_start && (access === 'view' || row.user_id === userId));
+    const reports = visible.map(row => this.weeklyReportView(row)).sort((a, b) => a.week_start.localeCompare(b.week_start) || String(a.salesperson_name).localeCompare(String(b.salesperson_name), 'zh-CN'));
+    return { access, week: beijingWeekRange(new Date()), reports };
+  }
+
+  saveWeeklyReport(userId, access, body) {
+    if (access !== 'submit') throw Object.assign(Error('只能查看周报，不能保存'), { status: 403 });
+    const week = String(body?.week_start || '').trim() ? weeklyThursday(String(body.week_start).trim()) : beijingWeekRange(new Date());
+    const inquiries = parseWeeklyStoredNumber(body?.inquiries, true, '询盘');
+    const calls = parseWeeklyStoredNumber(body?.calls, true, '电话');
+    const unpaidOrders = parseWeeklyStoredNumber(body?.unpaid_orders, true, '下单未付');
+    const performance = parseWeeklyStoredNumber(body?.performance, false, '业绩');
+    const text = String(body?.body ?? '').trim();
+    if (text.length > 8000) throw Object.assign(Error('周报内容过长'), { status: 400 });
+    if (inquiries == null && calls == null && unpaidOrders == null && performance == null && !text) {
+      throw Object.assign(Error(EMPTY_WEEKLY_REPORT_MESSAGE), { status: 400 });
+    }
+    const id = `${userId}:${week.week_start}`;
+    const existing = this.all(WEEKLY_REPORTS).find(row => row.id === id);
+    const saved = this.put(WEEKLY_REPORTS, {
+      id,
+      user_id: userId,
+      salesperson_name: this.issueDisplayName(userId),
+      week_start: week.week_start,
+      week_end: week.week_end,
+      inquiries,
+      calls,
+      unpaid_orders: unpaidOrders,
+      performance,
+      body: text,
+      note: typeof existing?.note === 'string' ? existing.note : '',
+      created_at: existing?.created_at || now(),
+      updated_at: now()
+    });
+    return { access, report: this.weeklyReportView(saved) };
+  }
+
+  weeklyReport(userId, body = {}) {
+    const access = this.weeklyReportAccess(userId);
+    if (!access) throw Object.assign(Error('没有周报权限'), { status: 403 });
+    const action = String(body?.action || '');
+    if (action === 'list') return this.listWeeklyReports(userId, access);
+    if (action === 'save') return this.saveWeeklyReport(userId, access, body);
+    throw Object.assign(Error('不支持的周报操作'), { status: 400 });
+  }
 
   homeCoreSnapshot(userId) {
     const supervisor = this.isSupervisor(userId);

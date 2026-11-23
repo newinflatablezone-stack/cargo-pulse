@@ -14,6 +14,8 @@ import {
   beijingWeekRange,
   canOpenWeeklyReport,
   canSubmitWeeklyReport,
+  weeklyReportNavCacheKey,
+  weeklyReportNavVisible,
   isOfficialHolidayRestDay,
   nextWeeklyReminderWednesday,
   groupWeeklyReportsByMonth,
@@ -118,7 +120,10 @@ test('empty weekly report input is rejected before a request would be sent', () 
   assert.equal(empty.ok, false);
   assert.equal(empty.message, EMPTY_WEEKLY_REPORT_MESSAGE);
   assert.equal(validateWeeklyReportInput({ inquiries: '0', calls: '', unpaid_orders: '', performance: '', body: '' }).ok, true);
-  assert.equal(validateWeeklyReportInput({ body: '已记录' }).ok, true);
+  const bodyOnly = validateWeeklyReportInput({ body: '已记录' });
+  assert.equal(bodyOnly.ok, false);
+  assert.equal(bodyOnly.message, EMPTY_WEEKLY_REPORT_MESSAGE);
+  assert.equal(validateWeeklyReportInput({ inquiries: '1', body: '已记录' }).value.body, '已记录');
   assert.equal(validateWeeklyReportInput({ inquiries: '1.5' }).ok, false);
   assert.equal(validateWeeklyReportInput({ performance: '-1' }).ok, false);
   assert.equal(validateWeeklyReportInput({ performance: '5189.15' }).value.performance, '5189.15');
@@ -151,7 +156,7 @@ test('the home button is limited to the supervisor, Ella, and submitting salespe
   const weeklyButton = '<button type="button" id="weeklyReport">周报</button>';
   assert.match(resource, /库存/);
   assert.match(resource, /物流参数/);
-  assert.match(resource, /<button id="imageResource">图片下载<\/button>\$\{canOpenWeeklyReport\(profile,supervisor\)\?`<button type="button" id="weeklyReport">周报<\/button>`:""\}/);
+  assert.match(resource, /<button id="imageResource">图片下载<\/button>\$\{weeklyReportNavVisible\(\{profile,supervisor,cached:cachedWeeklyNav\(\)\}\)\?`<button type="button" id="weeklyReport">周报<\/button>`:""\}/);
   const toolbarStart = app.indexOf('<div class="tool-actions">');
   const toolbar = app.slice(toolbarStart, app.indexOf('</div>', toolbarStart) + 6);
   assert.equal(toolbar.includes('周报'), false);
@@ -166,9 +171,9 @@ test('the home button is limited to the supervisor, Ella, and submitting salespe
   const followerMarkup = app.slice(app.indexOf('${follower?`'), app.indexOf("`:\"\"}${profile?.role==='business'"));
   assert.equal(followerMarkup.includes('周报'), false);
   assert.equal(followerMarkup.includes('weeklyReport'), false);
-  const topNav = (person, supervisor) => canOpenWeeklyReport(person, supervisor)
-    ? resource.replace(/\$\{canOpenWeeklyReport\(profile,supervisor\)\?`([\s\S]*?)`:""\}/, '$1')
-    : resource.replace(/\$\{canOpenWeeklyReport\(profile,supervisor\)\?`[\s\S]*?`:""\}/, '');
+  const topNav = (person, supervisor, cached = false) => weeklyReportNavVisible({ profile: person, supervisor, cached })
+    ? resource.replace(/\$\{weeklyReportNavVisible\(\{profile,supervisor,cached:cachedWeeklyNav\(\)\}\)\?`([\s\S]*?)`:""\}/, '$1')
+    : resource.replace(/\$\{weeklyReportNavVisible\(\{profile,supervisor,cached:cachedWeeklyNav\(\)\}\)\?`[\s\S]*?`:""\}/, '');
   for (const nav of [
     topNav(supervisor, true),
     topNav(sherry, false),
@@ -186,6 +191,31 @@ test('the home button is limited to the supervisor, Ella, and submitting salespe
     assert.equal(nav.includes('周报'), false);
     assert.equal(nav.includes('weeklyReport'), false);
   }
+});
+
+test('周报 stays in the first header paint for the supervisor and a cached salesperson', () => {
+  const follower = { role: 'follower', email: 'follower@example.com' };
+  const sherry = { role: 'business', email: 'sherry@inflatable-zone.com' };
+  assert.equal(weeklyReportNavVisible({ profile: null, supervisor: true, cached: false }), true);
+  assert.equal(weeklyReportNavVisible({ profile: null, supervisor: false, cached: true }), true);
+  assert.equal(weeklyReportNavVisible({ profile: null, supervisor: false, cached: false }), false);
+  assert.equal(weeklyReportNavVisible({ profile: follower, supervisor: false, cached: true }), false);
+  assert.equal(weeklyReportNavVisible({ profile: sherry, supervisor: false, cached: false }), true);
+  assert.equal(weeklyReportNavVisible({ profile: { ...sherry, disabled_at: '2026-11-01' }, supervisor: false, cached: true }), false);
+  assert.equal(canOpenWeeklyReport(null, true), false);
+  assert.equal(weeklyReportNavCacheKey('user-sherry'), 'cp_weekly_nav_user-sherry');
+  assert.equal(weeklyReportNavCacheKey('user-follower'), 'cp_weekly_nav_user-follower');
+  assert.equal(weeklyReportNavCacheKey('sherry@inflatable-zone.com'), '');
+  assert.equal(weeklyReportNavCacheKey(''), '');
+  const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
+  const refresh = app.slice(app.indexOf('async function refresh'), app.indexOf('function workInProgress'));
+  assert.match(refresh, /profile=snapshot\.profile;rememberWeeklyNav\(\)/);
+  assert.match(refresh, /profile=nextProfile;rememberWeeklyNav\(\)/);
+  assert.match(app, /localStorage\.setItem\(key,canOpenWeeklyReport\(profile,isSupervisor\(\)\)\?'1':'0'\)/);
+  assert.match(app, /localStorage\.getItem\(key\)==='1'/);
+  const open = app.slice(app.indexOf('async function openWeeklyReport'), app.indexOf('async function uploadShopifyProductImage'));
+  assert.ok(open.indexOf('await (refreshInFlight||homeBoot)') < open.indexOf('canOpenWeeklyReport'));
+  assert.match(app, /weekly-report\.js\?v=20261123-1/);
 });
 
 test('shared monthly summary is the same for viewers and salespeople, and a week belongs to its Wednesday', () => {
@@ -239,13 +269,22 @@ test('shared monthly summary is the same for viewers and salespeople, and a week
   assert.equal(submit.includes('导出 Excel'), false);
   assert.equal(view.includes('导出 Excel'), false);
   assert.equal(submit.match(/<input /g).length, 12);
-  assert.equal(submit.match(/<textarea /g).length, 3);
+  assert.equal(submit.includes('<textarea'), false);
   assert.equal(submit.match(/class="weekly-report-save"/g).length, 3);
   const own = submit.slice(submit.indexOf('data-own="true"'), submit.indexOf('</tbody>', submit.indexOf('data-own="true"')));
   assert.match(own, />Sherry</);
   assert.deepEqual([...own.matchAll(/data-metric="(inquiries|unpaid_orders|calls|performance)"/g)].map(match => match[1]).filter((metric, index, all) => all.indexOf(metric) === index), ['inquiries', 'unpaid_orders', 'calls', 'performance']);
   const labels = [...own.matchAll(/<th class="sheet-label">([^<]+)<\/th>/g)].map(match => match[1]);
-  assert.deepEqual(labels, ['询盘', '下单未付', '电话', '业绩', '周报', '备注']);
+  assert.deepEqual(labels, ['询盘', '下单未付', '电话', '业绩', '备注']);
+  assert.equal(own.includes('class="sheet-label">周报<'), false);
+  const kept = renderWeeklyReport({
+    access: 'submit',
+    reports: history.reports.map(row => ({ ...row, user_id: row.salesperson_name, body: row.salesperson_name === 'Sherry' && row.week_start === WEEK ? '已有正文' : '' })),
+    today: '2026-11-16',
+    viewerId: 'Sherry'
+  });
+  assert.match(kept, /data-body="已有正文"/);
+  assert.equal(kept.includes('<textarea'), false);
   assert.match(submit, /value="22"/);
   assert.match(submit, /value="24176"/);
   assert.equal(submit.includes('value="809.73"'), false);
@@ -262,7 +301,8 @@ test('shared monthly summary is the same for viewers and salespeople, and a week
   assert.equal(unsaved.includes('导出 Excel'), false);
   const unsavedOwn = unsaved.slice(unsaved.indexOf('data-own="true"'), unsaved.indexOf('</tbody>', unsaved.indexOf('data-own="true"')));
   assert.equal(unsavedOwn.match(/<input /g).length, 4);
-  assert.equal(unsavedOwn.match(/<textarea /g).length, 1);
+  assert.equal(unsavedOwn.includes('<textarea'), false);
+  assert.equal(unsavedOwn.includes('class="sheet-label">周报<'), false);
   assert.equal(unsaved.match(/class="weekly-report-save"/g).length, 1);
   assert.equal(unsaved.includes('value="22"'), false);
   assert.match(unsavedOwn, /data-week="2026-11-12"/);
@@ -285,7 +325,8 @@ test('the spreadsheet keeps other months separate and uses 合计 when the peopl
   assert.match(november, /合计/);
   assert.equal(november.includes('三人合计'), false);
   assert.match(html, /data-month="2026-10"/);
-  assert.match(november, /Amy正文/);
+  assert.equal(html.includes('Amy正文'), false);
+  assert.equal(html.includes('class="sheet-label">周报<'), false);
   const source = readFileSync(new URL('../weekly-report.js', import.meta.url), 'utf8');
   assert.equal(source.includes('导出 Excel'), false);
   assert.equal(source.includes('weekly-report-excel.js'), false);

@@ -75,6 +75,8 @@ test('a salesperson 新建下单 lands in 待跟单创建订单 for everyone, wi
   const later = store.put('orders', { id: 'later-shared', order_no: 'LATER-1', current_step: 'production', salesperson_shared: true, business_name: 'Demi', business_id: business.id });
   assert.equal(store.canReadOrder(rayna.id, later), false);
   assert.throws(() => store.mutate('orders', 'POST', new URL('http://local/rest/v1/orders'), { order_no: 'X-1', current_step: 'follower_create' }, follower.id), error => error.status === 403);
+  store.put('partners', { id: 'factory-a', kind: 'factory', name: 'Factory A', active: true });
+  store.shopifyHandoff(supervisor.id, { action: 'assign_factory', id: waiting.id, factory_name: 'Factory A' });
   const beforeCreate = Date.now();
   const created = store.shopifyHandoff(follower.id, {
     action: 'create', id: waiting.id, order_no: 'IZ-200', order_date: '2020-01-01', product_name: 'Castle',

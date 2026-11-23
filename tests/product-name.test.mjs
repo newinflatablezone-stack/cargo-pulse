@@ -41,6 +41,12 @@ function supplementBody(id, product_name, extra = {}) {
   };
 }
 
+function saveFactory(store, orderId) {
+  const supervisor = store.upsertAccount({ email: '505863160@qq.com', role: 'follower' });
+  store.put('partners', { id: 'factory-a', kind: 'factory', name: 'Factory A', active: true });
+  store.shopifyHandoff(supervisor.id, { action: 'assign_factory', id: orderId, factory_name: 'Factory A' });
+}
+
 test('product name must change the Shopify title and include Chinese', () => {
   assert.equal(browserUnchanged, PRODUCT_NAME_UNCHANGED_RULE);
   assert.equal(browserChinese, PRODUCT_NAME_CHINESE_RULE);
@@ -107,6 +113,7 @@ test('下单 blocks an unchanged Shopify title, English-only, and whitespace, an
     error => error.status === 400 && error.message === PRODUCT_NAME_UNCHANGED_RULE
   );
   const createdReady = store.shopifyHandoff(business.id, placeBody(chineseImport.id, '气垫 Pro', { order_no: '#9062' }));
+  saveFactory(store, createdReady.id);
   const created = store.shopifyHandoff(follower.id, {
     action: 'create', id: createdReady.id, order_no: '#9062', product_name: '气垫', size: '6m', quantity: 1,
     customer_info: CUSTOMER, business_name: 'Demi', destination_country: '美国', inventory_mode: 'production',
@@ -132,6 +139,7 @@ test('补充信息 blocks English-only and a return to the Shopify import, inclu
   const revised = store.updateSalespersonSupplement(business.id, supplementBody(placed.id, '气垫 XL', { shopify_product_name: 'Castle' }));
   assert.equal(store.all('orders').find(row => row.id === revised.id).product_name, '气垫 XL');
   assert.equal(store.all('orders').find(row => row.id === revised.id).shopify_product_name, IMPORTED);
+  saveFactory(store, placed.id);
   const created = store.shopifyHandoff(follower.id, {
     action: 'create', id: placed.id, order_no: '#9052', product_name: IMPORTED, size: '6m', quantity: 1,
     customer_info: CUSTOMER, business_name: 'Demi', destination_country: '美国', inventory_mode: 'production',
@@ -177,7 +185,8 @@ test('the salesperson forms enforce the rule and 创建订单 does not', () => {
   assert.equal(create.includes('product-name-hint'), false);
   assert.equal(create.includes('bindProductNameRule'), false);
   assert.equal(salesOrder.includes('product-name-hint'), false);
-  assert.match(app, /current_step==='follower_create'&&canFollowOrders\(\)\)\{openShopifyCreate\(o\);return\}/);
+  assert.match(app, /if\(openFollowerCreate\(o\)\)return/);
+  assert.match(app, /followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}/);
   assert.match(page, /product-name-rule\.css/);
   assert.equal(readFileSync(new URL('../style-v2.css', import.meta.url), 'utf8').includes('product-name-hint'), false);
   const line = app.split('\n').find(item => item.startsWith('function bindProductNameRule'));

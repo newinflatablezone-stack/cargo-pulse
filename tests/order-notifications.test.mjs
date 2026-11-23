@@ -134,8 +134,10 @@ test('the order salesperson can revise a placed order with the saved fields, the
 });
 
 test('after 创建订单 the same salesperson can supplement without resetting the issued order', t => {
-  const { store, business, follower, other } = fixture(t);
+  const { store, business, follower, other, supervisor } = fixture(t);
   const placed = placeShopify(store, business);
+  store.put('partners', { id: 'factory-a', kind: 'factory', name: 'Factory A', active: true });
+  store.shopifyHandoff(supervisor.id, { action: 'assign_factory', id: placed.id, factory_name: 'Factory A' });
   const created = store.shopifyHandoff(follower.id, {
     action: 'create', id: placed.id, order_no: '#9053', product_name: 'Castle', size: '3 x 2 m', quantity: 2,
     customer_info: CUSTOMER, business_name: 'Demi', destination_country: '美国', inventory_mode: 'production',
@@ -176,7 +178,7 @@ test('the bell, supplement entry, and reusable write API stay in the existing pa
   assert.match(app, /current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}/);
   assert.match(app, /current_step!=='sales_supplement'&&o\.current_step!=='follower_create'&&isOrderSalesperson\(o\)&&!isSupervisor\(\)\)\{openSalespersonSupplement\(o\);return\}let d=\$\('#detail'\);d\.innerHTML=detailHtml\(o\);d\.showModal\(\)/);
   assert.match(app, /o\.current_step==='follower_create'&&follower\?`<div class="actions"><button class="primary" id="shopifyCreate">创建订单<\/button><\/div>`/);
-  assert.match(app, /#shopifyCreate'\)\?\.addEventListener\('click',\(\)=>openShopifyCreate\(o,d\)\)/);
+  assert.match(app, /#shopifyCreate'\)\?\.addEventListener\('click',\(\)=>openFollowerCreate\(o,d\)\)/);
   assert.match(app, /id="supplementOrder">修改\/补充信息<\/button>/);
   assert.match(app, /id="notificationBell"/);
   assert.match(app, /class="notify-badge"/);
@@ -221,8 +223,10 @@ function clickOrderCard(order, person) {
     opened,
     openShopifyPlace(row) { opened.push('place:' + row.id); },
     openShopifyCreate(row) { opened.push('create:' + row.id); },
+    openFollowerFactoryAssign(row) { opened.push('factory:' + row.id); },
     openSalespersonSupplement(row) { opened.push('supplement:' + row.current_step + ':' + row.id); },
-    markOrderNotificationsRead(id) { opened.push('read:' + id); }
+    markOrderNotificationsRead(id) { opened.push('read:' + id); },
+    alert(message) { opened.push('alert:' + message); }
   };
   runInNewContext(supervisor + follow + identity + 'function click(event, c){\n' + app.slice(start + marker.length, end) + '\nopened.push("detail:"+c.dataset.order);\n}\nclick(event, c);', ctx);
   return opened;
@@ -240,9 +244,11 @@ test('the order salesperson lands on the prefilled form from the card, before an
   const deleted = { id: 'del-1', current_step: 'production', deleted_at: '2026-11-01', business_id: 'demi-1', business_name: 'Demi' };
 
   assert.deepEqual(clickOrderCard(waiting, owner), ['read:wait-1', 'supplement:follower_create:wait-1']);
-  assert.deepEqual(clickOrderCard(waiting, follower), ['read:wait-1', 'create:wait-1']);
+  assert.deepEqual(clickOrderCard(waiting, follower), ['read:wait-1', 'alert:主管须先选择工厂并保存后，跟单才能创建订单。']);
+  assert.deepEqual(clickOrderCard({ ...waiting, factory_name: 'Factory A' }, follower), ['read:wait-1', 'create:wait-1']);
   const supervisorWaiting = { id: 'wait-boss', current_step: 'follower_create', deleted_at: null, business_id: 'boss-1', business_name: 'Demi' };
-  assert.deepEqual(clickOrderCard(supervisorWaiting, { ...supervisor, role: 'business', display_name: 'Demi' }), ['read:wait-boss', 'create:wait-boss']);
+  assert.deepEqual(clickOrderCard(supervisorWaiting, { ...supervisor, role: 'business', display_name: 'Demi' }), ['read:wait-boss', 'factory:wait-boss']);
+  assert.deepEqual(clickOrderCard({ ...supervisorWaiting, factory_name: 'Factory A' }, { ...supervisor, role: 'business', display_name: 'Demi' }), ['read:wait-boss', 'create:wait-boss']);
   assert.deepEqual(clickOrderCard(issued, owner), ['read:prod-1', 'supplement:production:prod-1']);
   assert.deepEqual(clickOrderCard(completed, owner), ['read:done-1', 'supplement:completed:done-1']);
   assert.deepEqual(clickOrderCard(issued, other), ['read:prod-1', 'detail:prod-1']);
@@ -257,7 +263,7 @@ test('the order salesperson lands on the prefilled form from the card, before an
   const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
   const clickStart = app.indexOf("document.querySelectorAll('[data-order]')");
   const click = app.slice(clickStart, app.indexOf("let d=$('#detail')", clickStart));
-  const createGate = click.indexOf("current_step==='follower_create'&&canFollowOrders()){openShopifyCreate(o);return}");
+  const createGate = click.indexOf("if(openFollowerCreate(o))return");
   const waitingGate = click.indexOf("current_step==='follower_create'&&profile?.role==='business'&&isOrderSalesperson(o)");
   const issuedGate = click.indexOf("current_step!=='sales_supplement'&&o.current_step!=='follower_create'&&isOrderSalesperson(o)&&!isSupervisor()");
   assert.ok(createGate > 0 && waitingGate > createGate && issuedGate > waitingGate);
@@ -524,5 +530,6 @@ test('the order-update popup stays beside the bell and opens an order through th
   assert.match(app, /class="order-notify-dot"/);
   const clickStart = app.indexOf("document.querySelectorAll('[data-order]')");
   const click = app.slice(clickStart, app.indexOf("let d=$('#detail')", clickStart));
-  assert.ok(click.indexOf("current_step==='follower_create'&&canFollowOrders()){openShopifyCreate(o);return}") > 0);
+  assert.ok(click.indexOf("if(openFollowerCreate(o))return") > 0);
+  assert.equal(click.includes('openShopifyCreate(o);return'), false);
 });

@@ -944,9 +944,21 @@ export class TencentDataStore {
     if (!profile || profile.disabled_at) fail('请先登录', 401);
     const order = this.all('orders').find(row => row.id === input.id);
     if (!order || order.deleted_at) fail('订单不存在', 404);
+    if (input.action === 'assign_factory') return this.assignFollowerFactory(userId, order, input, fail);
     if (input.action === 'place') return this.placeShopifyOrder(profile, order, input, fail);
     if (input.action === 'create') return this.createShopifyOrder(userId, profile, order, input, fail);
     fail('不支持的操作');
+  }
+
+  assignFollowerFactory(userId, order, input, fail) {
+    if (!this.isSupervisor(userId)) fail('仅主管可以选择并保存工厂', 403);
+    if (order.current_step !== FOLLOWER_CREATE) fail('订单已不在待跟单创建订单', 409);
+    const factory = typeof input.factory_name === 'string' ? input.factory_name.trim() : '';
+    if (!factory || factory.length > 120) fail('请选择工厂', 400);
+    const known = this.all('partners').some(partner => partner.kind === 'factory' && partner.active !== false && String(partner.name || '').trim() === factory);
+    if (!known) fail('请选择已有工厂', 400);
+    const saved = this.put('orders', { ...order, factory_name: factory, updated_at: now() });
+    return { id: saved.id, factory_name: saved.factory_name, current_step: saved.current_step };
   }
 
   placeShopifyOrder(profile, order, input, fail) {
@@ -1014,7 +1026,11 @@ export class TencentDataStore {
   createShopifyOrder(userId, profile, order, input, fail) {
     if (profile.role !== 'follower') fail('仅跟单可以创建订单', 403);
     if (order.current_step !== FOLLOWER_CREATE) fail('订单已不在待跟单创建订单', 409);
+    const assignedFactory = String(order.factory_name || '').trim();
+    if (!assignedFactory) fail('主管须先选择工厂并保存后，跟单才能创建订单。', 400);
     const value = key => typeof input[key] === 'string' ? input[key].trim() : '';
+    const requestedFactory = value('factory_name');
+    if (requestedFactory && requestedFactory !== assignedFactory) fail('工厂已由主管保存，不能在创建订单时修改', 400);
     const orderNo = value('order_no');
     const product = value('product_name');
     const size = value('size');
@@ -1038,7 +1054,7 @@ export class TencentDataStore {
     const orderDate = beijingOrderDate(new Date(timestamp));
     const stepDays = inventory === 'stock' ? 1 : needsRendering ? 3 : 10;
     const stepDeadline = new Date(Date.parse(timestamp) + stepDays * 86400000).toISOString();
-    const names = [...new Set([...(Array.isArray(input.factory_names) ? input.factory_names : []), value('factory_name')].map(name => String(name || '').trim()).filter(Boolean))];
+    const names = [...new Set([assignedFactory, ...(Array.isArray(input.factory_names) ? input.factory_names : []), requestedFactory].map(name => String(name || '').trim()).filter(Boolean))];
     let next = {
       ...order,
       order_no: orderNo,

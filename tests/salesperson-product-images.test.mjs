@@ -121,6 +121,8 @@ test('after 下单 and after 创建订单 only that order salesperson can delete
   assert.equal(waitingOrder.current_step, 'follower_create');
   assert.deepEqual(waitingOrder.shopify_image_urls, [IMAGE_B]);
   assert.equal(store.userNotifications(follower.id, { action: 'list' }).unread_count, 0);
+  store.put('partners', { id: 'factory-a', kind: 'factory', name: 'Factory A', active: true });
+  store.shopifyHandoff(supervisor.id, { action: 'assign_factory', id: waiting.id, factory_name: 'Factory A' });
 
   const created = store.shopifyHandoff(follower.id, {
     action: 'create', id: waiting.id, order_no: '#9101', product_name: 'Castle', size: '3 x 2 m', quantity: 2,
@@ -311,7 +313,7 @@ test('the salesperson forms keep add and gain a delete control without changing 
   assert.equal(create.includes('product-image-delete'), false);
   assert.match(app, /current_step==='sales_supplement'&&profile\?\.role==='business'\)\{openShopifyPlace\(o\);return\}/);
   assert.match(app, /current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}/);
-  assert.match(app, /#shopifyCreate'\)\?\.addEventListener\('click',\(\)=>openShopifyCreate\(o,d\)\)/);
+  assert.match(app, /#shopifyCreate'\)\?\.addEventListener\('click',\(\)=>openFollowerCreate\(o,d\)\)/);
   assert.match(app, /Ella<\/option>.*Sherry<\/option>.*Demi<\/option>.*Rayna<\/option>/);
   assert.match(page, /product-image-delete\.css/);
   assert.match(css, /\.product-image-delete/);

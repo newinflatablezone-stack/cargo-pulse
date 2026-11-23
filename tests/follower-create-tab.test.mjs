@@ -203,29 +203,40 @@ function clickOrder(order, person, target) {
     opened: [],
     openShopifyPlace(row) { ctx.opened.push('place:' + row.id); },
     openShopifyCreate(row) { ctx.opened.push('create:' + row.id); },
+    openFollowerFactoryAssign(row) { ctx.opened.push('factory:' + row.id); },
     openSalespersonSupplement(row) { ctx.opened.push('supplement:' + row.id); },
-    markOrderNotificationsRead(id) { ctx.opened.push('read:' + id); }
+    markOrderNotificationsRead(id) { ctx.opened.push('read:' + id); },
+    alert(message) { ctx.opened.push('alert:' + message); }
   };
   runInNewContext(app.slice(helperStart, helperEnd) + '\n' + app.slice(salesStart, salesEnd) + '\nfunction click(event, c){\n' + body + '\nthis.opened.push("detail:"+c.dataset.order);\n}\nclick(event, c);', ctx);
   return ctx.opened;
 }
 
-test('a merchandiser click on 待跟单创建订单 opens the create-order form directly', () => {
+test('a merchandiser click on 待跟单创建订单 opens the create-order form only after a factory is saved', () => {
   const follower = { id: 'follower-1', role: 'follower', email: 'follow@example.com' };
   const supervisor = { id: 'supervisor-1', role: 'business', email: '505863160@qq.com' };
   const owner = { id: 'demi-1', role: 'business', email: 'demi@inflatable-zone.com', display_name: 'Demi' };
   const otherSales = { id: 'ella-1', role: 'business', email: 'ella@inflatable-zone.com', display_name: 'Ella' };
   const waiting = { id: 'wait-1', current_step: 'follower_create', deleted_at: null, business_id: 'demi-1', business_name: 'Demi' };
-  const deleted = { id: 'wait-del', current_step: 'follower_create', deleted_at: '2026-11-01', business_id: 'demi-1' };
+  const assigned = { ...waiting, id: 'wait-ready', factory_name: 'Factory A' };
+  const blankFactory = { ...waiting, factory_name: '   ' };
+  const deleted = { id: 'wait-del', current_step: 'follower_create', deleted_at: '2026-11-01', business_id: 'demi-1', factory_name: 'Factory A' };
   const supplement = { id: 'sup-1', current_step: 'sales_supplement', deleted_at: null, business_id: 'demi-1' };
   const production = { id: 'prod-1', current_step: 'production', deleted_at: null, business_id: 'demi-1' };
   const done = { id: 'done-1', current_step: 'completed', deleted_at: null, business_id: 'demi-1' };
   const ownedBySupervisor = { id: 'wait-boss', current_step: 'follower_create', deleted_at: null, business_id: 'supervisor-1', business_name: 'Demi' };
+  const blocked = 'alert:主管须先选择工厂并保存后，跟单才能创建订单。';
 
-  assert.deepEqual(clickOrder(waiting, follower), ['read:wait-1', 'create:wait-1']);
-  assert.deepEqual(clickOrder(waiting, { ...supervisor, role: 'follower' }), ['read:wait-1', 'create:wait-1']);
-  assert.deepEqual(clickOrder(waiting, supervisor), ['read:wait-1', 'create:wait-1']);
-  assert.deepEqual(clickOrder(ownedBySupervisor, supervisor), ['read:wait-boss', 'create:wait-boss']);
+  assert.deepEqual(clickOrder(waiting, follower), ['read:wait-1', blocked]);
+  assert.deepEqual(clickOrder(blankFactory, follower), ['read:wait-1', blocked]);
+  assert.equal(clickOrder(waiting, follower).includes('create:wait-1'), false);
+  assert.deepEqual(clickOrder(assigned, follower), ['read:wait-ready', 'create:wait-ready']);
+  assert.deepEqual(clickOrder(waiting, { ...supervisor, role: 'follower' }), ['read:wait-1', 'factory:wait-1']);
+  assert.deepEqual(clickOrder(waiting, supervisor), ['read:wait-1', 'factory:wait-1']);
+  assert.deepEqual(clickOrder(assigned, supervisor), ['read:wait-ready', 'create:wait-ready']);
+  assert.deepEqual(clickOrder(assigned, { ...supervisor, role: 'follower' }), ['read:wait-ready', 'create:wait-ready']);
+  assert.deepEqual(clickOrder(ownedBySupervisor, supervisor), ['read:wait-boss', 'factory:wait-boss']);
+  assert.deepEqual(clickOrder({ ...ownedBySupervisor, factory_name: 'Factory A' }, supervisor), ['read:wait-boss', 'create:wait-boss']);
   assert.deepEqual(clickOrder(waiting, owner), ['read:wait-1', 'supplement:wait-1']);
   assert.deepEqual(clickOrder(waiting, otherSales), ['read:wait-1', 'detail:wait-1']);
   assert.deepEqual(clickOrder(deleted, follower), ['read:wait-del', 'detail:wait-del']);
@@ -240,7 +251,8 @@ test('a merchandiser click on 待跟单创建订单 opens the create-order form 
   assert.deepEqual(clickOrder(supplement, owner), ['read:sup-1', 'place:sup-1']);
   assert.deepEqual(clickOrder(waiting, follower, { closest(selector) { return selector === '.factory-export-check' ? {} : null; } }), []);
 
-  assert.match(app, /if\(o\)void markOrderNotificationsRead\(o\.id\);if\(o&&!o\.deleted_at&&o\.current_step==='sales_supplement'&&profile\?\.role==='business'\)\{openShopifyPlace\(o\);return\}if\(o&&!o\.deleted_at&&o\.current_step==='follower_create'&&canFollowOrders\(\)\)\{openShopifyCreate\(o\);return\}if\(o&&!o\.deleted_at&&o\.current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}/);
+  assert.match(app, /if\(o\)void markOrderNotificationsRead\(o\.id\);if\(o&&!o\.deleted_at&&o\.current_step==='sales_supplement'&&profile\?\.role==='business'\)\{openShopifyPlace\(o\);return\}if\(openFollowerCreate\(o\)\)return;if\(o&&!o\.deleted_at&&o\.current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}/);
+  assert.match(app, /function openFollowerCreate\(o,detailDialog\)\{if\(!o\|\|o\.deleted_at\|\|o\.current_step!=='follower_create'\|\|!canFollowOrders\(\)\)return false;if\(followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}if\(isSupervisor\(\)\)\{openFollowerFactoryAssign\(o,detailDialog\);return true\}alert\(FOLLOWER_FACTORY_REQUIRED\);return true\}/);
   const create = app.slice(app.indexOf('function openShopifyCreate'), app.indexOf('function detailHtml'));
   assert.match(create, /d\.innerHTML=orderForm\(true,true\)/);
   assert.match(create, /textContent='创建订单'/);

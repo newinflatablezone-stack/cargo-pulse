@@ -389,6 +389,18 @@ function mapShopifyOrder(order, items) {
     id: order.id, order_no: String(order.name || '').trim(),
     order_date: new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(order.createdAt)),
     product_name: summary.product_name, quantity: summary.quantity,
+    products: items.map(item => {
+      const fields = item.customAttributes || [];
+      const values = pattern => fields.filter(field=>pattern.test(String(field.key||'').trim())).map(field=>String(field.value||'').trim()).filter(Boolean);
+      const sizes = [...values(/^(size|dimensions?|产品尺寸|尺寸)$/i), ...([item.variantTitle,item.name].flatMap(text=>String(text||'').match(dimensions)||[]))];
+      const line = shopifyLineSummary([item]);
+      return {
+        product_name:line.product_name, quantity:line.quantity, size:[...new Set(sizes)].join(' / '),
+        requirements:values(/^(note|notes|requirements?|customization|下单要求|备注)$/i).join(' / '),
+        blower:shopifyVariantChoices({},[item]).blower,
+        image_urls:item.image?.url?.startsWith('https://') ? [item.image.url] : [], image_paths:[]
+      };
+    }),
     image_urls: [...new Set(items.map(item=>item.image?.url).filter(url=>typeof url==='string'&&url.startsWith('https://')))],
     size: [...new Set(sizes.map(size=>String(size||'').trim()).filter(Boolean))].join(' / '),
     requirements: note, abnormal_note: note,
@@ -446,7 +458,7 @@ function startShopifySync(store, env = process.env) {
         do {
           const {orders} = await query(orderQuery,{query:search,after});
           for(const order of orders.nodes){
-            if(!shopifySyncEligible(order)||!store.shopifyOrderNeedsRefresh(order.name, order.id))continue;
+            if(!shopifySyncEligible(order)||!store.shopifyOrderNeedsRefresh(order.name, order.id, true))continue;
             let connection=order.lineItems;
             const items=[...connection.nodes];
             while(connection.pageInfo.hasNextPage){

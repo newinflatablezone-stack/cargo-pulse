@@ -318,7 +318,7 @@ function numberCell(row, name, week, metric, decimal, editable) {
 }
 
 function personBlock(name, rows, weeks, own, current) {
-  const editableWeeks = new Set(weeks.filter(week => own && (findSheetRow(rows, name, week.week_start, own.viewerId) || (current && week.week_start === current.week_start))).map(week => week.week_start));
+  const editableWeeks = new Set(weeks.filter(week => own && current && week.week_start === current.week_start && !findSheetRow(rows, name, week.week_start, own.viewerId)).map(week => week.week_start));
   const span = weeks.length + 2;
   const head = `<tr class="sheet-banner"><th colspan="${span}">${escapeHtml(name)}</th></tr><tr class="sheet-head"><th>项目</th>${weeks.map(week => `<th>${escapeHtml(weeklyReportWeekShortLabel(week.week_start, week.week_end))}</th>`).join('')}<th>合计</th></tr><tr class="sheet-dates"><td></td>${weeks.map(week => `<td>${escapeHtml(week.week_start)} 至 ${escapeHtml(week.week_end)}</td>`).join('')}<td></td></tr>`;
   const metrics = SHEET_METRICS.map(([metric, label, decimal]) => {
@@ -329,7 +329,7 @@ function personBlock(name, rows, weeks, own, current) {
     const note = String(findSheetRow(rows, name, week.week_start, own?.viewerId)?.note || '').trim();
     return `<td class="sheet-note">${note ? escapeHtml(note) : '—'}</td>`;
   }).join('')}<td class="sheet-sum"></td></tr>`;
-  const saveRow = own ? `<tr class="sheet-save"><th></th>${weeks.map(week => {
+  const saveRow = editableWeeks.size ? `<tr class="sheet-save"><th></th>${weeks.map(week => {
     if (!editableWeeks.has(week.week_start)) return '<td></td>';
     const body = String(findSheetRow(rows, name, week.week_start, own.viewerId)?.body || '');
     return `<td><button type="button" class="weekly-report-save" data-week="${escapeHtml(week.week_start)}" data-body="${escapeHtml(body)}">保存</button><p class="weekly-report-error" data-week="${escapeHtml(week.week_start)}" role="alert"></p></td>`;

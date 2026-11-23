@@ -122,8 +122,10 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
   assert.equal(gate.includes('openFollowerFactoryAssign'), false);
   assert.match(gate, /alert\(FOLLOWER_FACTORY_REQUIRED\)/);
   assert.match(gate, /followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}/);
-  assert.match(app, /d\.innerHTML=detailHtml\(o\);d\.showModal\(\);bindFollowerFactoryAssign\(d\.querySelector\('#followerFactoryForm'\),o,d\)/);
-  assert.match(app, /supervisor&&!followerFactorySaved\(o\)\?followerFactoryAssignHtml\(o\)/);
+  assert.match(app, /d\.innerHTML=detailHtml\(o\);d\.showModal\(\);bindFollowerFactoryAssign\(d\.querySelector\('#followerFactoryForm'\),o,d\);mountSupervisorSalesImages\(d,o\);void mountIssueOrder\(o,d\);keepSupervisorFactoryAtBottom\(d\)/);
+  assert.match(app, /if\(supervisorAwaitingFactoryDetail\(o\)\)return supervisorSalesReviewHtml\(o\)/);
+  assert.match(app, /function supervisorSalesReviewHtml\(o\)\{const note=o\.abnormal_note\|\|o\.requirements\|\|'';return `<div class="detail supervisor-sales-review">/);
+  assert.equal(app.includes('supervisor&&!followerFactorySaved(o)?followerFactoryAssignHtml(o)'), false);
   assert.equal(create.includes('openFollowerFactoryAssign(o,detailDialog);return'), false);
   assert.match(create, /input\.readOnly=true/);
   assert.match(create, /工厂由主管选择并保存，跟单不能修改/);
@@ -140,8 +142,10 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
   ];
   const order = {
     id: 'wait-1', order_no: '#9053', product_name: 'Arch', quantity: 2, size: '3 x 2 m',
-    customer_info: CUSTOMER, abnormal_note: '请加急', requirements: '请加急', business_name: 'Demi',
-    current_step: 'follower_create', factory_name: '', forwarder_name: ''
+    customer_info: CUSTOMER, abnormal_note: '请加急，备注要完整显示，不要截断', requirements: '备用要求',
+    business_name: 'Demi', shipping_mode: 'domestic_sea', blower: '风机',
+    current_step: 'follower_create', factory_name: '', forwarder_name: '',
+    shopify_image_urls: ['https://cdn.example/arch.jpg']
   };
   const sandbox = {
     partners,
@@ -170,38 +174,76 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
     line('followerFactoryChoices'),
     line('followerFactoryFields'),
     line('followerFactoryAssignHtml'),
+    line('supervisorAwaitingFactoryDetail'),
+    line('salespersonOrderNoLabel'),
+    line('salespersonShippingLabel'),
+    line('salespersonBlowerLabel'),
+    line('salespersonSubmittedValue'),
+    line('supervisorSalesReviewHtml'),
     line('detailHtml'),
     line('bindFollowerFactoryAssign'),
     line('orderMatchesStatusTab'),
     line('displayStepLabel')
   ].join('\n');
   const view = runInNewContext(source + '\n({html:detailHtml(order),label:displayStepLabel(order),tab:orderMatchesStatusTab(order,"follower_create"),active:orderMatchesStatusTab(order,"active")})', { ...sandbox, order, displayStepKey: row => row.current_step });
-  const customerAt = view.html.indexOf('Ada');
-  const productAt = view.html.indexOf('<h2>Arch');
-  const stepAt = view.html.indexOf('当前步骤');
+  const fields = ['后台订单号', '#9053', '产品名称', 'Arch', '数量', '2', '尺寸', '3 x 2 m', '负责业务员', 'Demi', '运输方式', '海运', '风机 / 气泵', '包风机', '客户地址和联系信息', CUSTOMER, '订单备注', '请加急，备注要完整显示，不要截断', '产品图片'];
+  let cursor = -1;
+  for (const field of fields) {
+    const at = view.html.indexOf(field, cursor + 1);
+    assert.ok(at > cursor, field);
+    cursor = at;
+  }
+  const imagesAt = view.html.indexOf('supervisor-sales-images');
   const formAt = view.html.indexOf('id="followerFactoryForm"');
   const saveAt = view.html.indexOf('保存工厂');
-  assert.ok(productAt >= 0 && stepAt > productAt && customerAt > stepAt && formAt > customerAt && saveAt > formAt);
-  assert.match(view.html, /<h2>Arch × 2<\/h2>/);
-  assert.match(view.html, /3 x 2 m/);
-  assert.match(view.html, /请加急/);
+  assert.ok(imagesAt > cursor && formAt > imagesAt && saveAt > formAt);
+  assert.match(view.html, /<h2>待主管选择工厂<\/h2>/);
   assert.match(view.html, /<h3>选择工厂<\/h3>/);
+  assert.match(view.html, /class="detail supervisor-sales-review"/);
   assert.equal(view.html.includes('<h2>选择工厂</h2>'), false);
+  assert.equal(view.html.includes('<h2>Arch'), false);
+  assert.equal(view.html.includes('步骤时间线'), false);
+  assert.equal(view.html.includes('签收证明'), false);
   assert.equal(view.html.includes('id="shopifyCreate"'), false);
+  assert.equal(view.html.includes('<textarea'), false);
+  assert.equal(view.html.includes('<input'), false);
+  assert.equal(view.html.includes('type="file"'), false);
+  assert.equal(view.html.includes('product-image-delete'), false);
+  assert.equal(view.html.includes('添加图片'), false);
+  assert.equal(view.html.includes('name="order_no"'), false);
+  assert.equal(view.html.includes('name="customer_info"'), false);
+  assert.equal(view.html.includes('name="abnormal_note"'), false);
+  assert.equal((view.html.match(/<select /g) || []).length, 1);
+  assert.match(view.html, /select name="factory_name" required/);
   assert.match(view.html, /<option value="Factory A"/);
   assert.equal(view.html.includes('Factory B'), false);
   assert.equal(view.html.includes('Forwarder A'), false);
+  assert.equal(view.html.includes('备用要求'), false);
   assert.equal(view.label, '待主管选择工厂');
   assert.equal(view.tab, false);
   assert.equal(view.active, true);
-  const shown = view.html.replace(/(<dt>当前步骤<\/dt><dd>).*?(<\/dd>)/, '$1' + view.label + '$2');
-  assert.ok(shown.indexOf('待主管选择工厂') > stepAt);
   assert.match(app, /label=esc\(displayStepLabel\(o\)\)/);
+  const css = readFileSync(new URL('../style-v2.css', import.meta.url), 'utf8');
+  assert.match(css, /\.supervisor-sales-review \.supervisor-sales-fields dd\{white-space:pre-wrap;overflow-wrap:anywhere\}/);
+
+  const custom = runInNewContext(source + '\ndetailHtml(order)', { ...sandbox, order: { ...order, salesperson_shared: true, order_no: 'IZ-200', shipping_mode: 'air_freight', blower: '不包气泵', abnormal_note: '', requirements: '只写在要求里' } });
+  assert.match(custom, /<dt>自定义订单号<\/dt><dd>IZ-200<\/dd>/);
+  assert.match(custom, /<dt>运输方式<\/dt><dd>国内空运<\/dd>/);
+  assert.match(custom, /<dt>风机 \/ 气泵<\/dt><dd>不包气泵<\/dd>/);
+  assert.match(custom, /<dt>订单备注<\/dt><dd>只写在要求里<\/dd>/);
+  assert.equal(custom.includes('后台订单号'), false);
 
   sandbox.profile = { role: 'follower', email: 'follow@example.com' };
   const merchandiser = runInNewContext(source + '\ndetailHtml(order)', { ...sandbox, order });
   assert.equal(merchandiser.includes('followerFactoryForm'), false);
+  assert.equal(merchandiser.includes('supervisor-sales-fields'), false);
+  assert.match(merchandiser, /步骤时间线/);
   assert.match(merchandiser, /id="shopifyCreate">创建订单/);
+
+  sandbox.profile = { role: 'business', email: '505863160@qq.com' };
+  const deleted = runInNewContext(source + '\ndetailHtml(order)', { ...sandbox, order: { ...order, deleted_at: '2026-11-01' } });
+  assert.equal(deleted.includes('supervisor-sales-fields'), false);
+  assert.equal(deleted.includes('followerFactoryForm'), false);
 
   const savedOrder = { ...order, factory_name: 'Factory A' };
   sandbox.profile = { role: 'follower', email: '505863160@qq.com' };
@@ -256,4 +298,38 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
     assert.equal(after.tab, true);
     assert.equal(after.label, '待跟单创建订单');
   });
+});
+
+test('the supervisor review shows every salesperson product image and keeps 保存工厂 last', () => {
+  const mount = app.slice(app.indexOf('function mountSupervisorSalesImages'), app.indexOf('function keepSupervisorFactoryAtBottom'));
+  const pin = app.slice(app.indexOf('function keepSupervisorFactoryAtBottom'), app.indexOf('function bind()'));
+  assert.match(mount, /appendShopifyImages\(gallery,order\.shopify_image_urls\)/);
+  assert.match(mount, /showUploadedProductImages\(gallery,order\.id\)/);
+  assert.equal(mount.includes('product-image-delete'), false);
+  assert.equal(mount.includes('type="file"'), false);
+  assert.equal(mount.includes('salesperson_supplement'), false);
+  const gallery = { images: [] };
+  const root = { querySelector(selector) { return selector === '.supervisor-sales-images' ? gallery : null; } };
+  const order = { id: 'wait-1', shopify_image_urls: ['https://cdn.example/arch.jpg', 'http://insecure.example/skip.jpg'] };
+  runInNewContext(mount + '\nmountSupervisorSalesImages(root, order);', {
+    root,
+    order,
+    appendShopifyImages(node, urls) { node.images.push(...urls); },
+    showUploadedProductImages(node, id) { node.images.push('upload:' + id); return Promise.resolve(); }
+  });
+  assert.deepEqual(gallery.images, ['https://cdn.example/arch.jpg', 'http://insecure.example/skip.jpg', 'upload:wait-1']);
+
+  const form = { id: 'followerFactoryForm' };
+  const panel = { id: 'issues' };
+  const detail = {
+    className: 'detail supervisor-sales-review',
+    children: [form],
+    querySelector(selector) { return selector === '#followerFactoryForm' ? form : null; },
+    append(node) { this.children = this.children.filter(child => child !== node).concat(node); }
+  };
+  form.closest = selector => selector === '.detail' ? detail : null;
+  detail.children.push(panel);
+  runInNewContext(pin + '\nkeepSupervisorFactoryAtBottom(detail);', { detail });
+  assert.equal(detail.children.at(-1), form);
+  assert.equal(detail.children[0], panel);
 });

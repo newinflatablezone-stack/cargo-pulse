@@ -52,17 +52,28 @@ export function mountOrderProductEditor(form, order, {upload, listUploads, sign}
     node.className='order-product-row';
     node.innerHTML=`<legend>产品</legend><div class="grid">
       <label class="wide">图片<input type="file" accept="image/*" multiple data-product-files></label><div class="wide q-shopify-images"></div>
-      <label>产品名称<input data-field="product_name" ${optional?'':'required'}></label>
-      <label>尺寸<input data-field="size"></label>
-      <label>数量<input data-field="quantity" type="number" min="1" ${optional?'':'required'}></label>
-      <label>风机／气泵<select data-field="blower" ${optional?'':'required'}><option value="">请选择</option>${pumps.map(value=>`<option>${value}</option>`).join('')}</select></label>
-      <label class="wide">下单要求<textarea data-field="requirements"></textarea></label>
+      <label>产品名称 *<input data-field="product_name" required><small class="product-name-reminder" hidden aria-live="polite"></small></label>
+      <label>尺寸 *<input data-field="size" required></label>
+      <label>数量 *<input data-field="quantity" type="number" min="1" required></label>
+      <label>风机／气泵 *<select data-field="blower" required><option value="">请选择</option>${pumps.map(value=>`<option>${value}</option>`).join('')}</select></label>
+      <label class="wide">下单要求 *<textarea data-field="requirements" required></textarea></label>
       </div><button type="button" class="secondary" data-remove-product>删除产品</button>`;
     const fields=[...node.querySelectorAll('[data-field]')];
     for (const field of fields) {
       const value=item[field.dataset.field]??'';
       field.value=field.dataset.field==='blower'?({'风机':'包风机','气泵':'包气泵'}[value]||value):value;
     }
+    const title=node.querySelector('[data-field="product_name"]');
+    const reminder=node.querySelector('.product-name-reminder');
+    const validateTitle=()=>{
+      const message=title.value.trim()?productNameReminder(title.value):'';
+      reminder.textContent=message;
+      reminder.hidden=!message;
+      title.setAttribute('aria-invalid',String(Boolean(message)));
+      title.setCustomValidity(message);
+    };
+    title.addEventListener('input',validateTitle);
+    validateTitle();
     const gallery=node.querySelector('.q-shopify-images');
     const row={node,fields,images:[],addImage(image){
       this.images.push(image);
@@ -120,8 +131,11 @@ export function mountOrderProductEditor(form, order, {upload, listUploads, sign}
     if(loadError)throw loadError;
     const products=rows.map(({fields,images},index)=>{
       const values=Object.fromEntries(fields.map(field=>[field.dataset.field,field.value.trim()]));
-      const nameError=values.product_name || !optional ? productNameReminder(values.product_name) : '';
+      const nameError=productNameReminder(values.product_name);
       if(nameError)throw Error('第 '+(index+1)+' 行：'+nameError);
+      if(!values.size || !values.requirements || !values.blower || !Number.isSafeInteger(Number(values.quantity)) || Number(values.quantity)<1) {
+        throw Error('请补齐第 '+(index+1)+' 行的尺寸、数量、下单要求和风机／气泵');
+      }
       if(!optional && !images.length)throw Error('请为第 '+(index+1)+' 行添加产品图片');
       return {values,images:[...images]};
     });

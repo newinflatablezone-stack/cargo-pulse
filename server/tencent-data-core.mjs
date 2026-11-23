@@ -682,7 +682,10 @@ export class TencentDataStore {
   }
 
   readOrderProducts(order, input, fail) {
-    if (input.products == null) return null;
+    if (input.products == null) {
+      if (order.products?.length) fail('请提交每一行产品明细');
+      return null;
+    }
     if (!Array.isArray(input.products) || !input.products.length || input.products.length > 100) fail('请添加 1 至 100 个产品');
     const imported = Boolean(order.shopify_order_id);
     const uploads = new Set(this.all('order_images').filter(image => image.order_id === order.id &&
@@ -696,10 +699,11 @@ export class TencentDataStore {
       const imageUrls = httpsUrls(item.image_urls || []);
       const paths = item.image_paths || [];
       if (!imageUrls || !Array.isArray(paths) || paths.length > 100 || paths.some(path => !uploads.has(path))) fail('第 '+(index+1)+' 行图片无效');
-      if ((name || !imported) && productNameReminder(name)) fail('第 '+(index+1)+' 行：'+PRODUCT_NAME_RULE);
-      if ((quantity !== null && (!Number.isSafeInteger(quantity) || quantity < 1)) ||
-          (!imported && (quantity === null || !blower || (!imageUrls.length && !paths.length)))) fail('请补齐第 '+(index+1)+' 行的数量、风机／气泵和图片');
-      if (value('blower') && !blower) fail('风机／气泵选项无效');
+      if (productNameReminder(name)) fail('第 '+(index+1)+' 行：'+PRODUCT_NAME_RULE);
+      if (!size || !requirements || !blower || !Number.isSafeInteger(quantity) || quantity < 1) {
+        fail('请补齐第 '+(index+1)+' 行的尺寸、数量、下单要求和风机／气泵');
+      }
+      if (!imported && !imageUrls.length && !paths.length) fail('请为第 '+(index+1)+' 行添加产品图片');
       return {product_name:name,size,quantity,requirements,blower,image_urls:imageUrls,image_paths:[...new Set(paths)]};
     });
   }

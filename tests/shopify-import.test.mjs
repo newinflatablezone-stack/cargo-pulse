@@ -375,18 +375,23 @@ test('ordinary orders cannot be made visible by posing as a Shopify handoff', t 
   assert.equal(store.all('orders').find(row => row.id === waiting.id).product_name, 'Wait');
 });
 
-test('Shopify product lines keep missing fields optional and allow independent image edits', t => {
+test('Shopify product lines require complete Chinese product details and retain independent image edits', t => {
   const {store,business}=fixture(t);
   const first='https://cdn.shopify.com/first.jpg',second='https://cdn.shopify.com/second.jpg';
   const imported=store.importShopifyOrder({id:'gid://shopify/Order/9999',order_no:'#9999',products:[
     {product_name:'城堡',quantity:2,image_urls:[first]}, {product_name:'拱门',image_urls:[second]}
   ]});
   assert.deepEqual(imported.products.map(row=>row.image_urls),[[first],[second]]);
-  store.shopifyHandoff(business.id,{action:'place',id:imported.id,business_name:'Demi',products:[
-    {product_name:'城堡',quantity:2,image_urls:[]}, {product_name:'拱门',image_urls:[second]}
-  ]});
+  const place=products=>store.shopifyHandoff(business.id,{action:'place',id:imported.id,business_name:'Demi',products});
+  assert.throws(()=>place(imported.products),/请补齐/);
+  const filled={product_name:'城堡',quantity:2,size:'3 米',requirements:'红色',blower:'包风机',image_urls:[]};
+  for (const key of ['size','quantity','requirements','blower']) {
+    assert.throws(()=>place([filled,{...filled,[key]:''}]),/第 2 行/);
+  }
+  assert.throws(()=>place([filled,{...filled,product_name:'Inflatable Arch'}]),/产品名称必须为中文/);
+  place([filled,{...filled,product_name:'拱门',quantity:1,image_urls:[second]}]);
   let order=store.all('orders').find(row=>row.id===imported.id);
-  assert.equal(order.products[1].quantity,null);
+  assert.equal(order.products[1].quantity,1);
   assert.deepEqual(order.shopify_image_urls,[second]);
   store.updateSalespersonSupplement(business.id,{id:order.id,business_name:'Demi',products:[
     {...order.products[0],image_urls:[first]}, {...order.products[1],image_urls:[]}

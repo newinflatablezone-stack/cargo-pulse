@@ -304,3 +304,118 @@ test('a merchandiser click on 待跟单创建订单 opens the create-order form 
   assert.equal(create.includes('detailDialog.close()'), false);
   assert.match(app, /id="shopifyCreate">创建订单/);
 });
+
+test('按当前流程 adds the early statuses without a new tab, and 待主管选择工厂 does not count as 待跟单创建订单', () => {
+  const tabs = app.slice(app.indexOf('<div class="status-tabs">'), app.indexOf('</div><div class="result-count">'));
+  assert.equal(tabs.includes('待主管选择工厂'), false);
+  assert.equal(tabs.includes('awaiting_factory'), false);
+  assert.equal(app.includes('按当前流程<select id="workflowStepFilter">'), true);
+
+  const steps = JSON.parse(app.match(/const WORKFLOW_FILTER_STEPS=(\[[^\]]+\])/)[1].replace(/'/g, '"'));
+  const previous = ['rendering', 'production', 'shipping_selection', 'tracking', 'air_pickup', 'domestic_customs', 'ocean_tracking', 'ocean_transit', 'overseas_customs', 'warehouse_appointment', 'last_mile_tracking', 'delivery', 'last_mile', 'batch_shipping', 'completed'];
+  assert.deepEqual(steps.slice(0, 3), ['sales_supplement', 'awaiting_factory', 'follower_create']);
+  assert.deepEqual(steps.slice(3), previous);
+
+  const source = [
+    lineFunction('followerFactorySaved'),
+    lineFunction('stableStepKey'),
+    lineFunction('normalizedWorkflowStep'),
+    lineFunction('displayStepKey'),
+    lineFunction('displayStepLabel'),
+    lineFunction('workflowFilterLabel'),
+    lineFunction('workflowStepMatches'),
+    'const WORKFLOW_FILTER_STEPS=' + JSON.stringify(steps),
+    lineFunction('renderWorkflowStepFilter'),
+    'function trackingForStep(){return ""}',
+    'function shipmentCurrentNumber(){return ""}',
+    'function shipmentRowsForOrder(){return []}'
+  ].join('\n');
+  const rows = [
+    { id: 'sup', current_step: 'sales_supplement', deleted_at: null },
+    { id: 'wait', current_step: 'follower_create', factory_name: '', deleted_at: null },
+    { id: 'blank', current_step: 'follower_create', factory_name: '   ', deleted_at: null },
+    { id: 'ready', current_step: 'follower_create', factory_name: 'Factory A', deleted_at: null },
+    { id: 'prod', current_step: 'production', deleted_at: null },
+    { id: 'ship', current_step: 'shipping_selection', deleted_at: null },
+    { id: 'legacy', current_step: 'ready_to_ship', deleted_at: null },
+    { id: 'ocean', current_step: 'ocean_transit', deleted_at: null },
+    { id: 'done', current_step: 'completed', deleted_at: null },
+    { id: 'gone', current_step: 'follower_create', factory_name: '', deleted_at: '2026-11-01' }
+  ];
+  let select;
+  const filters = { children: [], append(node) { this.children.push(node); } };
+  const ctx = {
+    session: { user: { id: 'boss' } },
+    monthFilter: '',
+    redDelayCauseFilter: 'all',
+    workflowStepFilter: 'all',
+    alertFilter: 'red',
+    statusFilter: 'follower_create',
+    forwarderPaidFilter: 'paid',
+    currentPage: 4,
+    rows,
+    STEP_LABELS,
+    rendered: false,
+    render() { ctx.rendered = true; },
+    document: {
+      createElement() {
+        select = { onchange: null };
+        return { className: '', innerHTML: '', querySelector() { return select; } };
+      },
+      querySelector(selector) { return selector === '.index-filters' ? filters : null; },
+      querySelectorAll() { return []; }
+    }
+  };
+  runInNewContext(source + '\nrenderWorkflowStepFilter(rows);\nthis.matches=workflowStepMatches;\nthis.label=workflowFilterLabel;', ctx);
+  assert.equal(filters.children.length, 1);
+  assert.equal(filters.children[0].className, 'workflow-step-filter');
+  const html = filters.children[0].innerHTML;
+  assert.match(html, /^按当前流程<select id="workflowStepFilter">/);
+  assert.equal(html.split('id="workflowStepFilter"').length, 2);
+  const options = [...html.matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map(match => ({ value: match[1], text: match[2] }));
+  assert.deepEqual(options.map(option => option.value), ['all', ...steps]);
+  assert.equal(options[0].text, '全部流程');
+  assert.equal(options[1].text, '待业务员补充信息 (1)');
+  assert.equal(options[2].text, '待主管选择工厂 (2)');
+  assert.equal(options[3].text, TAB_LABEL + ' (1)');
+  assert.equal(options.find(option => option.value === 'production').text, '生产 (1)');
+  assert.equal(options.find(option => option.value === 'shipping_selection').text, '选择发货方式 (1)');
+  assert.equal(options.find(option => option.value === 'ocean_tracking').text, '填写海运单号 (1)');
+  assert.equal(options.find(option => option.value === 'ocean_transit').text, '海上运输 (0)');
+  assert.equal(options.find(option => option.value === 'completed').text, '订单完成 (1)');
+  assert.equal(options.filter(option => option.text.startsWith('待主管选择工厂')).length, 1);
+  assert.equal(options.filter(option => option.text.startsWith(TAB_LABEL)).length, 1);
+
+  const waiting = rows[1];
+  const blank = rows[2];
+  const ready = rows[3];
+  assert.equal(ctx.label('awaiting_factory'), displayStepLabel(waiting));
+  assert.equal(ctx.label('follower_create'), displayStepLabel(ready));
+  assert.equal(ctx.label('sales_supplement'), displayStepLabel(rows[0]));
+  assert.equal(ctx.matches(waiting, 'awaiting_factory'), true);
+  assert.equal(ctx.matches(blank, 'awaiting_factory'), true);
+  assert.equal(ctx.matches(waiting, 'follower_create'), false);
+  assert.equal(ctx.matches(blank, 'follower_create'), false);
+  assert.equal(ctx.matches(ready, 'follower_create'), true);
+  assert.equal(ctx.matches(ready, 'awaiting_factory'), false);
+  assert.equal(ctx.matches(rows[0], 'sales_supplement'), true);
+  assert.equal(ctx.matches(rows[0], 'awaiting_factory'), false);
+  assert.equal(ctx.matches(rows[0], 'follower_create'), false);
+  assert.equal(ctx.matches(rows[4], 'production'), true);
+  assert.equal(ctx.matches(rows[5], 'shipping_selection'), true);
+  assert.equal(ctx.matches(rows[6], 'shipping_selection'), false);
+  assert.equal(ctx.matches(rows[9], 'awaiting_factory'), true);
+  assert.equal(ctx.matches({ current_step: 'production', factory_name: '' }, 'awaiting_factory'), false);
+  assert.equal(ctx.matches({ current_step: 'production', factory_name: 'Factory A' }, 'follower_create'), false);
+
+  select.onchange({ target: { value: 'awaiting_factory' } });
+  assert.equal(ctx.rendered, true);
+  assert.equal(ctx.workflowStepFilter, 'awaiting_factory');
+  assert.equal(ctx.statusFilter, 'active');
+  assert.equal(ctx.alertFilter, 'all');
+  assert.equal(ctx.forwarderPaidFilter, 'all');
+  assert.equal(ctx.currentPage, 1);
+  select.onchange({ target: { value: 'completed' } });
+  assert.equal(ctx.statusFilter, 'delivered');
+  assert.equal(ctx.workflowStepFilter, 'completed');
+});

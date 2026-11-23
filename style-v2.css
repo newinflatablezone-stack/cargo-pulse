@@ -1524,3 +1524,7 @@ main.internal-resource-page-shell{width:100%;max-width:none!important;min-height
 .sheet .weekly-report-save{border:0;border-radius:8px;background:#222;color:#fff;padding:6px 12px;font-weight:700}
 .sheet .weekly-report-error{min-height:0;margin:6px 0 0}
 @media(max-width:700px){.weekly-report-form{grid-template-columns:1fr 1fr}.weekly-report-head,.weekly-report-edit-week{flex-direction:column;align-items:flex-start}}
+.supervisor-sales-review .supervisor-sales-fields{overflow:visible}
+.supervisor-sales-review .supervisor-sales-fields .wide{grid-column:1/-1}
+.supervisor-sales-review .supervisor-sales-fields dd{white-space:pre-wrap;overflow-wrap:anywhere}
+.supervisor-sales-review .follower-factory-assign{margin-top:22px;padding:18px 0 0;border-top:1px solid #e2e7e3}

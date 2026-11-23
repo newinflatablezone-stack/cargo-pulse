@@ -141,14 +141,47 @@ test('the home button is limited to the supervisor, Ella, and submitting salespe
   assert.equal(canSubmitWeeklyReport(supervisor, true), false);
   const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(app, /canOpenWeeklyReport\(profile,supervisor\)\?`<button type="button" id="weeklyReport">周报<\/button>`/);
+  const header = app.slice(app.indexOf('<header>'), app.indexOf('</header>'));
+  const resourceStart = header.indexOf('<div class="resource-links">');
+  const resource = header.slice(resourceStart, header.indexOf('</div>', resourceStart) + 6);
+  const weeklyButton = '<button type="button" id="weeklyReport">周报</button>';
+  assert.match(resource, /库存/);
+  assert.match(resource, /物流参数/);
+  assert.match(resource, /<button id="imageResource">图片下载<\/button>\$\{canOpenWeeklyReport\(profile,supervisor\)\?`<button type="button" id="weeklyReport">周报<\/button>`:""\}/);
+  const toolbarStart = app.indexOf('<div class="tool-actions">');
+  const toolbar = app.slice(toolbarStart, app.indexOf('</div>', toolbarStart) + 6);
+  assert.equal(toolbar.includes('周报'), false);
+  assert.equal(toolbar.includes('weeklyReport'), false);
+  assert.match(toolbar, /用户管理/);
+  assert.match(toolbar, /工厂 \/ 货代/);
+  assert.equal(app.split('id="weeklyReport"').length - 1, 1);
   assert.match(app, /\$\('#weeklyReport'\)\?\.addEventListener\('click',event=>\{event\.stopPropagation\(\);void openWeeklyReport\(\)\}\)/);
   assert.match(app, /weekly-report\.js\?v=20261123-1/);
   assert.match(app, /weekly-report=1/);
-  assert.match(html, /\/app-v2\.js\?v=20261123-2"/);
+  assert.match(html, /\/app-v2\.js\?v=20261123-3"/);
   const followerMarkup = app.slice(app.indexOf('${follower?`'), app.indexOf("`:\"\"}${profile?.role==='business'"));
   assert.equal(followerMarkup.includes('周报'), false);
   assert.equal(followerMarkup.includes('weeklyReport'), false);
+  const topNav = (person, supervisor) => canOpenWeeklyReport(person, supervisor)
+    ? resource.replace(/\$\{canOpenWeeklyReport\(profile,supervisor\)\?`([\s\S]*?)`:""\}/, '$1')
+    : resource.replace(/\$\{canOpenWeeklyReport\(profile,supervisor\)\?`[\s\S]*?`:""\}/, '');
+  for (const nav of [
+    topNav(supervisor, true),
+    topNav(sherry, false),
+    topNav(ella, false),
+    topNav(namedElla, false)
+  ]) {
+    assert.equal(nav.includes(weeklyButton), true);
+    assert.equal((nav.match(/id="weeklyReport"/g) || []).length, 1);
+  }
+  for (const nav of [
+    topNav(follower, false),
+    topNav({ role: 'business', email: 'sherry@inflatable-zone.com', disabled_at: '2026-11-01' }, false),
+    topNav(null, false)
+  ]) {
+    assert.equal(nav.includes('周报'), false);
+    assert.equal(nav.includes('weeklyReport'), false);
+  }
 });
 
 test('viewer summary has totals and no save form; a salesperson gets the four numbers and 周报', () => {

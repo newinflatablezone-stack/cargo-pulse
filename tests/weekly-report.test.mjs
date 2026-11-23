@@ -167,7 +167,7 @@ test('the home button is limited to the supervisor, Ella, and submitting salespe
   assert.match(app, /\$\('#weeklyReport'\)\?\.addEventListener\('click',event=>\{event\.stopPropagation\(\);void openWeeklyReport\(\)\}\)/);
   assert.match(app, /weekly-report\.js\?v=20261123-1/);
   assert.match(app, /weekly-report=1/);
-  assert.match(html, /\/app-v2\.js\?v=20261123-6"/);
+  assert.match(html, /\/app-v2\.js\?v=20261123-7"/);
   const followerMarkup = app.slice(app.indexOf('${follower?`'), app.indexOf("`:\"\"}${profile?.role==='business'"));
   assert.equal(followerMarkup.includes('周报'), false);
   assert.equal(followerMarkup.includes('weeklyReport'), false);

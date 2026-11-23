@@ -1528,3 +1528,7 @@ main.internal-resource-page-shell{width:100%;max-width:none!important;min-height
 .supervisor-sales-review .supervisor-sales-fields .wide{grid-column:1/-1}
 .supervisor-sales-review .supervisor-sales-fields dd{white-space:pre-wrap;overflow-wrap:anywhere}
 .supervisor-sales-review .follower-factory-assign{margin-top:22px;padding:18px 0 0;border-top:1px solid #e2e7e3}
+.order-card footer .card-order-actions{display:flex;flex-direction:column;align-items:stretch;justify-content:center;gap:4px;min-width:76px}
+.order-card footer .card-order-actions button{border:1px solid #b7d0c6;background:#f4faf7;color:#1f5a49;border-radius:7px;padding:6px 8px;font-size:12px;font-weight:700;line-height:1.15;white-space:nowrap;cursor:pointer}
+.order-card footer .card-order-actions button:hover{background:#e7f3ed;border-color:#7eae9c}
+@media(max-width:800px){.order-card footer .card-order-actions{grid-column:1/-1;flex-direction:row;justify-content:flex-end;min-width:0}.order-card footer .card-order-actions button{min-height:36px;padding:8px 12px}}

@@ -126,6 +126,18 @@ export function canSubmitWeeklyReport(profile, supervisor = false) {
   return canOpenWeeklyReport(profile, supervisor) && !supervisor && profile.role === 'business' && !namedElla(profile);
 }
 
+export function weeklyReportNavVisible({ profile = null, supervisor = false, cached = false } = {}) {
+  if (profile) return canOpenWeeklyReport(profile, supervisor);
+  if (supervisor) return true;
+  return cached === true;
+}
+
+export function weeklyReportNavCacheKey(userId) {
+  const id = String(userId ?? '').trim();
+  if (!id || id.includes('@')) return '';
+  return `cp_weekly_nav_${id}`;
+}
+
 function canonicalNumber(text) {
   return text.includes('.') ? text.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '') : text;
 }
@@ -147,7 +159,7 @@ export function validateWeeklyReportInput(input = {}) {
   }
   value.body = String(input.body ?? '').trim();
   if (value.body.length > 8000) return { ok: false, message: '周报内容过长' };
-  if (WEEKLY_REPORT_FIELDS.every(([key]) => value[key] == null) && !value.body) {
+  if (WEEKLY_REPORT_FIELDS.every(([key]) => value[key] == null)) {
     return { ok: false, message: EMPTY_WEEKLY_REPORT_MESSAGE };
   }
   value.week_start = String(input.week_start || '');
@@ -309,22 +321,20 @@ function personBlock(name, rows, weeks, own, current) {
   const editableWeeks = new Set(weeks.filter(week => own && (findSheetRow(rows, name, week.week_start, own.viewerId) || (current && week.week_start === current.week_start))).map(week => week.week_start));
   const span = weeks.length + 2;
   const head = `<tr class="sheet-banner"><th colspan="${span}">${escapeHtml(name)}</th></tr><tr class="sheet-head"><th>项目</th>${weeks.map(week => `<th>${escapeHtml(weeklyReportWeekShortLabel(week.week_start, week.week_end))}</th>`).join('')}<th>合计</th></tr><tr class="sheet-dates"><td></td>${weeks.map(week => `<td>${escapeHtml(week.week_start)} 至 ${escapeHtml(week.week_end)}</td>`).join('')}<td></td></tr>`;
-  const metrics = SHEET_METRICS.map(([metric, label, decimal], index) => {
+  const metrics = SHEET_METRICS.map(([metric, label, decimal]) => {
     const total = addDecimal(weeks.map(week => formatMetric(findSheetRow(rows, name, week.week_start, own?.viewerId)?.[metric])).filter(Boolean));
-    return `<tr class="${index % 2 === 0 ? 'sheet-zebra' : ''}"><th class="sheet-label">${label}</th>${weeks.map(week => numberCell(findSheetRow(rows, name, week.week_start, own?.viewerId), name, week, metric, decimal, editableWeeks.has(week.week_start))).join('')}<td class="sheet-sum" data-sum="person" data-person="${escapeHtml(name)}" data-metric="${metric}">${escapeHtml(total)}</td></tr>`;
+    return `<tr><th class="sheet-label">${label}</th>${weeks.map(week => numberCell(findSheetRow(rows, name, week.week_start, own?.viewerId), name, week, metric, decimal, editableWeeks.has(week.week_start))).join('')}<td class="sheet-sum" data-sum="person" data-person="${escapeHtml(name)}" data-metric="${metric}">${escapeHtml(total)}</td></tr>`;
   }).join('');
-  const bodyRow = `<tr class="sheet-zebra"><th class="sheet-label">周报</th>${weeks.map(week => {
-    const record = findSheetRow(rows, name, week.week_start, own?.viewerId);
-    const text = String(record?.body || '').trim();
-    if (!editableWeeks.has(week.week_start)) return `<td class="sheet-note">${text ? escapeHtml(text) : '未填写'}</td>`;
-    return `<td class="sheet-note"><textarea name="body" data-week="${escapeHtml(week.week_start)}">${escapeHtml(text)}</textarea></td>`;
-  }).join('')}<td class="sheet-sum"></td></tr>`;
   const noteRow = `<tr><th class="sheet-label">备注</th>${weeks.map(week => {
     const note = String(findSheetRow(rows, name, week.week_start, own?.viewerId)?.note || '').trim();
     return `<td class="sheet-note">${note ? escapeHtml(note) : '—'}</td>`;
   }).join('')}<td class="sheet-sum"></td></tr>`;
-  const saveRow = own ? `<tr class="sheet-save"><th></th>${weeks.map(week => editableWeeks.has(week.week_start) ? `<td><button type="button" class="weekly-report-save" data-week="${escapeHtml(week.week_start)}">保存</button><p class="weekly-report-error" data-week="${escapeHtml(week.week_start)}" role="alert"></p></td>` : '<td></td>').join('')}<td></td></tr>` : '';
-  return `<tbody class="sheet-person"${own ? ' data-own="true"' : ''} data-person="${escapeHtml(name)}">${head}${metrics}${bodyRow}${noteRow}${saveRow}</tbody>`;
+  const saveRow = own ? `<tr class="sheet-save"><th></th>${weeks.map(week => {
+    if (!editableWeeks.has(week.week_start)) return '<td></td>';
+    const body = String(findSheetRow(rows, name, week.week_start, own.viewerId)?.body || '');
+    return `<td><button type="button" class="weekly-report-save" data-week="${escapeHtml(week.week_start)}" data-body="${escapeHtml(body)}">保存</button><p class="weekly-report-error" data-week="${escapeHtml(week.week_start)}" role="alert"></p></td>`;
+  }).join('')}<td></td></tr>` : '';
+  return `<tbody class="sheet-person"${own ? ' data-own="true"' : ''} data-person="${escapeHtml(name)}">${head}${metrics}${noteRow}${saveRow}</tbody>`;
 }
 
 function grandBlock(title, rows, names, weeks) {
@@ -405,7 +415,7 @@ export async function mountWeeklyReport(page, { api, onClose, today = () => new 
       const week = button.dataset.week || '';
       const block = button.closest('tbody');
       const field = name => block?.querySelector(`[name="${name}"][data-week="${week}"]`)?.value;
-      const input = { week_start: week, inquiries: field('inquiries'), calls: field('calls'), unpaid_orders: field('unpaid_orders'), performance: field('performance'), body: field('body') };
+      const input = { week_start: week, inquiries: field('inquiries'), calls: field('calls'), unpaid_orders: field('unpaid_orders'), performance: field('performance'), body: button.dataset.body || '' };
       const parsed = validateWeeklyReportInput(input);
       const error = block?.querySelector(`.weekly-report-error[data-week="${week}"]`);
       if (!parsed.ok) {

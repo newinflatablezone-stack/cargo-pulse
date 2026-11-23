@@ -96,11 +96,11 @@ test('the order salesperson can revise a placed order with the saved fields, the
   assert.throws(() => store.updateSalespersonSupplement(business.id, { id: waiting.id, ...supplementFields({ order_no: '#9054' }) }), error => error.status === 409);
   const saved = store.updateSalespersonSupplement(business.id, {
     id: placed.id,
-    ...supplementFields({ product_name: '城堡 XL', quantity: 3, abnormal_note: '改成加急包装', customer_info: CUSTOMER })
+    ...supplementFields({ product_name: '城堡加大', quantity: 3, abnormal_note: '改成加急包装', customer_info: CUSTOMER })
   });
   const order = store.all('orders').find(row => row.id === saved.id);
   assert.equal(order.current_step, 'follower_create');
-  assert.equal(order.product_name, '城堡 XL');
+  assert.equal(order.product_name, '城堡加大');
   assert.equal(order.quantity, 3);
   assert.equal(order.abnormal_note, '改成加急包装');
   assert.equal(order.requirements, '改成加急包装');
@@ -148,11 +148,11 @@ test('after 创建订单 the same salesperson can supplement without resetting t
   const before = store.all('orders').find(row => row.id === created.id);
   const updated = store.updateSalespersonSupplement(business.id, {
     id: before.id,
-    ...supplementFields({ product_name: '城堡 revised', shipping_mode: 'air_freight', abnormal_note: '补充尺寸说明' })
+    ...supplementFields({ product_name: '城堡改版', shipping_mode: 'air_freight', abnormal_note: '补充尺寸说明' })
   });
   const order = store.all('orders').find(row => row.id === updated.id);
   assert.equal(order.current_step, 'production');
-  assert.equal(order.product_name, '城堡 revised');
+  assert.equal(order.product_name, '城堡改版');
   assert.equal(order.shipping_mode, 'air_freight');
   assert.equal(order.requirements, '跟单单独要求');
   assert.equal(order.abnormal_note, '补充尺寸说明');
@@ -164,7 +164,7 @@ test('after 创建订单 the same salesperson can supplement without resetting t
   store.put('order_images', { order_id: manual.id, object_path: `${manual.id}/product-image-photo.jpg`, file_name: '产品图片' });
   const salespersonPlaced = store.salespersonOrder(business.id, { action: 'place', id: manual.id, ...supplementFields({ order_no: 'IZ-200' }) });
   assert.throws(() => store.updateSalespersonSupplement(business.id, { id: salespersonPlaced.id, ...supplementFields({ order_no: '#9052' }) }), error => error.status === 400 && /纯数字/.test(error.message));
-  const renamed = store.updateSalespersonSupplement(business.id, { id: salespersonPlaced.id, ...supplementFields({ order_no: 'IZ-201', product_name: '手动 XL' }) });
+  const renamed = store.updateSalespersonSupplement(business.id, { id: salespersonPlaced.id, ...supplementFields({ order_no: 'IZ-201', product_name: '手动加大' }) });
   assert.equal(store.all('orders').find(row => row.id === renamed.id).order_no, 'IZ-201');
   assert.equal(store.all('orders').find(row => row.id === renamed.id).current_step, 'follower_create');
 });

@@ -142,8 +142,8 @@ test('after 下单 and after 创建订单 only that order salesperson can delete
   assert.deepEqual(issued.shopify_image_urls, []);
   assert.equal(store.all('order_images').some(row => row.object_path === upload), false);
   assert.equal(store.userNotifications(follower.id, { action: 'list' }).unread_count, 0);
-  const saved = store.updateSalespersonSupplement(business.id, { id: issued.id, ...supplementFields({ product_name: '城堡 revised' }) });
-  assert.equal(store.all('orders').find(row => row.id === saved.id).product_name, '城堡 revised');
+  const saved = store.updateSalespersonSupplement(business.id, { id: issued.id, ...supplementFields({ product_name: '城堡改版' }) });
+  assert.equal(store.all('orders').find(row => row.id === saved.id).product_name, '城堡改版');
   assert.deepEqual(store.all('orders').find(row => row.id === saved.id).shopify_image_urls, []);
   assert.equal(store.userNotifications(follower.id, { action: 'list' }).unread_count, 1);
 });

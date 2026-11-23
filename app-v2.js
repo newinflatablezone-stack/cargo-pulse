@@ -9,7 +9,7 @@ import "./product-name-rule.css";
 import {STEP_LABELS,RED_OVERDUE_AFTER_DAYS,firstStep,nextStep,nextShipping,oceanTransitDays,effectiveStepDeadline,deadline,alertLevel,flowFor,overallDeadline,stageAlertLevel,orderAlertLevel,eventsWithinCurrentFlow,currentStageNumber,resetNumberStageNote,trackingFieldsOnEntry} from "./workflow.js?v=20260929-compat";
 import {classifyDestination,MAINSTREAM_DESTINATIONS,normalizeDestination} from "./server/destination-risk.mjs?v=20261013-1";
 import {extractCustomerContacts,customerInfoReminder} from "./server/customer-info.mjs?v=20261122-8";
-import {PRODUCT_NAME_RULE,productNameReminder} from "./product-name.mjs?v=20261123-2";
+import {PRODUCT_NAME_RULE,productNameReminder} from "./product-name.mjs?v=20261123-3";
 import {FACTORY_EXPORT_EMPTY_MESSAGE,FACTORY_EXPORT_IMAGE_LIMIT,buildFactoryOrderWorkbook,canUseFactoryExport,factoryExportFilename,factoryImageExtension,factoryImageSources,isFactoryExportable} from "./factory-order-export.js?v=20261122-10";
 import {canOpenWeeklyReport,mountWeeklyReport,weeklyReportNavVisible} from "./weekly-report.js?v=20261123-1";
 

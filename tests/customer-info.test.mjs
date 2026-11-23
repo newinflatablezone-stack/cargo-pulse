@@ -67,7 +67,7 @@ test('create and place reject incomplete customer details, and import still keep
   assert.equal(imported.customer_info, 'Ada');
   assert.equal(imported.current_step, 'sales_supplement');
   const place = extra => store.shopifyHandoff(business.id, {
-    action: 'place', id: imported.id, order_no: '#9100', product_name: 'Arch', quantity: 1,
+    action: 'place', id: imported.id, order_no: '#9100', product_name: '拱门', quantity: 1,
     business_name: 'Demi', shipping_mode: 'domestic_sea', blower: '包风机', abnormal_note: '备注', ...extra
   });
   assert.throws(() => place({ customer_info: `Ada\n${email}\n${phone}` }), error => error.status === 400 && error.message === '客户信息还缺少：地址');
@@ -107,7 +107,7 @@ test('the reported US customer block is not missing and does not block submit', 
     image_urls: ['https://cdn.shopify.com/a.jpg'], customer_info: usBlock
   });
   const place = customer_info => store.shopifyHandoff(business.id, {
-    action: 'place', id: imported.id, order_no: '#9101', product_name: 'Arch', quantity: 1,
+    action: 'place', id: imported.id, order_no: '#9101', product_name: '拱门', quantity: 1,
     business_name: 'Demi', shipping_mode: 'domestic_sea', blower: '包风机', abnormal_note: '备注', customer_info
   });
   assert.throws(() => place(usWithoutAddress), error => error.status === 400 && error.message === '客户信息还缺少：地址');

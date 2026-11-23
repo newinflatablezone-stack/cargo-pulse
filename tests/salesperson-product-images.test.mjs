@@ -26,7 +26,7 @@ function fixture(t) {
 
 function supplementFields(extra = {}) {
   return {
-    product_name: 'Castle', quantity: 2, size: '3 x 2 m', business_name: 'Demi',
+    product_name: '城堡', quantity: 2, size: '3 x 2 m', business_name: 'Demi',
     shipping_mode: 'domestic_sea', blower: '包风机', customer_info: CUSTOMER, abnormal_note: '请加急',
     ...extra
   };
@@ -140,8 +140,8 @@ test('after 下单 and after 创建订单 only that order salesperson can delete
   assert.deepEqual(issued.shopify_image_urls, []);
   assert.equal(store.all('order_images').some(row => row.object_path === upload), false);
   assert.equal(store.userNotifications(follower.id, { action: 'list' }).unread_count, 0);
-  const saved = store.updateSalespersonSupplement(business.id, { id: issued.id, ...supplementFields({ product_name: 'Castle revised' }) });
-  assert.equal(store.all('orders').find(row => row.id === saved.id).product_name, 'Castle revised');
+  const saved = store.updateSalespersonSupplement(business.id, { id: issued.id, ...supplementFields({ product_name: '城堡 revised' }) });
+  assert.equal(store.all('orders').find(row => row.id === saved.id).product_name, '城堡 revised');
   assert.deepEqual(store.all('orders').find(row => row.id === saved.id).shopify_image_urls, []);
   assert.equal(store.userNotifications(follower.id, { action: 'list' }).unread_count, 1);
 });

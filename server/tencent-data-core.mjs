@@ -210,6 +210,10 @@ export function beijingOrderDate(value = new Date()) {
 // Weekly reports stay in this file. The live deployer copies tencent-data-core.mjs
 // and would crash if this module imported a new helper that it does not install.
 const WEEKLY_REPORTS = 'weekly_reports';
+// Kept out of TABLES on purpose. visibleRows() would otherwise hand every
+// account every other account's notifications. Read and write go through
+// userNotifications() and createNotifications().
+const USER_NOTIFICATIONS = 'user_notifications';
 const WEEKLY_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const WEEKLY_NUMBER = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
 export const EMPTY_WEEKLY_REPORT_MESSAGE = '请先填写周报内容，再保存';
@@ -525,7 +529,8 @@ export class TencentDataStore {
     const order = this.all('orders').find(row => row.id === orderId);
     if (!order || order.deleted_at) return false;
     if (order.current_step === SALES_SUPPLEMENT && order.shopify_order_id) return true;
-    return order.current_step === SALESPERSON_DRAFT && order.salesperson_draft === true && order.created_by === userId;
+    if (order.current_step === SALESPERSON_DRAFT && order.salesperson_draft === true && order.created_by === userId) return true;
+    return this.ownsOrder(userId, order) && this.salespersonCanRevise(order);
   }
 
   shopifyProductImagePost(userId, body) {
@@ -1068,6 +1073,86 @@ export class TencentDataStore {
     }
   }
 
+  salespersonCanRevise(order) {
+    return Boolean(order && !order.deleted_at && order.current_step !== SALES_SUPPLEMENT && order.current_step !== SALESPERSON_DRAFT);
+  }
+
+  // The order's own salesperson can change the same fields they filled at 下单,
+  // both while the order waits at 待跟单创建订单 and after 创建订单.
+  updateSalespersonSupplement(userId, input = {}) {
+    const fail = (message, status = 400) => { throw Object.assign(Error(message), { status }); };
+    const profile = this.profile(userId);
+    if (!profile || profile.disabled_at) fail('请先登录', 401);
+    const order = this.all('orders').find(row => row.id === input.id);
+    if (!order || order.deleted_at) fail('订单不存在', 404);
+    if (!this.salespersonCanRevise(order)) fail('请先完成下单', 409);
+    if (profile.role !== 'business' || !this.ownsOrder(userId, order)) fail('仅订单业务员可以修改补充信息', 403);
+    const value = key => typeof input[key] === 'string' ? input[key].trim() : '';
+    const orderNo = value('order_no') || String(order.order_no || '').trim();
+    const product = value('product_name');
+    const quantity = Number(input.quantity);
+    const businessName = value('business_name');
+    const shipping = value('shipping_mode');
+    const blower = normalizeBlowerChoice(value('blower'));
+    const customer = value('customer_info');
+    const note = value('abnormal_note');
+    const shippingAllowed = SALES_SHIPPING.has(shipping) || (shipping && shipping === String(order.shipping_mode || '') && ORDER_SHIPPING_MODES.has(shipping));
+    if (order.salesperson_shared === true && !order.shopify_order_id && isPurelyNumericOrderNumber(orderNo)) fail('自定义订单号' + CUSTOM_ORDER_NUMBER_RULE);
+    if (customer && customerInfoReminder(customer)) fail(customerInfoReminder(customer), 400);
+    if (!orderNo || !product || !Number.isSafeInteger(quantity) || quantity < 1 || !SALESPERSON_NAMES.includes(businessName) || !shippingAllowed || !blower || !customer || !note) {
+      fail('请补齐订单号、产品名称、数量、业务员、运输方式、包风机或包气泵、客户信息和订单备注');
+    }
+    if (this.all('orders').some(row => row.id !== order.id && orderNumberKey(row.order_no) === orderNumberKey(orderNo))) fail('订单号已存在', 409);
+    const owners = this.businessOwnersForName(businessName);
+    const timestamp = now();
+    const next = {
+      ...order,
+      order_no: orderNo,
+      product_name: product,
+      quantity,
+      size: value('size'),
+      customer_info: customer,
+      abnormal_note: note,
+      blower,
+      shipping_mode: shipping,
+      business_name: businessName,
+      business_id: owners.length === 1 ? owners[0].id : null,
+      business_user_id: null,
+      updated_at: timestamp
+    };
+    if (order.current_step === FOLLOWER_CREATE || order.requirements === order.abnormal_note) next.requirements = note;
+    this.db.exec('begin immediate');
+    try {
+      const saved = this.put('orders', next);
+      this.notifyOrderSupplement(saved);
+      this.db.exec('commit');
+      return { id: saved.id, current_step: saved.current_step };
+    } catch (error) {
+      this.db.exec('rollback');
+      for (const table of ['orders', USER_NOTIFICATIONS]) this.tableCache.delete(table);
+      throw error;
+    }
+  }
+
+  notifyOrderSupplement(order) {
+    const recipients = this.all('profiles').filter(row => row.role === 'follower' && !row.disabled_at).map(row => row.id);
+    if (!recipients.length) return { notifications: [] };
+    const orderNo = String(order.order_no || '').trim() || '未编号';
+    const title = '订单信息更新';
+    const body = `订单 ${orderNo} 的补充信息已更新，请查看。`;
+    const contact = extractCustomerContacts(order.customer_info);
+    const leaked = contact.emails.some(email => body.toLowerCase().includes(email) || title.toLowerCase().includes(email))
+      || contact.phones.some(phone => phone.length >= 7 && (body.includes(phone) || title.includes(phone)));
+    if (leaked) throw Object.assign(Error('通知不能包含客户联系方式'), { status: 400 });
+    return this.createNotifications({
+      user_ids: recipients,
+      title,
+      body,
+      kind: 'order_info_update',
+      order_id: order.id
+    });
+  }
+
   shopifyIntake(userId, input) {
     const profile = this.profile(userId);
     const fail = (message, status = 400) => { throw Object.assign(Error(message), {status}); };
@@ -1288,6 +1373,88 @@ export class TencentDataStore {
     if (action === 'list') return this.listWeeklyReports(userId, access);
     if (action === 'save') return this.saveWeeklyReport(userId, access, body);
     throw Object.assign(Error('不支持的周报操作'), { status: 400 });
+  }
+
+  // Write API for in-process features (order supplements today, weekly-report
+  // reminders later). There is no browser route for this method.
+  //
+  // store.createNotifications({
+  //   user_ids: [id, ...],   // or user_id: id. One row is stored per user.
+  //   title,                  // required
+  //   body,                   // required. content is accepted as an alias.
+  //   kind,                   // optional type string. type is accepted as an alias.
+  //   order_id,               // optional. Omit it for notifications that are not about an order.
+  //   unread                  // optional, defaults to true. read:true stores it already read.
+  // })
+  // Callers must not put phone numbers, email addresses, or other customer
+  // contact details in title or body. Returns { notifications }.
+  createNotifications(input = {}) {
+    const fail = (message, status = 400) => { throw Object.assign(Error(message), { status }); };
+    const rawIds = Array.isArray(input.user_ids) ? input.user_ids : input.user_id != null ? [input.user_id] : [];
+    const userIds = [...new Set(rawIds.map(id => String(id ?? '').trim()).filter(Boolean))];
+    if (!userIds.length) fail('请指定通知接收人');
+    const title = String(input.title ?? '').trim();
+    const body = String(input.body ?? input.content ?? '').trim();
+    if (!title) fail('请填写通知标题');
+    if (!body) fail('请填写通知内容');
+    if (title.length > 80) fail('通知标题过长');
+    if (body.length > 500) fail('通知内容过长');
+    const kind = String(input.kind ?? input.type ?? '').trim();
+    if (kind.length > 40) fail('通知类型过长');
+    const orderId = input.order_id == null || String(input.order_id).trim() === '' ? null : String(input.order_id).trim();
+    const unread = !(input.unread === false || input.read === true);
+    for (const id of userIds) if (!this.profile(id)) fail('通知接收人不存在', 404);
+    const timestamp = now();
+    const created = [];
+    // A savepoint works both on its own and inside the supplement transaction.
+    this.db.exec('savepoint user_notifications');
+    try {
+      for (const user_id of userIds) {
+        created.push(this.put(USER_NOTIFICATIONS, {
+          user_id, title, body, kind: kind || null, order_id: orderId, unread,
+          read_at: unread ? null : timestamp, created_at: timestamp
+        }));
+      }
+      this.db.exec('release user_notifications');
+    } catch (error) {
+      this.db.exec('rollback to user_notifications');
+      this.db.exec('release user_notifications');
+      this.tableCache.delete(USER_NOTIFICATIONS);
+      throw error;
+    }
+    return { notifications: created };
+  }
+
+  userNotifications(userId, input = {}) {
+    const fail = (message, status = 400) => { throw Object.assign(Error(message), { status }); };
+    const profile = this.profile(userId);
+    if (!profile || profile.disabled_at) fail('请先登录', 401);
+    const action = String(input.action || 'list');
+    const mine = () => this.all(USER_NOTIFICATIONS).filter(row => row.user_id === userId);
+    const newest = (rows) => rows.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)) || String(b.id).localeCompare(String(a.id)));
+    const unreadCount = rows => rows.filter(row => row.unread !== false).length;
+    if (action === 'list') {
+      const sorted = newest(mine());
+      const unread = sorted.filter(row => row.unread !== false);
+      const recentRead = sorted.filter(row => row.unread === false).slice(0, 30);
+      const notifications = newest([...unread, ...recentRead]);
+      return { unread_count: unread.length, notifications };
+    }
+    if (action === 'mark_read') {
+      const ids = new Set((Array.isArray(input.ids) ? input.ids : input.id ? [input.id] : []).map(id => String(id)));
+      const orderId = input.order_id ? String(input.order_id) : '';
+      const timestamp = now();
+      let updated = 0;
+      for (const row of mine()) {
+        if (row.unread === false) continue;
+        if (!ids.has(String(row.id)) && !(orderId && String(row.order_id) === orderId)) continue;
+        this.put(USER_NOTIFICATIONS, { ...row, unread: false, read_at: timestamp });
+        updated += 1;
+      }
+      return { updated, unread_count: unreadCount(mine()) };
+    }
+    if (action === 'create') fail('通知只能由服务端功能创建', 403);
+    fail('不支持的操作');
   }
 
   homeCoreSnapshot(userId) {

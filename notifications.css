@@ -1,0 +1,16 @@
+.notify-bell{position:relative;display:flex;align-items:center}
+#notificationBell{position:relative;display:grid;place-items:center;width:36px;height:36px;padding:0;border:0;border-radius:10px;background:transparent;color:#245447}
+#notificationBell:hover,#notificationBell[aria-expanded="true"]{background:#e7f2ed}
+#notificationBell:focus-visible{outline:2px solid #78a99a;outline-offset:2px}
+.notify-badge{position:absolute;top:2px;right:1px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#e23b32;color:#fff;font-size:10px;font-weight:700;line-height:16px;text-align:center}
+.notify-panel{position:absolute;top:calc(100% + 8px);right:0;z-index:30;width:min(360px,calc(100vw - 24px));max-height:min(420px,70vh);overflow:auto;padding:8px;border:1px solid #d7e3dc;border-radius:14px;background:#fff;box-shadow:0 16px 40px #173f3424}
+.notify-panel-title{margin:4px 8px 8px;color:#5d736a;font-size:12px;font-weight:700}
+.notify-empty{margin:12px 8px 16px;color:#7b8b84;font-size:13px}
+.notify-item{display:flex;align-items:flex-start;gap:8px;width:100%;margin:0;padding:10px 8px;border:0;border-radius:10px;background:transparent;color:#173f34;text-align:left}
+.notify-item:hover{background:#f3f8f5}
+.notify-item strong,.notify-item small{display:block}
+.notify-item strong{font-size:13px;font-weight:700}
+.notify-item small{margin-top:2px;color:#66776f;font-size:12px;line-height:1.45;white-space:normal}
+.notify-item-dot,.order-notify-dot{flex:none;width:8px;height:8px;margin-top:5px;border-radius:50%;background:#e23b32}
+.order-card .order-notify-dot{display:inline-block;width:8px;height:8px;margin:0 0 0 8px;padding:0;border-radius:50%;background:#e23b32;vertical-align:middle}
+.card-status .order-notify-dot{align-self:center}

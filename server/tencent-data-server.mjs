@@ -134,6 +134,14 @@ async function rpc(req, res, name, body, user) {
     if (req.method !== 'POST') throw Object.assign(Error('请使用 POST 请求'), {status:405});
     return send(res, 200, store.salespersonOrder(user.id, body));
   }
+  if (name === 'salesperson_supplement') {
+    if (req.method !== 'POST') throw Object.assign(Error('请使用 POST 请求'), {status:405});
+    return send(res, 200, store.updateSalespersonSupplement(user.id, body));
+  }
+  if (name === 'user_notifications') {
+    if (req.method !== 'POST') throw Object.assign(Error('请使用 POST 请求'), {status:405});
+    return send(res, 200, store.userNotifications(user.id, body));
+  }
   if (name === 'weekly_report') {
     if (req.method !== 'POST') throw Object.assign(Error('请使用 POST 请求'), { status: 405 });
     return send(res, 200, store.weeklyReport(user.id, body));

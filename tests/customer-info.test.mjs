@@ -19,6 +19,12 @@ const usWithoutAddress = usBlock.replace('751 North Marias Avenue, Shelby, Monta
 const usWithoutEmail = usBlock.replace('lambangela@yahoo.com\n', '');
 const usWithoutPhone = usBlock.replace('+14064602245', '');
 
+function assignCreateFactory(store, orderId) {
+  const supervisor = store.upsertAccount({ email: '505863160@qq.com', role: 'follower' });
+  store.put('partners', { id: 'factory-a', kind: 'factory', name: 'Factory A', active: true });
+  store.shopifyHandoff(supervisor.id, { action: 'assign_factory', id: orderId, factory_name: 'Factory A' });
+}
+
 test('customer text still extracts the same emails and phones', () => {
   const intl = extractCustomerContacts('Alice ALICE@example.com +1 (626) 342-7272');
   assert.deepEqual(intl.emails, ['alice@example.com']);
@@ -77,6 +83,7 @@ test('create and place reject incomplete customer details, and import still keep
   assert.equal(store.all('orders').find(row => row.id === imported.id).current_step, 'sales_supplement');
   place({ customer_info: complete });
   assert.equal(store.all('orders').find(row => row.id === imported.id).current_step, 'follower_create');
+  assignCreateFactory(store, imported.id);
   assert.throws(() => store.shopifyHandoff(follower.id, {
     action: 'create', id: imported.id, order_no: '#9100', product_name: 'Arch', size: '3m', quantity: 1,
     customer_info: `Ada\n${address}\n${phone}`, business_name: 'Demi', destination_country: '美国',
@@ -117,6 +124,7 @@ test('the reported US customer block is not missing and does not block submit', 
   place(usBlock);
   assert.equal(store.all('orders').find(row => row.id === imported.id).current_step, 'follower_create');
   assert.equal(store.all('orders').find(row => row.id === imported.id).customer_info, usBlock);
+  assignCreateFactory(store, imported.id);
   const create = customer_info => store.shopifyHandoff(follower.id, {
     action: 'create', id: imported.id, order_no: '#9101', product_name: 'Arch', size: '3m', quantity: 1,
     customer_info, business_name: 'Demi', destination_country: '美国',
@@ -149,8 +157,9 @@ test('the create-order form diagnoses customer info after prefill, not the empty
   const diagnosed = create.indexOf('bindCustomerInfoRule(form)');
   assert.ok(filled > 0 && diagnosed > filled);
   assert.equal(create.indexOf('bindCustomerInfoRule(form)', diagnosed + 1), -1);
-  assert.match(app, /if\(o&&!o\.deleted_at&&o\.current_step==='follower_create'&&canFollowOrders\(\)\)\{openShopifyCreate\(o\);return\}/);
-  assert.match(app, /#shopifyCreate'\)\?\.addEventListener\('click',\(\)=>openShopifyCreate\(o,d\)\)/);
+  assert.match(app, /if\(openFollowerCreate\(o\)\)return/);
+  assert.match(app, /followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}/);
+  assert.match(app, /#shopifyCreate'\)\?\.addEventListener\('click',\(\)=>openFollowerCreate\(o,d\)\)/);
   const line = app.split('\n').find(item => item.startsWith('function bindCustomerInfoRule'));
   const bindCustomerInfoRule = runInNewContext(`${line}\nbindCustomerInfoRule`, { customerInfoReminder });
   const formWith = value => {

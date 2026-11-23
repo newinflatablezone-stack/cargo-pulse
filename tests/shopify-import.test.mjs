@@ -289,6 +289,8 @@ test('salesperson 下单 then merchandiser 创建订单 follows the normal order
   assert.equal(store.canReadOrder(business.id, placed), false);
   assert.equal(store.canReadOrder(follower.id, placed), true);
   assert.throws(() => store.shopifyHandoff(other.id, { action: 'create', id: imported.id }), error => error.status === 403);
+  store.put('partners', { id: 'factory-a', kind: 'factory', name: 'Factory A', active: true });
+  store.shopifyHandoff(supervisor.id, { action: 'assign_factory', id: imported.id, factory_name: 'Factory A' });
   const beforeCreate = Date.now();
   const created = store.shopifyHandoff(follower.id, {
     action: 'create', id: imported.id, order_no: '#9053', order_date: '2020-01-01', product_name: 'Arch',

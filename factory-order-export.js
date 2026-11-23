@@ -139,6 +139,75 @@ function imageCellValue(images) {
   return [...links, ...notes].join('\n');
 }
 
+// Excel column width is in units of the default font's digit (Calibri 11 ≈ 7px).
+function columnWidthPx(width) {
+  const maxDigitWidth = 7;
+  return Math.floor(((256 * width + Math.floor(128 / maxDigitWidth)) / 256) * maxDigitWidth);
+}
+
+const IMAGE_MAX_PX = 112;
+const IMAGE_PAD_PX = 6;
+const IMAGE_GAP_PX = 8;
+const EMU_PER_PX = 9525;
+const TEXT_LINE_PT = 18;
+
+function textUnits(text) {
+  let units = 0;
+  for (const char of String(text)) units += char.charCodeAt(0) > 255 ? 2 : 1;
+  return units;
+}
+
+function wrappedLineCount(text, columnWidth) {
+  const capacity = Math.max(8, Math.floor(Number(columnWidth) * 0.9));
+  const source = String(text || '');
+  if (!source) return 0;
+  return source.split('\n').reduce((sum, line) => {
+    return sum + Math.max(1, Math.ceil(Math.max(1, textUnits(line)) / capacity));
+  }, 0);
+}
+
+function cellText(value) {
+  if (!value) return '';
+  if (typeof value === 'object') return String(value.text || '');
+  return String(value);
+}
+
+// One band of photos across the top of 产品图片. Several photos sit side by
+// side and shrink to stay inside the column; the URL uses the rows below.
+function placeProductImages(count, columnWidth) {
+  const columnPx = columnWidthPx(columnWidth);
+  const gaps = Math.max(0, count - 1) * IMAGE_GAP_PX;
+  const available = Math.max(count, columnPx - IMAGE_PAD_PX * 2 - gaps);
+  const size = Math.max(1, Math.min(IMAGE_MAX_PX, Math.floor(available / count)));
+  const slots = [];
+  for (let index = 0; index < count; index += 1) {
+    const leftPx = IMAGE_PAD_PX + index * (size + IMAGE_GAP_PX);
+    slots.push({
+      size,
+      colOff: Math.round(leftPx * EMU_PER_PX),
+      rowOff: Math.round(IMAGE_PAD_PX * EMU_PER_PX)
+    });
+  }
+  return {
+    slots,
+    bottomPt: ((IMAGE_PAD_PX + size) * EMU_PER_PX) / 12700
+  };
+}
+
+function productImageRowHeight(row, cellValue, placement, columnWidths) {
+  const urlLines = wrappedLineCount(cellText(cellValue), columnWidths['产品图片']);
+  const picturePt = placement.bottomPt + 10 + urlLines * TEXT_LINE_PT + 8;
+  const textColumns = [
+    ['产品名称', columnWidths['产品名称']],
+    ['尺寸', columnWidths['尺寸']],
+    ['下单要求', columnWidths['下单要求']]
+  ];
+  const textPt = textColumns.reduce((tallest, [name, width]) => {
+    return Math.max(tallest, wrappedLineCount(row[name], width) * TEXT_LINE_PT + 8);
+  }, 22);
+  return Math.min(409, Math.ceil(Math.max(picturePt, textPt)));
+}
+
 function imagesFor(order, imagesByOrderId) {
   if (!imagesByOrderId) return [];
   if (imagesByOrderId instanceof Map) {
@@ -167,7 +236,10 @@ export async function buildFactoryOrderWorkbook(orders, imagesByOrderId = new Ma
   header.alignment = { vertical: 'middle' };
   header.height = 22;
   const imageColumn = FACTORY_EXPORT_COLUMNS.indexOf('产品图片') + 1;
-  [14, 28, 18, 16, 10, 36, 14].forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
+  const columnWidths = {
+    下单日期: 14, 产品名称: 28, 产品图片: 46, 尺寸: 16, 数量: 10, 下单要求: 36, 交货日期: 14
+  };
+  FACTORY_EXPORT_COLUMNS.forEach((name, index) => { sheet.getColumn(index + 1).width = columnWidths[name]; });
   for (const name of ['产品名称', '产品图片', '下单要求']) sheet.getColumn(FACTORY_EXPORT_COLUMNS.indexOf(name) + 1).alignment = { wrapText: true, vertical: 'top' };
 
   for (const line of lines) {
@@ -186,13 +258,22 @@ export async function buildFactoryOrderWorkbook(orders, imagesByOrderId = new Ma
       embedded.push({ buffer: image.buffer, extension });
     }
     if (!embedded.length) continue;
-    added.height = Math.max(22, embedded.length * 78);
+    // Pictures float above the cell text. Keep each photo in a top band and
+    // bottom-align the https URL so wrap stays in the space under the photo.
+    const placement = placeProductImages(embedded.length, columnWidths['产品图片']);
+    cell.alignment = { horizontal: 'left', vertical: 'bottom', wrapText: true };
+    added.height = productImageRowHeight(line.row, text, placement, columnWidths);
     embedded.forEach((image, index) => {
+      const slot = placement.slots[index];
       const imageId = workbook.addImage({ base64: bytesToBase64(image.buffer), extension: image.extension });
-      const slot = 1 / embedded.length;
       sheet.addImage(imageId, {
-        tl: { col: imageColumn - 1 + 0.08, row: (added.number - 1) + index * slot + 0.06 },
-        ext: { width: 72, height: 72 },
+        tl: {
+          nativeCol: imageColumn - 1,
+          nativeColOff: slot.colOff,
+          nativeRow: added.number - 1,
+          nativeRowOff: slot.rowOff
+        },
+        ext: { width: slot.size, height: slot.size },
         editAs: 'oneCell'
       });
     });

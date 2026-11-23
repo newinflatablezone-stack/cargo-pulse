@@ -101,6 +101,15 @@ test('workbook columns, blank delivery date, images, and excluded orders', async
   const images = sheet.getImages();
   assert.equal(images.length, 2);
   assert.equal(images.every(image => image.range.tl.nativeCol === 2 && image.range.tl.nativeRow === 2), true);
+  assert.deepEqual(
+    [1, 2, 3, 4, 5, 6, 7].map(index => sheet.getColumn(index).width),
+    [14, 28, 46, 16, 10, 36, 14]
+  );
+  const imageCell = sheet.getRow(3).getCell(3);
+  assert.equal(imageCell.alignment.vertical, 'bottom');
+  assert.equal(imageCell.alignment.wrapText, true);
+  assert.equal(sheet.getRow(2).getCell(3).alignment?.vertical === 'bottom', false);
+  assertImagesSitAboveUrl(sheet, 3);
   const dumped = JSON.stringify([first, second, sheet.getRow(1).values]);
   assert.equal(dumped.includes('订单号'), false);
   assert.equal(dumped.includes('IZ-100'), false);
@@ -108,6 +117,79 @@ test('workbook columns, blank delivery date, images, and excluded orders', async
   assert.equal(dumped.includes('DO-NOT-EXPORT'), false);
   assert.equal(dumped.includes('WAIT-1'), false);
   assert.equal(dumped.includes('2026-12-01'), false);
+});
+
+const EMU_PER_PX = 9525;
+const EMU_PER_PT = 12700;
+
+function columnWidthPx(width) {
+  const maxDigitWidth = 7;
+  return Math.floor(((256 * width + Math.floor(128 / maxDigitWidth)) / 256) * maxDigitWidth);
+}
+
+// Bottom-aligned text occupies the last lines of the row. The picture must
+// end before that block, including when the URL is long enough to wrap.
+function assertImagesSitAboveUrl(sheet, rowNumber) {
+  const row = sheet.getRow(rowNumber);
+  const cell = row.getCell(3);
+  const text = cell.value && typeof cell.value === 'object' ? String(cell.value.text || '') : String(cell.value || '');
+  const capacity = Math.max(8, Math.floor(sheet.getColumn(3).width * 0.9));
+  const lines = text.split('\n').reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / capacity)), 0);
+  const textPt = lines * 15;
+  const pictures = sheet.getImages()
+    .filter(image => image.range.tl.nativeRow === rowNumber - 1)
+    .sort((a, b) => a.range.tl.nativeColOff - b.range.tl.nativeColOff);
+  assert.ok(pictures.length > 0);
+  const columnPx = columnWidthPx(sheet.getColumn(3).width);
+  let previousRight = 0;
+  for (const picture of pictures) {
+    const leftPx = picture.range.tl.nativeColOff / EMU_PER_PX;
+    const topPt = picture.range.tl.nativeRowOff / EMU_PER_PT;
+    const sizePx = picture.range.ext.width;
+    const bottomPt = topPt + (picture.range.ext.height * EMU_PER_PX) / EMU_PER_PT;
+    assert.equal(picture.range.tl.nativeCol, 2);
+    assert.ok(leftPx >= previousRight - 0.5, 'product photos overlap each other');
+    assert.ok(leftPx + sizePx <= columnPx + 0.5, 'product photo spills out of 产品图片');
+    assert.ok(row.height - textPt >= bottomPt + 4, `photo bottom ${bottomPt} meets URL text in a ${row.height}pt row`);
+    previousRight = leftPx + sizePx;
+  }
+}
+
+test('a long Shopify URL stays complete under the product photo', async () => {
+  const url = 'https://cdn.shopify.com/s/files/1/0503/4324/8066/files/Mechanical_Bull_Rides_Inflatable_Bull_Rides_Rock_Bull_Rides_Electric_Bull_Riding_Machine_For_Amusement_Park.png?v=1';
+  const linkedOnly = 'https://cdn.shopify.com/only-the-link.jpg';
+  const buffer = await buildFactoryOrderWorkbook(
+    [
+      created({
+        id: 'bull', order_no: 'BULL-1', order_date: '2026-11-23',
+        product_name: 'Mechanical Bull Rides Inflatable Bull Rides Rock Bull Rides Electric Bull Riding Machine For Amusement Park - By sea door to door (production time 6 business days + shipping time 39 business days) / With air blower',
+        size: '6x4M', quantity: 1, requirements: '直接下单，做好后发给客户货'
+      }),
+      created({ id: 'link-only', order_no: 'LINK-1', order_date: '2026-11-24', product_name: 'Mat', quantity: 1, size: '1 m', requirements: '' })
+    ],
+    new Map([
+      ['bull', [{ buffer: PNG, extension: 'png', url }]],
+      ['link-only', [{ url: linkedOnly }]]
+    ])
+  );
+  const sheet = await readWorkbook(buffer);
+  assert.deepEqual(sheet.getRow(1).values.slice(1), [...FACTORY_EXPORT_COLUMNS]);
+  const photo = sheet.getRow(2).getCell(3).value;
+  assert.equal(photo.text, url);
+  assert.equal(photo.hyperlink, url);
+  assert.equal(photo.text.includes('\n'), false);
+  assert.equal(sheet.getRow(2).getCell(3).alignment.vertical, 'bottom');
+  assert.equal(sheet.getRow(2).getCell(3).alignment.wrapText, true);
+  assert.equal(sheet.getRow(2).getCell(7).value, '');
+  assertImagesSitAboveUrl(sheet, 2);
+  assert.equal(sheet.getImages().length, 1);
+  const linkOnly = sheet.getRow(3).getCell(3).value;
+  assert.equal(linkOnly.text, linkedOnly);
+  assert.equal(linkOnly.hyperlink, linkedOnly);
+  assert.equal(sheet.getRow(3).getCell(3).alignment?.vertical === 'bottom', false);
+  const dumped = JSON.stringify(sheet.getRow(2).values);
+  assert.equal(dumped.includes('订单号'), false);
+  assert.equal(dumped.includes('BULL-1'), false);
 });
 
 test('an empty selection does not build a workbook', async () => {

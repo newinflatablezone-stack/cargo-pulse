@@ -184,17 +184,6 @@ function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 }
 
-function selectedWeek(weekStart, todayIso) {
-  const current = beijingWeekRange(todayIso);
-  if (!weekStart) return current;
-  try {
-    const candidate = beijingWeekRange(weekStart);
-    return candidate.week_start === weekStart ? candidate : current;
-  } catch {
-    return current;
-  }
-}
-
 function displayNumber(value) {
   return value == null || value === '' ? '—' : escapeHtml(value);
 }
@@ -239,109 +228,116 @@ function weekRangeLabel(row) {
   return start && end ? `${start} 至 ${end}` : start || end;
 }
 
-function ownWeeklyReport(reports, weekStart, viewerId) {
-  const weekRows = reports.filter(row => row.week_start === weekStart);
-  if (viewerId) return weekRows.find(row => row.user_id === viewerId) || null;
-  return weekRows.length === 1 ? weekRows[0] : null;
-}
-
 function savedOwnCurrentWeek(reports, weekStart, viewerId) {
   return reports.some(row => row.week_start === weekStart && (viewerId ? row.user_id === viewerId : true));
 }
 
-function editableWeekStarts(reports, currentStart) {
-  const starts = new Set();
-  if (DATE_ONLY.test(currentStart)) starts.add(currentStart);
-  for (const row of reports) if (DATE_ONLY.test(String(row?.week_start || ''))) starts.add(row.week_start);
-  let cursor = currentStart;
-  for (let index = 0; index < 8 && DATE_ONLY.test(cursor); index += 1) {
-    cursor = addCalendarDays(cursor, -7);
-    if (cursor) starts.add(cursor);
-  }
-  return [...starts].sort().reverse();
+function viewerSalesName(reports, viewerId) {
+  const named = reports.find(row => row.user_id === viewerId && String(row.salesperson_name || '').trim());
+  return named ? String(named.salesperson_name).trim() : '本人';
 }
 
-function summaryTables(reports) {
+function sortReportRows(rows) {
+  return rows.sort((a, b) => String(a.week_start).localeCompare(String(b.week_start)) || String(a.salesperson_name || '').localeCompare(String(b.salesperson_name || ''), 'zh-CN'));
+}
+
+function fieldInput(name, value, decimal = false) {
+  return `<input name="${name}" inputmode="${decimal ? 'decimal' : 'numeric'}" value="${escapeHtml(value ?? '')}" autocomplete="off">`;
+}
+
+function reportRow(row, editable) {
+  const note = String(row.note || '').trim();
+  const text = String(row.body || '').trim();
+  const reportCell = editable
+    ? `<textarea name="body">${escapeHtml(text)}</textarea><button type="button" class="weekly-report-save">保存</button><p class="weekly-report-error" role="alert"></p>`
+    : `<div class="weekly-report-text">${text ? escapeHtml(text) : '未填写'}</div>`;
+  const numberCell = (name, value, decimal = false) => editable ? fieldInput(name, value ?? '', decimal) : displayNumber(value);
+  return `<tr${editable ? ` class="weekly-report-row-own" data-own="true" data-week="${escapeHtml(row.week_start)}"` : ''}><th>${escapeHtml(row.salesperson_name || '业务员')}</th><td>${escapeHtml(weekRangeLabel(row))}</td><td>${numberCell('inquiries', row.inquiries)}</td><td>${numberCell('calls', row.calls)}</td><td>${numberCell('unpaid_orders', row.unpaid_orders)}</td><td>${numberCell('performance', row.performance, true)}</td><td>${reportCell}</td><td>${note ? escapeHtml(note) : '—'}</td></tr>`;
+}
+
+function summaryTables(reports, edit = null) {
   const months = groupWeeklyReportsByMonth(reports);
+  const currentMonth = edit?.current ? weeklyReportMonthKey(edit.current.week_end) : '';
+  const ownsCurrent = Boolean(edit?.viewerId && edit.current && reports.some(row => row.week_start === edit.current.week_start && row.user_id === edit.viewerId));
+  if (edit?.canSubmit && edit.viewerId && currentMonth && !ownsCurrent && !months.some(group => group.month === currentMonth)) {
+    months.push({ month: currentMonth, label: weeklyReportMonthLabel(currentMonth), rows: [], totals: sumWeeklyReports([]) });
+    months.sort((a, b) => b.month.localeCompare(a.month));
+  }
   if (!months.length) return '<p class="weekly-report-empty">还没有周报。</p>';
   return months.map(group => {
-    const body = group.rows.map(row => {
-      const note = String(row.note || '').trim();
-      const text = String(row.body || '').trim();
-      return `<tr><th>${escapeHtml(row.salesperson_name || '业务员')}</th><td>${escapeHtml(weekRangeLabel(row))}</td><td>${displayNumber(row.inquiries)}</td><td>${displayNumber(row.calls)}</td><td>${displayNumber(row.unpaid_orders)}</td><td>${displayNumber(row.performance)}</td><td><div class="weekly-report-text">${text ? escapeHtml(text) : '未填写'}</div></td><td>${note ? escapeHtml(note) : '—'}</td></tr>`;
-    }).join('');
+    const rows = group.rows.slice();
+    if (edit?.canSubmit && edit.viewerId && edit.current && group.month === currentMonth && !ownsCurrent) {
+      rows.push({
+        user_id: edit.viewerId,
+        salesperson_name: edit.viewerName,
+        week_start: edit.current.week_start,
+        week_end: edit.current.week_end,
+        inquiries: null,
+        calls: null,
+        unpaid_orders: null,
+        performance: null,
+        body: '',
+        note: ''
+      });
+      sortReportRows(rows);
+    }
+    const body = rows.map(row => reportRow(row, Boolean(edit?.canSubmit && edit.viewerId && row.user_id === edit.viewerId))).join('');
     const totals = group.totals;
     return `<section class="weekly-report-month-block" data-month="${escapeHtml(group.month)}"><h2 class="weekly-report-month">${escapeHtml(group.label)}</h2><article class="weekly-report-card"><div class="weekly-report-table-scroll"><table class="weekly-report-table"><thead><tr><th>业务员</th><th>周期（周四至周三）</th><th>询盘</th><th>电话</th><th>下单未付</th><th>业绩</th><th>周报</th><th>备注</th></tr></thead><tbody>${body}<tr class="weekly-report-total"><th>合计</th><td></td><td>${escapeHtml(totals.inquiries)}</td><td>${escapeHtml(totals.calls)}</td><td>${escapeHtml(totals.unpaid_orders)}</td><td>${escapeHtml(totals.performance)}</td><td></td><td></td></tr></tbody></table></div></article></section>`;
   }).join('');
 }
 
-function editForm(reports, week, current, todayIso, viewerId) {
-  const own = ownWeeklyReport(reports, week.week_start, viewerId);
-  const reminder = weeklyReminder(todayIso, savedOwnCurrentWeek(reports, current.week_start, viewerId));
-  const reminderHtml = reminder ? `<p class="${reminder.kind === 'due' ? 'weekly-report-reminder' : 'weekly-report-defer'}" role="${reminder.kind === 'due' ? 'alert' : 'status'}">${escapeHtml(reminder.text)}</p>` : '';
-  const note = String(own?.note || '').trim();
-  const noteHtml = note ? `<p class="weekly-report-note">备注：${escapeHtml(note)}</p>` : '';
-  const valueOf = key => own?.[key] == null ? '' : String(own[key]);
-  const options = editableWeekStarts(reports, current.week_start).map(start => {
-    const item = beijingWeekRange(start);
-    return `<option value="${escapeHtml(start)}"${start === week.week_start ? ' selected' : ''}>${escapeHtml(`${item.week_start} 至 ${item.week_end}`)}</option>`;
-  }).join('');
-  const range = `${week.week_start} 至 ${week.week_end}（周四至周三，北京时间）`;
-  return `<article class="weekly-report-card weekly-report-edit"><h2>填写本人周报</h2>${reminderHtml}${noteHtml}<form id="weeklyReportForm"><label class="weekly-report-edit-week">填写周次<select id="weeklyReportEditWeek">${options}</select></label><p class="weekly-report-range">填写周期：${escapeHtml(range)}</p><div class="weekly-report-form"><label>询盘<input name="inquiries" inputmode="numeric" value="${escapeHtml(valueOf('inquiries'))}" autocomplete="off"></label><label>电话<input name="calls" inputmode="numeric" value="${escapeHtml(valueOf('calls'))}" autocomplete="off"></label><label>下单未付<input name="unpaid_orders" inputmode="numeric" value="${escapeHtml(valueOf('unpaid_orders'))}" autocomplete="off"></label><label>业绩<input name="performance" inputmode="decimal" value="${escapeHtml(valueOf('performance'))}" autocomplete="off"></label><label class="wide">周报<textarea name="body">${escapeHtml(valueOf('body'))}</textarea></label></div><p class="weekly-report-error" role="alert"></p><div class="weekly-report-actions"><button class="primary" type="submit" id="saveWeeklyReport">保存</button></div></form></article>`;
-}
-
-export function renderWeeklyReport({ access = 'view', reports = [], weekStart = '', today = new Date(), viewerId = '' } = {}) {
+export function renderWeeklyReport({ access = 'view', reports = [], today = new Date(), viewerId = '' } = {}) {
   const todayIso = typeof today === 'string' ? today : beijingCalendarDate(today);
   const current = beijingWeekRange(todayIso);
-  const week = selectedWeek(weekStart, todayIso);
   const canSubmit = access === 'submit';
-  const heading = `<div class="weekly-report-head"><div><p class="kicker">WEEKLY REPORT</p><h1>周报</h1><p>${canSubmit ? '查看各业务员的月度汇总，并填写、保存本人的周报。' : '查看各业务员的月度汇总，不能代为保存。'}</p></div><button type="button" id="closeWeeklyReport">← 返回订单中心</button></div>`;
-  const form = canSubmit ? editForm(reports, week, current, todayIso, viewerId) : '';
-  return `<section class="weekly-report-shell" data-access="${canSubmit ? 'submit' : 'view'}">${heading}${form}<div class="weekly-report-summary">${summaryTables(reports)}</div></section>`;
+  const reminder = canSubmit ? weeklyReminder(todayIso, savedOwnCurrentWeek(reports, current.week_start, viewerId)) : null;
+  const reminderHtml = reminder ? `<p class="${reminder.kind === 'due' ? 'weekly-report-reminder' : 'weekly-report-defer'}" role="${reminder.kind === 'due' ? 'alert' : 'status'}">${escapeHtml(reminder.text)}</p>` : '';
+  const heading = `<div class="weekly-report-head"><div><p class="kicker">WEEKLY REPORT</p><h1>周报</h1><p>${canSubmit ? '在月度汇总表中修改并保存本人的周报。不能修改他人的数据或备注。' : '查看各业务员的月度汇总，不能代为保存。'}</p></div><button type="button" id="closeWeeklyReport">← 返回订单中心</button></div>`;
+  const edit = canSubmit && viewerId ? { canSubmit, viewerId, viewerName: viewerSalesName(reports, viewerId), current } : null;
+  return `<section class="weekly-report-shell" data-access="${canSubmit ? 'submit' : 'view'}">${heading}${reminderHtml}<div class="weekly-report-summary">${summaryTables(reports, edit)}</div></section>`;
 }
 
 export async function mountWeeklyReport(page, { api, onClose, today = () => new Date() } = {}) {
-  let selected = '';
   let data = { access: 'view', reports: [], viewer_id: '' };
   const paint = () => {
     page.className = 'weekly-report-page';
-    page.innerHTML = renderWeeklyReport({ ...data, weekStart: selected, today: today(), viewerId: data.viewer_id || '' });
+    page.innerHTML = renderWeeklyReport({ ...data, today: today(), viewerId: data.viewer_id || '' });
     page.querySelector('#closeWeeklyReport')?.addEventListener('click', event => {
       event.stopPropagation();
       onClose?.();
     });
-    page.querySelector('#weeklyReportEditWeek')?.addEventListener('change', event => {
-      event.stopPropagation();
-      selected = event.target.value;
-      paint();
-    });
-    const form = page.querySelector('#weeklyReportForm');
-    form?.addEventListener('submit', async event => {
+    page.querySelectorAll('.weekly-report-save').forEach(button => button.addEventListener('click', async event => {
       event.preventDefault();
       event.stopPropagation();
-      const input = Object.fromEntries(new FormData(form).entries());
-      input.week_start = selected;
+      const row = button.closest('tr');
+      const input = {
+        week_start: row?.dataset.week || '',
+        inquiries: row?.querySelector('[name="inquiries"]')?.value,
+        calls: row?.querySelector('[name="calls"]')?.value,
+        unpaid_orders: row?.querySelector('[name="unpaid_orders"]')?.value,
+        performance: row?.querySelector('[name="performance"]')?.value,
+        body: row?.querySelector('[name="body"]')?.value
+      };
       const parsed = validateWeeklyReportInput(input);
-      const error = page.querySelector('.weekly-report-error');
+      const error = row?.querySelector('.weekly-report-error');
       if (!parsed.ok) {
         if (error) error.textContent = parsed.message;
         alert(parsed.message);
         return;
       }
-      const button = form.querySelector('#saveWeeklyReport');
-      if (button) button.disabled = true;
+      button.disabled = true;
       try {
         await api('/rest/v1/rpc/weekly_report', { method: 'POST', body: JSON.stringify({ action: 'save', ...parsed.value }) });
         await load();
       } catch (caught) {
         if (error) error.textContent = caught.message || '保存失败';
-        if (button) button.disabled = false;
+        button.disabled = false;
       }
-    });
+    }));
   };
   async function load() {
     data = await api('/rest/v1/rpc/weekly_report', { method: 'POST', body: JSON.stringify({ action: 'list' }) });
-    if (!selected) selected = beijingWeekRange(today()).week_start;
     if (page.isConnected !== false) paint();
   }
   await load();

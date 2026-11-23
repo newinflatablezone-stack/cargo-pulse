@@ -121,7 +121,7 @@ test('empty weekly report input is rejected before a request would be sent', () 
   assert.equal(validateWeeklyReportInput({ performance: '-1' }).ok, false);
   assert.equal(validateWeeklyReportInput({ performance: '5189.15' }).value.performance, '5189.15');
   const source = readFileSync(new URL('../weekly-report.js', import.meta.url), 'utf8');
-  const submit = source.slice(source.indexOf("form?.addEventListener('submit'"), source.indexOf("action: 'save'"));
+  const submit = source.slice(source.indexOf("button.addEventListener('click'"), source.indexOf("action: 'save'"));
   assert.ok(submit.indexOf('validateWeeklyReportInput') < submit.indexOf('alert(parsed.message)'));
   assert.ok(submit.indexOf('alert(parsed.message)') < submit.lastIndexOf('return;'));
 });
@@ -225,23 +225,38 @@ test('shared monthly summary is the same for viewers and salespeople, and a week
     assert.match(html, /Rayna/);
   }
   assert.equal(view.includes('<form'), false);
-  assert.equal(view.includes('id="saveWeeklyReport"'), false);
+  assert.equal(view.includes('<input'), false);
+  assert.equal(view.includes('weekly-report-save'), false);
   assert.equal(view.includes('data-access="view"'), true);
+  assert.equal(submit.includes('<form'), false);
+  assert.equal(submit.includes('填写本人周报'), false);
   assert.equal(submit.includes('data-access="submit"'), true);
-  assert.equal(submit.match(/<input /g).length, 4);
-  assert.equal(submit.match(/<textarea /g).length, 1);
-  assert.match(submit, /id="saveWeeklyReport">保存</);
-  assert.match(submit, /填写本人周报/);
+  assert.equal(submit.match(/<input /g).length, 12);
+  assert.equal(submit.match(/<textarea /g).length, 3);
+  assert.equal(submit.match(/class="weekly-report-save"/g).length, 3);
+  const ownRows = [...submit.matchAll(/<tr class="weekly-report-row-own" data-own="true" data-week="([^"]+)">([\s\S]*?)<\/tr>/g)];
+  assert.deepEqual(ownRows.map(match => match[1]), ['2026-10-29', '2026-11-05', '2026-11-12']);
+  assert.equal(ownRows.every(match => match[2].includes('>Sherry<')), true);
+  assert.equal([...submit.matchAll(/data-own="true"/g)].length, 3);
   assert.match(submit, /value="22"/);
   assert.match(submit, /value="24176"/);
   assert.equal(submit.includes('value="809.73"'), false);
   assert.equal(submit.includes('尚未保存'), false);
-  assert.match(submit, /备注：询盘另\+2地址不存在；下单未付另\+1电话冲突/);
-  const unsaved = renderWeeklyReport({ access: 'submit', reports: history.reports, weekStart: WEEK, today: '2026-11-16', viewerId: 'sherry' });
+  assert.match(submit, /询盘另\+2地址不存在；下单未付另\+1电话冲突/);
+  const currentWeek = ownRows.find(match => match[1] === WEEK)[2];
+  assert.equal(currentWeek.includes('<input'), true);
+  assert.equal(currentWeek.includes('<textarea name="body">'), true);
+  assert.equal(currentWeek.includes('name="note"'), false);
+  assert.match(currentWeek, />询盘另\+2地址不存在；下单未付另\+1电话冲突</);
+  const unsaved = renderWeeklyReport({ access: 'submit', reports: history.reports, today: '2026-11-16', viewerId: 'sherry' });
   assert.match(unsaved, /尚未保存/);
+  assert.equal(unsaved.includes('<form'), false);
   assert.equal(unsaved.match(/<input /g).length, 4);
+  assert.equal(unsaved.match(/class="weekly-report-save"/g).length, 1);
   assert.equal(unsaved.includes('value="22"'), false);
+  assert.match(unsaved, /data-week="2026-11-12"/);
   assert.match(unsaved, /2026年11月/);
+  assert.equal((unsaved.match(/data-own="true"/g) || []).length, 1);
 });
 
 test('historical fixture keeps the confirmed rows, exact 业绩, and separate 备注', () => {

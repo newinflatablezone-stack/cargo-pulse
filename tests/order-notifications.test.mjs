@@ -164,7 +164,7 @@ test('after 创建订单 the same salesperson can supplement without resetting t
   store.put('order_images', { order_id: manual.id, object_path: `${manual.id}/product-image-photo.jpg`, file_name: '产品图片' });
   const salespersonPlaced = store.salespersonOrder(business.id, { action: 'place', id: manual.id, ...supplementFields({ order_no: 'IZ-200' }) });
   assert.throws(() => store.updateSalespersonSupplement(business.id, { id: salespersonPlaced.id, ...supplementFields({ order_no: '#9052' }) }), error => error.status === 400 && /纯数字/.test(error.message));
-  const renamed = store.updateSalespersonSupplement(business.id, { id: salespersonPlaced.id, ...supplementFields({ order_no: 'IZ-201', product_name: 'Manual XL' }) });
+  const renamed = store.updateSalespersonSupplement(business.id, { id: salespersonPlaced.id, ...supplementFields({ order_no: 'IZ-201', product_name: '手动 XL' }) });
   assert.equal(store.all('orders').find(row => row.id === renamed.id).order_no, 'IZ-201');
   assert.equal(store.all('orders').find(row => row.id === renamed.id).current_step, 'follower_create');
 });

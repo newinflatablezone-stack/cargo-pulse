@@ -20,7 +20,7 @@ function fixture(t) {
 
 function fields(extra = {}) {
   return {
-    product_name: 'Castle', quantity: 2, size: '3 x 2 m', business_name: 'Demi',
+    product_name: '城堡', quantity: 2, size: '3 x 2 m', business_name: 'Demi',
     shipping_mode: 'domestic_sea', blower: '包风机', customer_info: 'Ada\n1 Main St, Austin, TX 78701\nada@example.com\n+1 5551234567', abnormal_note: '请加急',
     ...extra
   };

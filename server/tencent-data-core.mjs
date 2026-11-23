@@ -91,6 +91,7 @@ export function shopifySyncEligible(order) {
 }
 const SALES_SUPPLEMENT = 'sales_supplement';
 const FOLLOWER_CREATE = 'follower_create';
+const BUILTIN_FOLLOWER_FACTORIES = new Set(['库存', '海外仓']);
 const SALESPERSON_DRAFT = 'salesperson_draft';
 const SALESPERSON_NAMES = ['Ella', 'Sherry', 'Demi', 'Rayna'];
 const SALES_SHIPPING = new Set(['domestic_sea', 'domestic_express', 'other']);
@@ -955,7 +956,7 @@ export class TencentDataStore {
     if (order.current_step !== FOLLOWER_CREATE) fail('订单已不在待跟单创建订单', 409);
     const factory = typeof input.factory_name === 'string' ? input.factory_name.trim() : '';
     if (!factory || factory.length > 120) fail('请选择工厂', 400);
-    const known = this.all('partners').some(partner => partner.kind === 'factory' && partner.active !== false && String(partner.name || '').trim() === factory);
+    const known = BUILTIN_FOLLOWER_FACTORIES.has(factory) || this.all('partners').some(partner => partner.kind === 'factory' && partner.active !== false && String(partner.name || '').trim() === factory);
     if (!known) fail('请选择已有工厂', 400);
     const saved = this.put('orders', { ...order, factory_name: factory, updated_at: now() });
     return { id: saved.id, factory_name: saved.factory_name, current_step: saved.current_step };

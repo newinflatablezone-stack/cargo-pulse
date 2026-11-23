@@ -1470,6 +1470,7 @@ main.internal-resource-page-shell{width:100%;max-width:none!important;min-height
 .weekly-report-page{width:100%;max-width:none!important;margin:0!important;padding:0!important;background:#f4f7f5}
 .weekly-report-shell{min-height:calc(100vh - 64px);padding:34px clamp(22px,4vw,72px) 56px;box-sizing:border-box}
 .weekly-report-head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:18px}
+.weekly-report-head-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .weekly-report-head h1{margin:3px 0 7px;font-size:28px;color:#183f35}
 .weekly-report-head p,.weekly-report-loading span{margin:0;color:#6f8179;font-size:12px}
 .weekly-report-head button,.weekly-report-week button{border:1px solid #cbd9d2;border-radius:9px;padding:9px 14px;background:#fff;color:#285649;font-weight:700}

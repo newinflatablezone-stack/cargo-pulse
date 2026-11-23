@@ -210,6 +210,7 @@ function clickOrderCard(order, person) {
   assert.ok(start > 0 && end > start);
   const identity = app.slice(app.indexOf('function salespersonChoice('), app.indexOf('function orderHasUnreadNotification('));
   const supervisor = app.slice(app.indexOf('const SUPERVISOR_EMAIL='), app.indexOf('function storedSupervisorSession('));
+  const follow = app.slice(app.indexOf('function canFollowOrders('), app.indexOf('const factoryExportSelection'));
   const opened = [];
   const ctx = {
     profile: { ...person },
@@ -223,7 +224,7 @@ function clickOrderCard(order, person) {
     openSalespersonSupplement(row) { opened.push('supplement:' + row.current_step + ':' + row.id); },
     markOrderNotificationsRead(id) { opened.push('read:' + id); }
   };
-  runInNewContext(supervisor + identity + 'function click(event, c){\n' + app.slice(start + marker.length, end) + '\nopened.push("detail:"+c.dataset.order);\n}\nclick(event, c);', ctx);
+  runInNewContext(supervisor + follow + identity + 'function click(event, c){\n' + app.slice(start + marker.length, end) + '\nopened.push("detail:"+c.dataset.order);\n}\nclick(event, c);', ctx);
   return opened;
 }
 
@@ -239,6 +240,9 @@ test('the order salesperson lands on the prefilled form from the card, before an
   const deleted = { id: 'del-1', current_step: 'production', deleted_at: '2026-11-01', business_id: 'demi-1', business_name: 'Demi' };
 
   assert.deepEqual(clickOrderCard(waiting, owner), ['read:wait-1', 'supplement:follower_create:wait-1']);
+  assert.deepEqual(clickOrderCard(waiting, follower), ['read:wait-1', 'create:wait-1']);
+  const supervisorWaiting = { id: 'wait-boss', current_step: 'follower_create', deleted_at: null, business_id: 'boss-1', business_name: 'Demi' };
+  assert.deepEqual(clickOrderCard(supervisorWaiting, { ...supervisor, role: 'business', display_name: 'Demi' }), ['read:wait-boss', 'create:wait-boss']);
   assert.deepEqual(clickOrderCard(issued, owner), ['read:prod-1', 'supplement:production:prod-1']);
   assert.deepEqual(clickOrderCard(completed, owner), ['read:done-1', 'supplement:completed:done-1']);
   assert.deepEqual(clickOrderCard(issued, other), ['read:prod-1', 'detail:prod-1']);
@@ -253,7 +257,8 @@ test('the order salesperson lands on the prefilled form from the card, before an
   const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
   const clickStart = app.indexOf("document.querySelectorAll('[data-order]')");
   const click = app.slice(clickStart, app.indexOf("let d=$('#detail')", clickStart));
+  const createGate = click.indexOf("current_step==='follower_create'&&canFollowOrders()){openShopifyCreate(o);return}");
   const waitingGate = click.indexOf("current_step==='follower_create'&&profile?.role==='business'&&isOrderSalesperson(o)");
   const issuedGate = click.indexOf("current_step!=='sales_supplement'&&o.current_step!=='follower_create'&&isOrderSalesperson(o)&&!isSupervisor()");
-  assert.ok(waitingGate > 0 && issuedGate > waitingGate);
+  assert.ok(createGate > 0 && waitingGate > createGate && issuedGate > waitingGate);
 });

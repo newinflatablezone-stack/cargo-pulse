@@ -1,0 +1,37 @@
+.q-shopify-images .product-image-frame {
+  position: relative;
+  display: inline-flex;
+  width: 84px;
+  height: 84px;
+  flex: 0 0 84px;
+}
+
+.q-shopify-images .product-image-frame img {
+  width: 84px;
+  height: 84px;
+}
+
+.product-image-delete {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  margin: 0;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(14, 89, 73, 0.92);
+  color: #fff;
+  font: 700 12px/1.4 Arial, "Microsoft YaHei", sans-serif;
+  cursor: pointer;
+}
+
+.product-image-delete:hover,
+.product-image-delete:focus-visible {
+  background: #9b2c2c;
+}
+
+.product-image-delete:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}

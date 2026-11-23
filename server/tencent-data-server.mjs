@@ -136,6 +136,13 @@ async function rpc(req, res, name, body, user) {
   }
   if (name === 'salesperson_supplement') {
     if (req.method !== 'POST') throw Object.assign(Error('请使用 POST 请求'), {status:405});
+    if (body.action === 'remove_image') {
+      const removed = store.removeSalespersonProductImage(user.id, body);
+      if (removed.object_path) {
+        try { await unlink(safeUploadPath(removed.object_path)); } catch {}
+      }
+      return send(res, 200, removed);
+    }
     return send(res, 200, store.updateSalespersonSupplement(user.id, body));
   }
   if (name === 'user_notifications') {

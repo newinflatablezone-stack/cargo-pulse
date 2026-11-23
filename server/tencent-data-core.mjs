@@ -520,17 +520,20 @@ export class TencentDataStore {
     return { ...order, business_id: owners.length === 1 ? owners[0].id : null, business_user_id: null };
   }
 
-  canUploadShopifyProductImage(userId, objectPath) {
-    const path = String(objectPath || '');
-    const orderId = /^([^/]+)\/product-image-[A-Za-z0-9._-]+$/.exec(path)?.[1];
-    if (!orderId) return false;
+  canEditSalespersonProductImages(userId, order) {
     const actor = this.profile(userId);
     if (!actor || actor.disabled_at || actor.role !== 'business') return false;
-    const order = this.all('orders').find(row => row.id === orderId);
     if (!order || order.deleted_at) return false;
     if (order.current_step === SALES_SUPPLEMENT && order.shopify_order_id) return true;
     if (order.current_step === SALESPERSON_DRAFT && order.salesperson_draft === true && order.created_by === userId) return true;
     return this.ownsOrder(userId, order) && this.salespersonCanRevise(order);
+  }
+
+  canUploadShopifyProductImage(userId, objectPath) {
+    const path = String(objectPath || '');
+    const orderId = /^([^/]+)\/product-image-[A-Za-z0-9._-]+$/.exec(path)?.[1];
+    if (!orderId) return false;
+    return this.canEditSalespersonProductImages(userId, this.all('orders').find(row => row.id === orderId));
   }
 
   shopifyProductImagePost(userId, body) {
@@ -697,7 +700,10 @@ export class TencentDataStore {
       if (present(draft[key])) next[key] = draft[key];
     }
     if (present(draft.quantity)) next.quantity = draft.quantity;
-    if (present(draft.shopify_image_urls)) next.shopify_image_urls = draft.shopify_image_urls;
+    if (present(draft.shopify_image_urls)) {
+      const dismissed = new Set((Array.isArray(order.dismissed_shopify_image_urls) ? order.dismissed_shopify_image_urls : []).filter(url => typeof url === 'string'));
+      next.shopify_image_urls = dismissed.size ? draft.shopify_image_urls.filter(url => !dismissed.has(url)) : draft.shopify_image_urls;
+    }
     if (draft.destination_risk === 'mainstream' && present(draft.destination_country)) {
       next.destination_risk = 'mainstream';
       next.destination_risk_acknowledged = false;
@@ -1075,6 +1081,45 @@ export class TencentDataStore {
 
   salespersonCanRevise(order) {
     return Boolean(order && !order.deleted_at && order.current_step !== SALES_SUPPLEMENT && order.current_step !== SALESPERSON_DRAFT);
+  }
+
+  // Removes one product image the salesperson can already add: an uploaded
+  // /product-image- file, or one Shopify https URL. The order step is unchanged
+  // and merchandisers are not notified. Dismissed Shopify URLs stay off the
+  // order even when a later sales_supplement refresh sends them again.
+  removeSalespersonProductImage(userId, input = {}) {
+    const fail = (message, status = 400) => { throw Object.assign(Error(message), { status }); };
+    const profile = this.profile(userId);
+    if (!profile || profile.disabled_at) fail('请先登录', 401);
+    const order = this.all('orders').find(row => row.id === input.id);
+    if (!order || order.deleted_at) fail('订单不存在', 404);
+    if (!this.canEditSalespersonProductImages(userId, order)) fail('仅能删除自己可补充订单上的产品图片', 403);
+    const objectPath = typeof input.object_path === 'string' ? input.object_path.trim() : '';
+    const imageUrl = typeof input.image_url === 'string' ? input.image_url.trim() : '';
+    if (Boolean(objectPath) === Boolean(imageUrl)) fail('请指定要删除的产品图片');
+    if (objectPath) {
+      if (!this.canUploadShopifyProductImage(userId, objectPath) || objectPath.split('/')[0] !== String(order.id)) fail('不能删除这张产品图片', 403);
+      const rows = this.all('order_images').filter(row => row.order_id === order.id && row.object_path === objectPath && String(row.object_path).includes('/product-image-'));
+      if (!rows.length) fail('图片不存在', 404);
+      this.remove('order_images', rows.map(row => row.id));
+      return { id: order.id, object_path: objectPath, removed: true };
+    }
+    let parsed;
+    try { parsed = new URL(imageUrl); } catch { parsed = null; }
+    if (!parsed || parsed.protocol !== 'https:') fail('图片地址须为 HTTPS 链接');
+    const urls = Array.isArray(order.shopify_image_urls) ? order.shopify_image_urls : [];
+    const legacy = Array.isArray(order.image_urls) ? order.image_urls : [];
+    if (!urls.includes(imageUrl) && !legacy.includes(imageUrl)) fail('图片不存在', 404);
+    const dismissed = [...new Set([...(Array.isArray(order.dismissed_shopify_image_urls) ? order.dismissed_shopify_image_urls : []), imageUrl])];
+    const next = {
+      ...order,
+      shopify_image_urls: urls.filter(url => url !== imageUrl),
+      dismissed_shopify_image_urls: dismissed,
+      updated_at: now()
+    };
+    if (Array.isArray(order.image_urls)) next.image_urls = legacy.filter(url => url !== imageUrl);
+    const saved = this.put('orders', next);
+    return { id: saved.id, image_url: imageUrl, shopify_image_urls: saved.shopify_image_urls, removed: true };
   }
 
   // The order's own salesperson can change the same fields they filled at 下单,

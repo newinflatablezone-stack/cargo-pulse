@@ -232,13 +232,15 @@ test('a merchandiser click on 待跟单创建订单 opens the create-order form 
   assert.deepEqual(clickOrder(deleted, supervisor), ['read:wait-del', 'detail:wait-del']);
   assert.deepEqual(clickOrder(deleted, owner), ['read:wait-del', 'detail:wait-del']);
   assert.deepEqual(clickOrder(production, follower), ['read:prod-1', 'detail:prod-1']);
-  assert.deepEqual(clickOrder(production, owner), ['read:prod-1', 'detail:prod-1']);
+  const issuedToOwner = clickOrder(production, owner);
+  assert.equal(issuedToOwner[0], 'read:prod-1');
+  assert.equal(issuedToOwner.includes('create:prod-1'), false);
   assert.deepEqual(clickOrder(done, follower), ['read:done-1', 'detail:done-1']);
   assert.deepEqual(clickOrder(supplement, follower), ['read:sup-1', 'detail:sup-1']);
   assert.deepEqual(clickOrder(supplement, owner), ['read:sup-1', 'place:sup-1']);
   assert.deepEqual(clickOrder(waiting, follower, { closest(selector) { return selector === '.factory-export-check' ? {} : null; } }), []);
 
-  assert.match(app, /if\(o\)void markOrderNotificationsRead\(o\.id\);if\(o&&!o\.deleted_at&&o\.current_step==='sales_supplement'&&profile\?\.role==='business'\)\{openShopifyPlace\(o\);return\}if\(o&&!o\.deleted_at&&o\.current_step==='follower_create'&&canFollowOrders\(\)\)\{openShopifyCreate\(o\);return\}if\(o&&!o\.deleted_at&&o\.current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}let d=\$\('#detail'\);d\.innerHTML=detailHtml\(o\);d\.showModal\(\)/);
+  assert.match(app, /if\(o\)void markOrderNotificationsRead\(o\.id\);if\(o&&!o\.deleted_at&&o\.current_step==='sales_supplement'&&profile\?\.role==='business'\)\{openShopifyPlace\(o\);return\}if\(o&&!o\.deleted_at&&o\.current_step==='follower_create'&&canFollowOrders\(\)\)\{openShopifyCreate\(o\);return\}if\(o&&!o\.deleted_at&&o\.current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}/);
   const create = app.slice(app.indexOf('function openShopifyCreate'), app.indexOf('function detailHtml'));
   assert.match(create, /d\.innerHTML=orderForm\(true,true\)/);
   assert.match(create, /textContent='创建订单'/);

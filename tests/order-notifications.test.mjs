@@ -196,7 +196,7 @@ test('the bell, supplement entry, and reusable write API stay in the existing pa
   assert.match(server, /name === 'salesperson_supplement'/);
   assert.match(core, /createNotifications\(input = \{\}\)/);
   assert.match(core, /viewer_id: userId/);
-  assert.match(core, /const visible = this\.all\(WEEKLY_REPORTS\)\.filter\(row => row\?\.week_start\);/);
+  assert.match(core, /const visible = this\.all\(WEEKLY_REPORTS\)\.filter\(row => row\?\.week_start && \(access === 'view' \|\| row\.user_id === userId\)\);/);
   assert.equal(core.includes("user_notifications'") && core.includes("TABLES = ["), true);
   const tables = core.slice(core.indexOf('export const TABLES'), core.indexOf('];', core.indexOf('export const TABLES')));
   assert.equal(tables.includes('user_notifications'), false);
@@ -286,7 +286,7 @@ test('mark_read for one order update leaves the other orders unread', t => {
   assert.equal(store.userNotifications(second.id, { action: 'list' }).unread_count, 3);
 });
 
-function popupRuntime() {
+function popupRuntime(options = {}) {
   const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
   const start = app.indexOf('function orderHasUnreadNotification');
   const end = app.indexOf('function bindNotifications');
@@ -300,7 +300,9 @@ function popupRuntime() {
   const decode = value => value.replaceAll('&quot;', '"').replaceAll('&#39;', "'").replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&');
   function enhance(node) {
     node.attrs = {};
+    node.dataset = {};
     node.hidden = false;
+    node.htmlWrites = 0;
     node.className = '';
     node.onclick = null;
     node._html = '';
@@ -309,6 +311,7 @@ function popupRuntime() {
     Object.defineProperty(node, 'innerHTML', {
       get() { return node._html; },
       set(html) {
+        node.htmlWrites += 1;
         node._html = html;
         node._buttons = [...html.matchAll(/<button\b([^>]*)>/g)].map(match => {
           const attrs = match[1];
@@ -323,7 +326,11 @@ function popupRuntime() {
         });
       }
     });
-    node.querySelector = selector => selector === '.order-update-popup-close' ? node._buttons.find(button => button.className.includes('order-update-popup-close')) || null : null;
+    node.querySelector = selector => {
+      if (selector === '.order-update-popup-close') return node._buttons.find(button => button.className.includes('order-update-popup-close')) || null;
+      if (selector === '[data-order-update-mark-all]') return node._buttons.find(button => button.className.includes('order-update-mark-all')) || null;
+      return null;
+    };
     node.querySelectorAll = selector => selector === '[data-order-update]' ? node._buttons.filter(button => button.dataset.orderUpdate) : [];
     return node;
   }
@@ -349,6 +356,7 @@ function popupRuntime() {
     window: { addEventListener(type, fn) { listeners.push([type, fn]); } },
     setInterval(fn) { timers.push(fn); return timers.length; },
     bindNotifications() {},
+    isSupervisor() { return options.supervisor === true; },
     esc: value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])),
     $: selector => document.querySelector(selector),
     openNotifiedOrder(id) { opened.push(String(id)); },
@@ -359,7 +367,7 @@ function popupRuntime() {
     },
     console
   };
-  runInNewContext(`${app.slice(start, end)}\nglobalThis.__popup = { loadUserNotifications, showOrderUpdatePopup, dismissOrderUpdatePopup, notificationBellHtml, unreadOrderUpdates };`, sandbox);
+  runInNewContext(`${app.slice(start, end)}\nglobalThis.__popup = { loadUserNotifications, showOrderUpdatePopup, dismissOrderUpdatePopup, notificationBellHtml, unreadOrderUpdates, markAllOrderUpdatesRead };`, sandbox);
   return { popup: sandbox.__popup, sandbox, document, listeners, timers, calls, opened, setList(next) { list = next; } };
 }
 
@@ -392,6 +400,13 @@ test('an unread order update opens the popup without a manual refresh, and one c
   assert.equal(first.dataset.orderId, 'o1');
   assert.equal(second.dataset.orderId, 'o2');
   assert.equal(third.dataset.orderId, 'o3');
+  assert.equal(shown.innerHTML.includes('全部标记已读'), false);
+  assert.equal(shown.querySelector('[data-order-update-mark-all]'), null);
+  const painted = shown.htmlWrites;
+  timers[0]();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(shown.hidden, false);
+  assert.equal(shown.htmlWrites, painted);
 
   await first.onclick({ stopPropagation() {} });
   assert.deepEqual(opened, ['o1']);
@@ -423,6 +438,14 @@ test('an unread order update opens the popup without a manual refresh, and one c
   assert.equal(calls.length, marks);
 
   popup.dismissOrderUpdatePopup();
+  runtime.setList([weekly, orderUpdate('n2', 'o2', '#1002'), orderUpdate('n3', 'o3', '#1003')]);
+  const dismissedWrites = shown.htmlWrites;
+  timers[0]();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(shown.hidden, true);
+  assert.equal(shown.htmlWrites, dismissedWrites);
+  assert.deepEqual(popup.unreadOrderUpdates().map(item => item.order_id), ['o2', 'o3']);
+
   runtime.setList([weekly, orderUpdate('n2', 'o2', '#1002'), orderUpdate('n3', 'o3', '#1003'), orderUpdate('n4', 'o4', '#1004')]);
   listeners.find(([type]) => type === 'visibilitychange')[1]();
   await new Promise(resolve => setTimeout(resolve, 0));
@@ -433,6 +456,49 @@ test('an unread order update opens the popup without a manual refresh, and one c
   assert.equal(calls.filter(call => call.action === 'mark_read').length, 1);
 });
 
+test('reopening the page shows leftover unread order updates again, without repeating them on the refresh timer', async () => {
+  const weekly = { id: 'w1', kind: 'weekly_report_reminder', title: '周报提醒', body: '请填写本周周报', unread: true, order_id: null };
+  const runtime = popupRuntime();
+  runtime.setList([weekly, orderUpdate('n2', 'o2', '#1002'), orderUpdate('n3', 'o3', '#1003')]);
+  await runtime.popup.loadUserNotifications(true);
+  const shown = runtime.document.querySelector('#orderUpdatePopup');
+  assert.equal(shown.hidden, false);
+  assert.match(shown.innerHTML, /#1002/);
+  assert.match(shown.innerHTML, /#1003/);
+  const painted = shown.htmlWrites;
+  runtime.timers[0]();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(shown.hidden, false);
+  assert.equal(shown.htmlWrites, painted);
+});
+
+test('only the supervisor can mark every unread order update read', async () => {
+  const weekly = { id: 'w1', kind: 'weekly_report_reminder', title: '周报提醒', body: '请填写本周周报', unread: true, order_id: null };
+  const follower = popupRuntime();
+  follower.setList([weekly, orderUpdate('n1', 'o1', '#1001'), orderUpdate('n2', 'o2', '#1002')]);
+  await follower.popup.loadUserNotifications(true);
+  assert.equal(follower.document.querySelector('#orderUpdatePopup').innerHTML.includes('全部标记已读'), false);
+  const before = follower.calls.length;
+  await follower.popup.markAllOrderUpdatesRead();
+  assert.equal(follower.calls.length, before);
+  assert.deepEqual(follower.popup.unreadOrderUpdates().map(item => item.order_id), ['o1', 'o2']);
+
+  const supervisor = popupRuntime({ supervisor: true });
+  supervisor.setList([weekly, orderUpdate('n1', 'o1', '#1001'), orderUpdate('n2', 'o2', '#1002')]);
+  await supervisor.popup.loadUserNotifications(true);
+  const shown = supervisor.document.querySelector('#orderUpdatePopup');
+  assert.match(shown.innerHTML, /全部标记已读/);
+  const button = shown.querySelector('[data-order-update-mark-all]');
+  assert.ok(button);
+  await button.onclick({ stopPropagation() {} });
+  assert.deepEqual(supervisor.calls.filter(call => call.action === 'mark_read'), [{ action: 'mark_read', ids: ['n1', 'n2'] }]);
+  assert.equal(supervisor.popup.unreadOrderUpdates().length, 0);
+  assert.equal(supervisor.sandbox.userNotifications.find(item => item.id === 'w1').unread, true);
+  assert.equal(shown.hidden, true);
+  assert.match(supervisor.popup.notificationBellHtml(), /请填写本周周报/);
+  assert.equal(supervisor.popup.notificationBellHtml().includes('#1001'), false);
+});
+
 test('the order-update popup stays beside the bell and opens an order through the existing card path', () => {
   const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
   const popupHtml = app.slice(app.indexOf('function orderUpdatePopupHtml'), app.indexOf('function dismissOrderUpdatePopup'));
@@ -440,6 +506,8 @@ test('the order-update popup stays beside the bell and opens an order through th
   const activate = app.slice(app.indexOf('async function activateOrderUpdateNotice'), app.indexOf('function syncNotificationChrome'));
   const watch = app.slice(app.indexOf('function watchOrderUpdateNotifications'), app.indexOf('watchOrderUpdateNotifications();'));
   assert.match(popupHtml, /订单信息更新/);
+  assert.match(popupHtml, /isSupervisor\(\)\?`<button type="button" class="order-update-mark-all" data-order-update-mark-all="true">全部标记已读<\/button>`/);
+  assert.match(app, /async function markAllOrderUpdatesRead\(\)\{if\(!isSupervisor\(\)\)return;const ids=unreadOrderUpdates\(\)\.map\(item=>item\.id\)/);
   assert.equal(popupHtml.includes('customer_info'), false);
   assert.equal(popupHtml.includes('openShopifyCreate'), false);
   assert.equal(dismiss.includes('markNotificationsRead'), false);

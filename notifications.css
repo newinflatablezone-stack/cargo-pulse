@@ -28,3 +28,5 @@
 .order-update-popup-item strong,.order-update-popup-item small{display:block}
 .order-update-popup-item strong{font-size:14px;font-weight:700}
 .order-update-popup-item small{margin-top:3px;color:#66776f;font-size:12px;line-height:1.45;white-space:normal}
+.order-update-mark-all{display:block;width:100%;margin-top:12px;padding:10px 12px;border:0;border-radius:10px;background:#174438;color:#fff;font-size:13px;font-weight:700}
+.order-update-mark-all:hover{background:#0f3329}

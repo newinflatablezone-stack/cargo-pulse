@@ -16,10 +16,12 @@ import {
   canSubmitWeeklyReport,
   isOfficialHolidayRestDay,
   nextWeeklyReminderWednesday,
+  groupWeeklyReportsByMonth,
   renderWeeklyReport,
   sumWeeklyReports,
   validateWeeklyReportInput,
-  weeklyReminder
+  weeklyReminder,
+  weeklyReportMonthKey
 } from '../weekly-report.js';
 
 const history = JSON.parse(readFileSync(new URL('../fixtures/weekly-reports-history.json', import.meta.url), 'utf8'));
@@ -156,7 +158,7 @@ test('the home button is limited to the supervisor, Ella, and submitting salespe
   assert.match(toolbar, /工厂 \/ 货代/);
   assert.equal(app.split('id="weeklyReport"').length - 1, 1);
   assert.match(app, /\$\('#weeklyReport'\)\?\.addEventListener\('click',event=>\{event\.stopPropagation\(\);void openWeeklyReport\(\)\}\)/);
-  assert.match(app, /weekly-report\.js\?v=20261123-1/);
+  assert.match(app, /weekly-report\.js\?v=20261123-4/);
   assert.match(app, /weekly-report=1/);
   assert.match(html, /\/app-v2\.js\?v=20261123-3"/);
   const followerMarkup = app.slice(app.indexOf('${follower?`'), app.indexOf("`:\"\"}${profile?.role==='business'"));
@@ -184,37 +186,62 @@ test('the home button is limited to the supervisor, Ella, and submitting salespe
   }
 });
 
-test('viewer summary has totals and no save form; a salesperson gets the four numbers and 周报', () => {
-  const reports = history.reports.filter(row => row.week_start === '2026-10-29');
-  const view = renderWeeklyReport({ access: 'view', reports, weekStart: '2026-10-29', today: '2026-11-16' });
-  assert.equal(view.includes('<form'), false);
-  assert.equal(view.includes('id="saveWeeklyReport"'), false);
-  assert.match(view, /2026-10-29 至 2026-11-04（周四至周三，北京时间）/);
-  assert.match(view, /合计/);
-  assert.match(view, /备注：下单未付另\+1个 Demi 客户/);
-  assert.match(view, />12</);
-  assert.match(view, />27159\.41</);
+test('shared monthly summary is the same for viewers and salespeople, and a week belongs to its Wednesday', () => {
+  assert.equal(weeklyReportMonthKey('2026-11-04'), '2026-11');
+  assert.equal(weeklyReportMonthKey('2026-10-28'), '2026-10');
+  const grouped = groupWeeklyReportsByMonth(history.reports);
+  assert.deepEqual(grouped.map(group => group.month), ['2026-11']);
+  assert.equal(grouped[0].rows.filter(row => row.week_start === '2026-10-29').length, 3);
+  const split = groupWeeklyReportsByMonth([
+    { salesperson_name: 'Sherry', week_start: '2026-10-22', week_end: '2026-10-28', inquiries: '1', calls: '1', unpaid_orders: '1', performance: '1' },
+    { salesperson_name: 'Sherry', week_start: '2026-10-29', week_end: '2026-11-04', inquiries: '2', calls: '2', unpaid_orders: '2', performance: '2' }
+  ]);
+  assert.deepEqual(split.map(group => [group.month, group.rows.map(row => row.week_start)]), [['2026-11', ['2026-10-29']], ['2026-10', ['2026-10-22']]]);
+  assert.equal(grouped[0].totals.performance, '86112.5');
+  const view = renderWeeklyReport({ access: 'view', reports: history.reports, today: '2026-11-16' });
   const submit = renderWeeklyReport({
     access: 'submit',
-    reports: [history.reports.find(row => row.salesperson_name === 'Sherry' && row.week_start === WEEK)],
+    reports: history.reports.map(row => ({ ...row, user_id: row.salesperson_name })),
     weekStart: WEEK,
-    today: '2026-11-16'
+    today: '2026-11-16',
+    viewerId: 'Sherry'
   });
+  for (const html of [view, submit]) {
+    assert.equal(html.includes('weeklyReportPrev'), false);
+    assert.equal(html.includes('上一周'), false);
+    assert.equal(html.includes('2026年10月'), false);
+    assert.equal(html.includes('data-month="2026-10"'), false);
+    assert.match(html, /2026年11月/);
+    assert.match(html, /周期（周四至周三）/);
+    const summary = html.slice(html.indexOf('weekly-report-summary'));
+    assert.equal((summary.match(/2026-10-29 至 2026-11-04/g) || []).length, 3);
+    assert.equal((summary.match(/data-month="/g) || []).length, 1);
+    assert.match(html, /合计/);
+    assert.match(html, /下单未付另\+1个 Demi 客户/);
+    assert.match(html, />122</);
+    assert.match(html, />86112\.5</);
+    assert.match(html, /Sherry/);
+    assert.match(html, /Demi/);
+    assert.match(html, /Rayna/);
+  }
+  assert.equal(view.includes('<form'), false);
+  assert.equal(view.includes('id="saveWeeklyReport"'), false);
+  assert.equal(view.includes('data-access="view"'), true);
+  assert.equal(submit.includes('data-access="submit"'), true);
   assert.equal(submit.match(/<input /g).length, 4);
   assert.equal(submit.match(/<textarea /g).length, 1);
   assert.match(submit, /id="saveWeeklyReport">保存</);
-  assert.match(submit, /询盘/);
-  assert.match(submit, /电话/);
-  assert.match(submit, /下单未付/);
-  assert.match(submit, /业绩/);
-  assert.match(submit, /周报/);
+  assert.match(submit, /填写本人周报/);
   assert.match(submit, /value="22"/);
   assert.match(submit, /value="24176"/);
+  assert.equal(submit.includes('value="809.73"'), false);
   assert.equal(submit.includes('尚未保存'), false);
   assert.match(submit, /备注：询盘另\+2地址不存在；下单未付另\+1电话冲突/);
-  const unsaved = renderWeeklyReport({ access: 'submit', reports: [], weekStart: WEEK, today: '2026-11-16' });
+  const unsaved = renderWeeklyReport({ access: 'submit', reports: history.reports, weekStart: WEEK, today: '2026-11-16', viewerId: 'sherry' });
   assert.match(unsaved, /尚未保存/);
   assert.equal(unsaved.match(/<input /g).length, 4);
+  assert.equal(unsaved.includes('value="22"'), false);
+  assert.match(unsaved, /2026年11月/);
 });
 
 test('historical fixture keeps the confirmed rows, exact 业绩, and separate 备注', () => {
@@ -287,19 +314,21 @@ test('salespeople can save and update only their own week; Ella, the supervisor,
   saved(store, demi, { week_start: '2026-10-29', inquiries: '2', calls: '0', unpaid_orders: '3', performance: '5189.15', body: '' });
   const sherryList = store.weeklyReport(sherry.id, { action: 'list' });
   assert.equal(sherryList.access, 'submit');
-  assert.deepEqual(sherryList.reports.map(row => row.user_id), [sherry.id]);
-  assert.equal(JSON.stringify(sherryList).includes(demi.id), false);
+  assert.equal(sherryList.viewer_id, sherry.id);
+  assert.deepEqual(sherryList.reports.map(row => row.user_id).sort(), [demi.id, sherry.id].sort());
   const ellaList = store.weeklyReport(ella.id, { action: 'list' });
   const supervisorList = store.weeklyReport(supervisor.id, { action: 'list' });
   assert.equal(ellaList.access, 'view');
   assert.equal(supervisorList.access, 'view');
-  assert.equal(ellaList.reports.length, 2);
-  assert.equal(supervisorList.reports.length, 2);
+  assert.equal(ellaList.viewer_id, ella.id);
+  assert.deepEqual(ellaList.reports.map(row => row.user_id).sort(), sherryList.reports.map(row => row.user_id).sort());
+  assert.deepEqual(supervisorList.reports.map(row => row.user_id).sort(), sherryList.reports.map(row => row.user_id).sort());
   assert.equal(JSON.stringify(supervisorList).includes('@'), false);
   const other = store.upsertAccount({ email: 'other-sales@example.com', role: 'business' });
   assert.equal(saved(store, other, { inquiries: '1' }).report.user_id, other.id);
-  assert.equal(store.weeklyReport(sherry.id, { action: 'list' }).reports.some(row => row.user_id === other.id), false);
+  assert.equal(store.weeklyReport(sherry.id, { action: 'list' }).reports.some(row => row.user_id === other.id), true);
   assert.equal(store.weeklyReport(ella.id, { action: 'list' }).reports.some(row => row.user_id === other.id), true);
+  assert.equal(store.weeklyReport(supervisor.id, { action: 'list' }).reports.some(row => row.user_id === other.id), true);
   const aliasElla = store.upsertAccount({ email: 'alias-ella@example.com', role: 'business' });
   store.put('profiles', { ...store.profile(aliasElla.id), business_name: 'Ella' });
   assert.throws(() => saved(store, aliasElla), error => error.status === 403);
@@ -384,13 +413,15 @@ test('weekly report API enforces the same permissions and does not expose a tabl
   assert.equal(updated.status, 200);
   assert.equal((await updated.json()).report.inquiries, '21');
   const own = await (await rpc(sherryHeaders, { action: 'list' })).json();
-  assert.equal(own.reports.length, 1);
-  assert.equal(own.reports[0].user_id, sherry.id);
-  assert.equal(own.reports[0].inquiries, '21');
-  assert.equal(JSON.stringify(own).includes(demi.id), false);
+  assert.equal(own.access, 'submit');
+  assert.equal(own.viewer_id, sherry.id);
+  assert.equal(own.reports.length, 2);
+  assert.equal(own.reports.some(row => row.user_id === sherry.id && row.inquiries === '21'), true);
+  assert.equal(own.reports.some(row => row.user_id === demi.id), true);
   const everyone = await (await rpc(ella, { action: 'list' })).json();
   assert.equal(everyone.access, 'view');
   assert.equal(everyone.reports.length, 2);
+  assert.deepEqual(everyone.reports.map(row => row.user_id).sort(), own.reports.map(row => row.user_id).sort());
   assert.equal((await rpc(supervisor, { action: 'list' })).status, 200);
   assert.equal((await fetch(`${base}/rest/v1/weekly_reports`, { headers: sherryHeaders })).status, 404);
   assert.equal((await fetch(`${base}/rest/v1/rpc/weekly_report`, { method: 'GET', headers: sherryHeaders })).status, 405);

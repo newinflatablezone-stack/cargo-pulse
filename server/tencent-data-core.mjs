@@ -1374,7 +1374,7 @@ export class TencentDataStore {
   }
 
   listWeeklyReports(userId, access) {
-    const visible = this.all(WEEKLY_REPORTS).filter(row => row?.week_start);
+    const visible = this.all(WEEKLY_REPORTS).filter(row => row?.week_start && (access === 'view' || row.user_id === userId));
     const reports = visible.map(row => this.weeklyReportView(row)).sort((a, b) => a.week_start.localeCompare(b.week_start) || String(a.salesperson_name).localeCompare(String(b.salesperson_name), 'zh-CN'));
     return { access, week: beijingWeekRange(new Date()), viewer_id: userId, reports };
   }

@@ -364,8 +364,8 @@ function summaryTables(reports, edit = null) {
     if (edit?.canSubmit && !names.includes(edit.viewerName) && (includeCurrent || group.rows.some(row => row.user_id === edit.viewerId))) names.push(edit.viewerName);
     const ordered = orderedNames(names);
     const blocks = ordered.map(name => personBlock(name, group.rows, weeks, edit?.canSubmit && name === edit.viewerName ? edit : null, includeCurrent ? edit.current : null)).join('');
-    const title = weeklyReportTotalTitle(ordered);
-    return `<section class="sheet-month" data-month="${escapeHtml(group.month)}"><p class="sheet-subtitle">${escapeHtml(group.label)}&nbsp;&nbsp;&nbsp;&nbsp;周期为周四至周三（北京时间）</p><div class="sheet-scroll"><table class="sheet">${blocks}${grandBlock(title, group.rows, ordered, weeks)}</table></div></section>`;
+    const total = edit?.canSubmit ? '' : grandBlock(weeklyReportTotalTitle(ordered), group.rows, ordered, weeks);
+    return `<section class="sheet-month" data-month="${escapeHtml(group.month)}"><p class="sheet-subtitle">${escapeHtml(group.label)}&nbsp;&nbsp;&nbsp;&nbsp;周期为周四至周三（北京时间）</p><div class="sheet-scroll"><table class="sheet">${blocks}${total}</table></div></section>`;
   }).join('');
 }
 
@@ -375,9 +375,10 @@ export function renderWeeklyReport({ access = 'view', reports = [], today = new 
   const canSubmit = access === 'submit';
   const reminder = canSubmit ? weeklyReminder(todayIso, savedOwnCurrentWeek(reports, current.week_start, viewerId)) : null;
   const reminderHtml = reminder ? `<p class="${reminder.kind === 'due' ? 'weekly-report-reminder' : 'weekly-report-defer'}" role="${reminder.kind === 'due' ? 'alert' : 'status'}">${escapeHtml(reminder.text)}</p>` : '';
-  const heading = `<div class="weekly-report-head"><div><p class="kicker">WEEKLY REPORT</p><h1>周报</h1><p>${canSubmit ? '在月度汇总表中修改并保存本人的周报。不能修改他人的数据或备注。' : '查看各业务员的月度汇总，不能代为保存。'}</p></div><div class="weekly-report-head-actions"><button type="button" id="closeWeeklyReport">← 返回订单中心</button></div></div>`;
-  const edit = canSubmit && viewerId ? { canSubmit, viewerId, viewerName: viewerSalesName(reports, viewerId), current } : null;
-  return `<section class="weekly-report-shell" data-access="${canSubmit ? 'submit' : 'view'}">${heading}${reminderHtml}<div class="weekly-report-summary">${summaryTables(reports, edit)}</div></section>`;
+  const heading = `<div class="weekly-report-head"><div><p class="kicker">WEEKLY REPORT</p><h1>周报</h1><p>${canSubmit ? '只显示并保存本人的周报。已保存的周期不能再改。' : '查看各业务员的月度汇总，不能代为保存。'}</p></div><div class="weekly-report-head-actions"><button type="button" id="closeWeeklyReport">← 返回订单中心</button></div></div>`;
+  const visible = canSubmit && viewerId ? reports.filter(row => row.user_id === viewerId) : reports;
+  const edit = canSubmit && viewerId ? { canSubmit, viewerId, viewerName: viewerSalesName(visible, viewerId), current } : null;
+  return `<section class="weekly-report-shell" data-access="${canSubmit ? 'submit' : 'view'}">${heading}${reminderHtml}<div class="weekly-report-summary">${summaryTables(visible, edit)}</div></section>`;
 }
 
 export async function mountWeeklyReport(page, { api, onClose, today = () => new Date() } = {}) {

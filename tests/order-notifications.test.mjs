@@ -262,3 +262,199 @@ test('the order salesperson lands on the prefilled form from the card, before an
   const issuedGate = click.indexOf("current_step!=='sales_supplement'&&o.current_step!=='follower_create'&&isOrderSalesperson(o)&&!isSupervisor()");
   assert.ok(createGate > 0 && waitingGate > createGate && issuedGate > waitingGate);
 });
+
+test('mark_read for one order update leaves the other orders unread', t => {
+  const { store, follower, second } = fixture(t);
+  for (const [id, orderNo] of [['o1', '#1001'], ['o2', '#1002'], ['o3', '#1003']]) {
+    store.createNotifications({
+      user_ids: [follower.id, second.id],
+      title: '订单信息更新',
+      body: `订单 ${orderNo} 的补充信息已更新，请查看。`,
+      kind: 'order_info_update',
+      order_id: id
+    });
+  }
+  const before = store.userNotifications(follower.id, { action: 'list' });
+  assert.equal(before.unread_count, 3);
+  assert.equal(before.notifications.every(row => row.body.includes('555') || row.body.includes('@') || row.body.includes('Main St')), false);
+  const marked = store.userNotifications(follower.id, { action: 'mark_read', order_id: 'o2' });
+  assert.equal(marked.updated, 1);
+  assert.equal(marked.unread_count, 2);
+  const after = store.userNotifications(follower.id, { action: 'list' });
+  assert.deepEqual(after.notifications.filter(row => row.unread !== false).map(row => row.order_id).sort(), ['o1', 'o3']);
+  assert.equal(after.notifications.find(row => row.order_id === 'o2').unread, false);
+  assert.equal(store.userNotifications(second.id, { action: 'list' }).unread_count, 3);
+});
+
+function popupRuntime() {
+  const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
+  const start = app.indexOf('function orderHasUnreadNotification');
+  const end = app.indexOf('function bindNotifications');
+  assert.ok(start > 0 && end > start);
+  const elements = [];
+  const listeners = [];
+  const timers = [];
+  const calls = [];
+  const opened = [];
+  let list = [];
+  const decode = value => value.replaceAll('&quot;', '"').replaceAll('&#39;', "'").replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&');
+  function enhance(node) {
+    node.attrs = {};
+    node.hidden = false;
+    node.className = '';
+    node.onclick = null;
+    node._html = '';
+    node._buttons = [];
+    node.setAttribute = (name, value) => { node.attrs[name] = value; };
+    Object.defineProperty(node, 'innerHTML', {
+      get() { return node._html; },
+      set(html) {
+        node._html = html;
+        node._buttons = [...html.matchAll(/<button\b([^>]*)>/g)].map(match => {
+          const attrs = match[1];
+          const read = name => {
+            const found = new RegExp(`${name}="([^"]*)"`).exec(attrs);
+            return found ? decode(found[1]) : '';
+          };
+          const dataset = {};
+          if (attrs.includes('data-order-update=') && !attrs.includes('data-order-update-reopen')) dataset.orderUpdate = read('data-order-update');
+          if (attrs.includes('data-order-id=')) dataset.orderId = read('data-order-id');
+          return { dataset, className: /class="([^"]*)"/.exec(attrs)?.[1] || '', onclick: null };
+        });
+      }
+    });
+    node.querySelector = selector => selector === '.order-update-popup-close' ? node._buttons.find(button => button.className.includes('order-update-popup-close')) || null : null;
+    node.querySelectorAll = selector => selector === '[data-order-update]' ? node._buttons.filter(button => button.dataset.orderUpdate) : [];
+    return node;
+  }
+  const document = {
+    hidden: false,
+    body: { append(node) { elements.push(node); } },
+    createElement() { return enhance({ id: '' }); },
+    addEventListener(type, fn) { listeners.push([type, fn]); },
+    querySelector(selector) { return selector.startsWith('#') ? elements.find(node => node.id === selector.slice(1)) || null : null; },
+    querySelectorAll() { return []; }
+  };
+  const sandbox = {
+    userNotifications: [],
+    notificationFresh: false,
+    notificationEpoch: 0,
+    notificationMarkEpoch: 0,
+    notificationMarksInFlight: 0,
+    orderUpdatePopupOpen: false,
+    notificationWatchUserId: '',
+    suppressedOrderUpdateIds: new Set(),
+    session: { user: { id: 'follower-1' } },
+    document,
+    window: { addEventListener(type, fn) { listeners.push([type, fn]); } },
+    setInterval(fn) { timers.push(fn); return timers.length; },
+    bindNotifications() {},
+    esc: value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])),
+    $: selector => document.querySelector(selector),
+    openNotifiedOrder(id) { opened.push(String(id)); },
+    async api(_path, options) {
+      const body = JSON.parse(options.body);
+      calls.push(body);
+      return body.action === 'list' ? { notifications: list } : { updated: 1 };
+    },
+    console
+  };
+  runInNewContext(`${app.slice(start, end)}\nglobalThis.__popup = { loadUserNotifications, showOrderUpdatePopup, dismissOrderUpdatePopup, notificationBellHtml, unreadOrderUpdates };`, sandbox);
+  return { popup: sandbox.__popup, sandbox, document, listeners, timers, calls, opened, setList(next) { list = next; } };
+}
+
+function orderUpdate(id, orderId, orderNo) {
+  return { id, kind: 'order_info_update', title: '订单信息更新', body: `订单 ${orderNo} 的补充信息已更新，请查看。`, unread: true, order_id: orderId };
+}
+
+test('an unread order update opens the popup without a manual refresh, and one click leaves the other orders unread', async () => {
+  const runtime = popupRuntime();
+  const { popup, document, listeners, timers, calls, opened, sandbox } = runtime;
+  const weekly = { id: 'w1', kind: 'weekly_report_reminder', title: '周报提醒', body: '请填写本周周报', unread: true, order_id: null };
+  runtime.setList([weekly]);
+  await popup.loadUserNotifications(true);
+  assert.equal(document.querySelector('#orderUpdatePopup'), null);
+
+  runtime.setList([weekly, orderUpdate('n1', 'o1', '#1001'), orderUpdate('n2', 'o2', '#1002'), orderUpdate('n3', 'o3', '#1003')]);
+  assert.equal(sandbox.notificationFresh, true);
+  timers[0]();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const shown = document.querySelector('#orderUpdatePopup');
+  assert.equal(shown.hidden, false);
+  assert.match(shown.innerHTML, /订单信息更新/);
+  assert.match(shown.innerHTML, /#1001/);
+  assert.match(shown.innerHTML, /#1002/);
+  assert.match(shown.innerHTML, /#1003/);
+  assert.equal(shown.innerHTML.includes('请填写本周周报'), false);
+  assert.equal(shown.innerHTML.includes('ada@'), false);
+  assert.equal(shown.innerHTML.includes('customer_info'), false);
+  const [first, second, third] = shown.querySelectorAll('[data-order-update]');
+  assert.equal(first.dataset.orderId, 'o1');
+  assert.equal(second.dataset.orderId, 'o2');
+  assert.equal(third.dataset.orderId, 'o3');
+
+  await first.onclick({ stopPropagation() {} });
+  assert.deepEqual(opened, ['o1']);
+  assert.deepEqual(calls.filter(call => call.action === 'mark_read'), [{ action: 'mark_read', order_id: 'o1' }]);
+  assert.deepEqual(popup.unreadOrderUpdates().map(item => item.order_id), ['o2', 'o3']);
+  assert.equal(sandbox.userNotifications.find(item => item.id === 'w1').unread, true);
+  assert.equal(shown.hidden, false);
+  assert.equal(shown.innerHTML.includes('#1001'), false);
+  assert.match(shown.innerHTML, /#1002/);
+  assert.match(shown.innerHTML, /#1003/);
+
+  const marks = calls.length;
+  shown.querySelector('.order-update-popup-close').onclick({ stopPropagation() {} });
+  assert.equal(shown.hidden, true);
+  assert.equal(calls.length, marks);
+  assert.deepEqual(popup.unreadOrderUpdates().map(item => item.order_id), ['o2', 'o3']);
+  const bell = popup.notificationBellHtml();
+  assert.match(bell, /id="notificationBell"/);
+  assert.match(bell, /class="notify-badge"/);
+  assert.match(bell, /#1002/);
+  assert.match(bell, /#1003/);
+  assert.match(bell, /请填写本周周报/);
+  assert.match(bell, /data-order-update-reopen="true"/);
+
+  popup.showOrderUpdatePopup();
+  assert.equal(shown.hidden, false);
+  assert.match(shown.innerHTML, /#1002/);
+  assert.match(shown.innerHTML, /#1003/);
+  assert.equal(calls.length, marks);
+
+  popup.dismissOrderUpdatePopup();
+  runtime.setList([weekly, orderUpdate('n2', 'o2', '#1002'), orderUpdate('n3', 'o3', '#1003'), orderUpdate('n4', 'o4', '#1004')]);
+  listeners.find(([type]) => type === 'visibilitychange')[1]();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(shown.hidden, false);
+  assert.match(shown.innerHTML, /#1002/);
+  assert.match(shown.innerHTML, /#1003/);
+  assert.match(shown.innerHTML, /#1004/);
+  assert.equal(calls.filter(call => call.action === 'mark_read').length, 1);
+});
+
+test('the order-update popup stays beside the bell and opens an order through the existing card path', () => {
+  const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
+  const popupHtml = app.slice(app.indexOf('function orderUpdatePopupHtml'), app.indexOf('function dismissOrderUpdatePopup'));
+  const dismiss = app.slice(app.indexOf('function dismissOrderUpdatePopup'), app.indexOf('function showOrderUpdatePopup'));
+  const activate = app.slice(app.indexOf('async function activateOrderUpdateNotice'), app.indexOf('function syncNotificationChrome'));
+  const watch = app.slice(app.indexOf('function watchOrderUpdateNotifications'), app.indexOf('watchOrderUpdateNotifications();'));
+  assert.match(popupHtml, /订单信息更新/);
+  assert.equal(popupHtml.includes('customer_info'), false);
+  assert.equal(popupHtml.includes('openShopifyCreate'), false);
+  assert.equal(dismiss.includes('markNotificationsRead'), false);
+  assert.match(activate, /markNotificationsRead\(orderUpdateReadRequest\(item\)\)/);
+  assert.match(activate, /openNotifiedOrder\(item\.order_id\)/);
+  assert.equal(activate.includes('openShopifyCreate'), false);
+  assert.match(watch, /loadUserNotifications\(true\)/);
+  assert.match(watch, /visibilitychange/);
+  assert.match(app, /popup\.id='orderUpdatePopup'/);
+  assert.match(app, /data-order-update-reopen/);
+  assert.match(app, /showOrderUpdatePopup\(\)/);
+  assert.match(app, /id="notificationBell"/);
+  assert.match(app, /class="notify-badge"/);
+  assert.match(app, /class="order-notify-dot"/);
+  const clickStart = app.indexOf("document.querySelectorAll('[data-order]')");
+  const click = app.slice(clickStart, app.indexOf("let d=$('#detail')", clickStart));
+  assert.ok(click.indexOf("current_step==='follower_create'&&canFollowOrders()){openShopifyCreate(o);return}") > 0);
+});

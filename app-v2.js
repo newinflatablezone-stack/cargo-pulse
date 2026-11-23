@@ -7,7 +7,7 @@ import {STEP_LABELS,RED_OVERDUE_AFTER_DAYS,firstStep,nextStep,nextShipping,ocean
 import {classifyDestination,MAINSTREAM_DESTINATIONS,normalizeDestination} from "./server/destination-risk.mjs?v=20261013-1";
 import {extractCustomerContacts,customerInfoReminder} from "./server/customer-info.mjs?v=20261122-8";
 import {FACTORY_EXPORT_EMPTY_MESSAGE,FACTORY_EXPORT_IMAGE_LIMIT,buildFactoryOrderWorkbook,canUseFactoryExport,factoryExportFilename,factoryImageExtension,factoryImageSources,isFactoryExportable} from "./factory-order-export.js?v=20261122-10";
-import {canOpenWeeklyReport,mountWeeklyReport} from "./weekly-report.js?v=20261123-4";
+import {canOpenWeeklyReport,mountWeeklyReport} from "./weekly-report.js?v=20261123-1";
 
 let cfg=readStoredConfig(),session=readStoredSession(),profile=null,orders=[],profiles=[],partners=[],imageRecords=[],eventRecords=[],activeEventRecords=[],factoryRecords=[],factoryFeatureReady=false,shipmentRecords=[],shipmentFeatureReady=false,alertFilter="all",statusFilter="active",partnerFilter="all",factoryFilter="all",businessFilter="all",orderSort="desc",searchQuery="",currentPage=1;
 let imagesByOrderId=new Map(),eventsByOrderId=new Map(),activeEventsByOrderId=new Map(),factoriesByOrderId=new Map(),shipmentsByOrderId=new Map(),returningCustomerOrderIds=new Set();

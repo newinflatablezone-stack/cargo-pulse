@@ -275,21 +275,20 @@ test('a merchandiser click on 待跟单创建订单 opens the create-order form 
   assert.deepEqual(clickOrder(assigned, { ...supervisor, role: 'follower' }), ['read:wait-ready', 'create:wait-ready']);
   assert.deepEqual(clickOrder(ownedBySupervisor, supervisor), ['read:wait-boss', 'detail:wait-boss']);
   assert.deepEqual(clickOrder({ ...ownedBySupervisor, factory_name: 'Factory A' }, supervisor), ['read:wait-boss', 'create:wait-boss']);
-  assert.deepEqual(clickOrder(waiting, owner), ['read:wait-1', 'supplement:wait-1']);
+  assert.deepEqual(clickOrder(waiting, owner), ['read:wait-1', 'detail:wait-1']);
   assert.deepEqual(clickOrder(waiting, otherSales), ['read:wait-1', 'detail:wait-1']);
   assert.deepEqual(clickOrder(deleted, follower), ['read:wait-del', 'detail:wait-del']);
   assert.deepEqual(clickOrder(deleted, supervisor), ['read:wait-del', 'detail:wait-del']);
   assert.deepEqual(clickOrder(deleted, owner), ['read:wait-del', 'detail:wait-del']);
   assert.deepEqual(clickOrder(production, follower), ['read:prod-1', 'detail:prod-1']);
-  const issuedToOwner = clickOrder(production, owner);
-  assert.equal(issuedToOwner[0], 'read:prod-1');
-  assert.equal(issuedToOwner.includes('create:prod-1'), false);
+  assert.deepEqual(clickOrder(production, owner), ['read:prod-1', 'detail:prod-1']);
   assert.deepEqual(clickOrder(done, follower), ['read:done-1', 'detail:done-1']);
   assert.deepEqual(clickOrder(supplement, follower), ['read:sup-1', 'detail:sup-1']);
-  assert.deepEqual(clickOrder(supplement, owner), ['read:sup-1', 'place:sup-1']);
+  assert.deepEqual(clickOrder(supplement, owner), ['read:sup-1', 'detail:sup-1']);
   assert.deepEqual(clickOrder(waiting, follower, { closest(selector) { return selector === '.factory-export-check' ? {} : null; } }), []);
 
-  assert.match(app, /if\(o\)void markOrderNotificationsRead\(o\.id\);if\(o&&!o\.deleted_at&&o\.current_step==='sales_supplement'&&profile\?\.role==='business'\)\{openShopifyPlace\(o\);return\}if\(openFollowerCreate\(o\)\)return;if\(o&&!o\.deleted_at&&o\.current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}/);
+  assert.match(app, /if\(o\)void markOrderNotificationsRead\(o\.id\);if\(orderAction\?\.dataset\.orderView==='place'&&orderCardDate\(o\)>=SALESPERSON_DETAIL_CUTOFF\)\{if\(o&&!o\.deleted_at&&o\.current_step==='sales_supplement'&&profile\?\.role==='business'\)\{openShopifyPlace\(o\);return\}if\(o&&!o\.deleted_at&&o\.current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}/);
+  assert.match(app, /openSalespersonSupplement\(o\);return\}return\}if\(openFollowerCreate\(o\)\)return;/);
   assert.match(app, /function openFollowerCreate\(o,detailDialog\)\{if\(!o\|\|o\.deleted_at\|\|o\.current_step!=='follower_create'\|\|!canFollowOrders\(\)\)return false;if\(followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}if\(isSupervisor\(\)\)return false;alert\(FOLLOWER_FACTORY_REQUIRED\);return true\}/);
   assert.equal(app.slice(app.indexOf('function openFollowerCreate'), app.indexOf('const factoryExportSelection')).includes('openFollowerFactoryAssign'), false);
   assert.match(app, /class="step-name">\$\{esc\(displayStepLabel\(o\)\)\}/);

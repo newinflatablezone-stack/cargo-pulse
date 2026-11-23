@@ -224,9 +224,9 @@ test('the bell, supplement entry, and reusable write API stay in the existing pa
   const page = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const server = readFileSync(new URL('../server/tencent-data-server.mjs', import.meta.url), 'utf8');
   const core = readFileSync(new URL('../server/tencent-data-core.mjs', import.meta.url), 'utf8');
-  assert.match(app, /current_step==='sales_supplement'&&profile\?\.role==='business'\)\{openShopifyPlace\(o\);return\}/);
+  assert.match(app, /orderAction\?\.dataset\.orderView==='place'&&orderCardDate\(o\)>=SALESPERSON_DETAIL_CUTOFF\)\{if\(o&&!o\.deleted_at&&o\.current_step==='sales_supplement'&&profile\?\.role==='business'\)\{openShopifyPlace\(o\);return\}/);
   assert.match(app, /current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}/);
-  assert.match(app, /current_step!=='sales_supplement'&&o\.current_step!=='follower_create'&&isOrderSalesperson\(o\)&&!isSupervisor\(\)\)\{openSalespersonSupplement\(o\);return\}let d=\$\('#detail'\);d\.innerHTML=detailHtml\(o\);d\.showModal\(\)/);
+  assert.match(app, /current_step!=='sales_supplement'&&o\.current_step!=='follower_create'&&isOrderSalesperson\(o\)&&!isSupervisor\(\)\)\{openSalespersonSupplement\(o\);return\}return\}if\(openFollowerCreate\(o\)\)return;let d=\$\('#detail'\);d\.innerHTML=detailHtml\(o\);d\.showModal\(\)/);
   assert.match(app, /o\.current_step==='follower_create'&&follower\?`<div class="actions"><button class="primary" id="shopifyCreate">创建订单<\/button><\/div>`/);
   assert.match(app, /#shopifyCreate'\)\?\.addEventListener\('click',\(\)=>openFollowerCreate\(o,d\)\)/);
   assert.match(app, /id="supplementOrder">修改\/补充信息<\/button>/);
@@ -282,7 +282,7 @@ function clickOrderCard(order, person) {
   return opened;
 }
 
-test('the order salesperson lands on the prefilled form from the card, before and after 创建订单', () => {
+test('the order salesperson card opens the order detail popup, while follower and supervisor paths stay', () => {
   const owner = { id: 'demi-1', role: 'business', email: 'demi@inflatable-zone.com', display_name: 'Demi' };
   const other = { id: 'ella-1', role: 'business', email: 'sales@inflatable-zone.com', display_name: 'Ella' };
   const follower = { id: 'follower-1', role: 'follower', email: 'follow@example.com' };
@@ -293,30 +293,31 @@ test('the order salesperson lands on the prefilled form from the card, before an
   const supplement = { id: 'sup-1', current_step: 'sales_supplement', deleted_at: null, business_id: 'demi-1', business_name: 'Demi' };
   const deleted = { id: 'del-1', current_step: 'production', deleted_at: '2026-11-01', business_id: 'demi-1', business_name: 'Demi' };
 
-  assert.deepEqual(clickOrderCard(waiting, owner), ['read:wait-1', 'supplement:follower_create:wait-1']);
+  assert.deepEqual(clickOrderCard(waiting, owner), ['read:wait-1', 'detail:wait-1']);
   assert.deepEqual(clickOrderCard(waiting, follower), ['read:wait-1', 'alert:主管须先选择工厂并保存后，跟单才能创建订单。']);
   assert.deepEqual(clickOrderCard({ ...waiting, factory_name: 'Factory A' }, follower), ['read:wait-1', 'create:wait-1']);
   const supervisorWaiting = { id: 'wait-boss', current_step: 'follower_create', deleted_at: null, business_id: 'boss-1', business_name: 'Demi' };
   assert.deepEqual(clickOrderCard(supervisorWaiting, { ...supervisor, role: 'business', display_name: 'Demi' }), ['read:wait-boss', 'detail:wait-boss']);
   assert.deepEqual(clickOrderCard({ ...supervisorWaiting, factory_name: 'Factory A' }, { ...supervisor, role: 'business', display_name: 'Demi' }), ['read:wait-boss', 'create:wait-boss']);
-  assert.deepEqual(clickOrderCard(issued, owner), ['read:prod-1', 'supplement:production:prod-1']);
-  assert.deepEqual(clickOrderCard(completed, owner), ['read:done-1', 'supplement:completed:done-1']);
+  assert.deepEqual(clickOrderCard(issued, owner), ['read:prod-1', 'detail:prod-1']);
+  assert.deepEqual(clickOrderCard(completed, owner), ['read:done-1', 'detail:done-1']);
   assert.deepEqual(clickOrderCard(issued, other), ['read:prod-1', 'detail:prod-1']);
   assert.deepEqual(clickOrderCard(waiting, other), ['read:wait-1', 'detail:wait-1']);
   assert.deepEqual(clickOrderCard(issued, follower), ['read:prod-1', 'detail:prod-1']);
   assert.deepEqual(clickOrderCard(issued, supervisor), ['read:prod-1', 'detail:prod-1']);
   const supervisorOwned = { id: 'boss-order', current_step: 'production', deleted_at: null, business_id: 'boss-1', business_name: 'Demi', product_name: 'Castle' };
   assert.deepEqual(clickOrderCard(supervisorOwned, { ...supervisor, role: 'business', display_name: 'Demi' }), ['read:boss-order', 'detail:boss-order']);
-  assert.deepEqual(clickOrderCard(supplement, owner), ['read:sup-1', 'place:sup-1']);
+  assert.deepEqual(clickOrderCard(supplement, owner), ['read:sup-1', 'detail:sup-1']);
   assert.deepEqual(clickOrderCard(deleted, owner), ['read:del-1', 'detail:del-1']);
 
   const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
   const clickStart = app.indexOf("document.querySelectorAll('[data-order]')");
   const click = app.slice(clickStart, app.indexOf("let d=$('#detail')", clickStart));
+  const placeGate = click.indexOf("orderView==='place'");
   const createGate = click.indexOf("if(openFollowerCreate(o))return");
   const waitingGate = click.indexOf("current_step==='follower_create'&&profile?.role==='business'&&isOrderSalesperson(o)");
   const issuedGate = click.indexOf("current_step!=='sales_supplement'&&o.current_step!=='follower_create'&&isOrderSalesperson(o)&&!isSupervisor()");
-  assert.ok(createGate > 0 && waitingGate > createGate && issuedGate > waitingGate);
+  assert.ok(placeGate > 0 && waitingGate > placeGate && issuedGate > waitingGate && createGate > issuedGate);
 });
 
 test('mark_read for one order update leaves the other orders unread', t => {

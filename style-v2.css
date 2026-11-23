@@ -1508,4 +1508,21 @@ main.internal-resource-page-shell{width:100%;max-width:none!important;min-height
 .weekly-report-table .weekly-report-save{margin-top:8px;border:0;border-radius:8px;background:#174438;color:#fff;padding:7px 14px;font-weight:700}
 .weekly-report-table .weekly-report-save:disabled{opacity:.48}
 .weekly-report-table .weekly-report-error{min-height:0;margin:6px 0 0}
+.sheet-month{margin:0 0 28px}
+.sheet-subtitle{margin:0 0 10px;color:#5b716b;font-size:13px}
+.sheet-scroll{overflow-x:auto}
+.sheet{width:100%;min-width:760px;border-collapse:collapse;background:#fff;color:#183f35;font-size:13px}
+.sheet th,.sheet td{border:1px solid #d5e0da;padding:8px 10px;vertical-align:middle}
+.sheet-banner th{background:#174438;color:#fff;font-size:15px;font-weight:700;text-align:left;border-color:#174438}
+.sheet-head th{background:#e8f2ee;color:#174438;font-weight:700;text-align:center}
+.sheet-dates td{background:#e8f2ee;color:#5b716b;font-size:11px;text-align:center}
+.sheet-label{width:88px;background:#fff;font-weight:700;text-align:left;white-space:nowrap}
+.sheet-zebra .sheet-label,.sheet-zebra td{background:#f7fbf9}
+.sheet-num{text-align:center;min-width:108px}
+.sheet-sum{background:#dce8e3;color:#174438;font-weight:700;text-align:center}
+.sheet-note{min-width:140px;color:#5b716b;font-size:12px;line-height:1.45;text-align:left;vertical-align:top}
+.sheet input,.sheet textarea{width:100%;box-sizing:border-box;border:1px solid #c9d8d0;border-radius:6px;background:#fff;color:#183f35;font:inherit;padding:6px 8px;text-align:center}
+.sheet textarea{min-height:64px;text-align:left;resize:vertical}
+.sheet .weekly-report-save{border:0;border-radius:8px;background:#174438;color:#fff;padding:6px 12px;font-weight:700}
+.sheet .weekly-report-error{min-height:0;margin:6px 0 0}
 @media(max-width:700px){.weekly-report-form{grid-template-columns:1fr 1fr}.weekly-report-head,.weekly-report-edit-week{flex-direction:column;align-items:flex-start}}

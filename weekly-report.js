@@ -222,10 +222,46 @@ export function groupWeeklyReportsByMonth(reports = []) {
   }));
 }
 
-function weekRangeLabel(row) {
-  const start = String(row?.week_start || '');
-  const end = String(row?.week_end || '') || (DATE_ONLY.test(start) ? beijingWeekRange(start).week_end : '');
-  return start && end ? `${start} 至 ${end}` : start || end;
+const PREFERRED_SALESPEOPLE = ['Sherry', 'Demi', 'Rayna'];
+const SHEET_METRICS = [
+  ['inquiries', '询盘', false],
+  ['unpaid_orders', '下单未付', false],
+  ['calls', '电话', false],
+  ['performance', '业绩', true]
+];
+
+export function weeklyReportWeekShortLabel(weekStart, weekEnd) {
+  const end = weekEnd || (DATE_ONLY.test(String(weekStart || '')) ? beijingWeekRange(weekStart).week_end : '');
+  return `${Number(String(weekStart).slice(8))}-${Number(String(end).slice(8))}号`;
+}
+
+export function weeklyReportTotalTitle(names) {
+  const present = new Set(names);
+  return names.length === PREFERRED_SALESPEOPLE.length && PREFERRED_SALESPEOPLE.every(name => present.has(name)) ? '三人合计' : '合计';
+}
+
+function personName(row) {
+  return String(row?.salesperson_name || '').trim() || '业务员';
+}
+
+function weekEndOf(row) {
+  const end = String(row?.week_end || '');
+  if (DATE_ONLY.test(end)) return end;
+  return DATE_ONLY.test(String(row?.week_start || '')) ? beijingWeekRange(row.week_start).week_end : '';
+}
+
+function formatMetric(value) {
+  if (value == null || String(value).trim() === '') return '';
+  return addDecimal([String(value).trim()]);
+}
+
+function orderedNames(names) {
+  return [...names].sort((a, b) => {
+    const left = PREFERRED_SALESPEOPLE.indexOf(a);
+    const right = PREFERRED_SALESPEOPLE.indexOf(b);
+    if (left !== -1 || right !== -1) return (left === -1 ? 99 : left) - (right === -1 ? 99 : right);
+    return a.localeCompare(b, 'zh-CN');
+  });
 }
 
 function savedOwnCurrentWeek(reports, weekStart, viewerId) {
@@ -237,53 +273,89 @@ function viewerSalesName(reports, viewerId) {
   return named ? String(named.salesperson_name).trim() : '本人';
 }
 
-function sortReportRows(rows) {
-  return rows.sort((a, b) => String(a.week_start).localeCompare(String(b.week_start)) || String(a.salesperson_name || '').localeCompare(String(b.salesperson_name || ''), 'zh-CN'));
+function sheetWeeks(rows, current) {
+  const weeks = new Map();
+  for (const row of rows) {
+    if (!DATE_ONLY.test(String(row?.week_start || ''))) continue;
+    weeks.set(row.week_start, { week_start: row.week_start, week_end: weekEndOf(row) });
+  }
+  if (current) weeks.set(current.week_start, current);
+  return [...weeks.values()].sort((a, b) => a.week_start.localeCompare(b.week_start));
 }
 
-function fieldInput(name, value, decimal = false) {
-  return `<input name="${name}" inputmode="${decimal ? 'decimal' : 'numeric'}" value="${escapeHtml(value ?? '')}" autocomplete="off">`;
+function findSheetRow(rows, name, weekStart, viewerId) {
+  if (viewerId) {
+    const own = rows.find(row => row.user_id === viewerId && row.week_start === weekStart && personName(row) === name);
+    if (own) return own;
+  }
+  return rows.find(row => personName(row) === name && row.week_start === weekStart) || null;
 }
 
-function reportRow(row, editable) {
-  const note = String(row.note || '').trim();
-  const text = String(row.body || '').trim();
-  const reportCell = editable
-    ? `<textarea name="body">${escapeHtml(text)}</textarea><button type="button" class="weekly-report-save">保存</button><p class="weekly-report-error" role="alert"></p>`
-    : `<div class="weekly-report-text">${text ? escapeHtml(text) : '未填写'}</div>`;
-  const numberCell = (name, value, decimal = false) => editable ? fieldInput(name, value ?? '', decimal) : displayNumber(value);
-  return `<tr${editable ? ` class="weekly-report-row-own" data-own="true" data-week="${escapeHtml(row.week_start)}"` : ''}><th>${escapeHtml(row.salesperson_name || '业务员')}</th><td>${escapeHtml(weekRangeLabel(row))}</td><td>${numberCell('inquiries', row.inquiries)}</td><td>${numberCell('calls', row.calls)}</td><td>${numberCell('unpaid_orders', row.unpaid_orders)}</td><td>${numberCell('performance', row.performance, true)}</td><td>${reportCell}</td><td>${note ? escapeHtml(note) : '—'}</td></tr>`;
+function metricValues(rows, names, weeks, metric) {
+  const values = [];
+  for (const name of names) {
+    for (const week of weeks) values.push(formatMetric(findSheetRow(rows, name, week.week_start)?.[metric]));
+  }
+  return values.filter(Boolean);
+}
+
+function numberCell(row, name, week, metric, decimal, editable) {
+  const value = formatMetric(row?.[metric]);
+  if (!editable) return `<td class="sheet-num" data-person="${escapeHtml(name)}" data-metric="${metric}" data-week="${escapeHtml(week.week_start)}" data-raw="${escapeHtml(value)}">${value ? escapeHtml(value) : ''}</td>`;
+  return `<td class="sheet-num" data-person="${escapeHtml(name)}" data-metric="${metric}" data-week="${escapeHtml(week.week_start)}"><input name="${metric}" data-week="${escapeHtml(week.week_start)}" inputmode="${decimal ? 'decimal' : 'numeric'}" value="${escapeHtml(value)}" autocomplete="off"></td>`;
+}
+
+function personBlock(name, rows, weeks, own, current) {
+  const editableWeeks = new Set(weeks.filter(week => own && (findSheetRow(rows, name, week.week_start, own.viewerId) || (current && week.week_start === current.week_start))).map(week => week.week_start));
+  const span = weeks.length + 2;
+  const head = `<tr class="sheet-banner"><th colspan="${span}">${escapeHtml(name)}</th></tr><tr class="sheet-head"><th>项目</th>${weeks.map(week => `<th>${escapeHtml(weeklyReportWeekShortLabel(week.week_start, week.week_end))}</th>`).join('')}<th>合计</th></tr><tr class="sheet-dates"><td></td>${weeks.map(week => `<td>${escapeHtml(week.week_start)} 至 ${escapeHtml(week.week_end)}</td>`).join('')}<td></td></tr>`;
+  const metrics = SHEET_METRICS.map(([metric, label, decimal], index) => {
+    const total = addDecimal(weeks.map(week => formatMetric(findSheetRow(rows, name, week.week_start, own?.viewerId)?.[metric])).filter(Boolean));
+    return `<tr class="${index % 2 === 0 ? 'sheet-zebra' : ''}"><th class="sheet-label">${label}</th>${weeks.map(week => numberCell(findSheetRow(rows, name, week.week_start, own?.viewerId), name, week, metric, decimal, editableWeeks.has(week.week_start))).join('')}<td class="sheet-sum" data-sum="person" data-person="${escapeHtml(name)}" data-metric="${metric}">${escapeHtml(total)}</td></tr>`;
+  }).join('');
+  const bodyRow = `<tr class="sheet-zebra"><th class="sheet-label">周报</th>${weeks.map(week => {
+    const record = findSheetRow(rows, name, week.week_start, own?.viewerId);
+    const text = String(record?.body || '').trim();
+    if (!editableWeeks.has(week.week_start)) return `<td class="sheet-note">${text ? escapeHtml(text) : '未填写'}</td>`;
+    return `<td class="sheet-note"><textarea name="body" data-week="${escapeHtml(week.week_start)}">${escapeHtml(text)}</textarea></td>`;
+  }).join('')}<td class="sheet-sum"></td></tr>`;
+  const noteRow = `<tr><th class="sheet-label">备注</th>${weeks.map(week => {
+    const note = String(findSheetRow(rows, name, week.week_start, own?.viewerId)?.note || '').trim();
+    return `<td class="sheet-note">${note ? escapeHtml(note) : '—'}</td>`;
+  }).join('')}<td class="sheet-sum"></td></tr>`;
+  const saveRow = own ? `<tr class="sheet-save"><th></th>${weeks.map(week => editableWeeks.has(week.week_start) ? `<td><button type="button" class="weekly-report-save" data-week="${escapeHtml(week.week_start)}">保存</button><p class="weekly-report-error" data-week="${escapeHtml(week.week_start)}" role="alert"></p></td>` : '<td></td>').join('')}<td></td></tr>` : '';
+  return `<tbody class="sheet-person"${own ? ' data-own="true"' : ''} data-person="${escapeHtml(name)}">${head}${metrics}${bodyRow}${noteRow}${saveRow}</tbody>`;
+}
+
+function grandBlock(title, rows, names, weeks) {
+  const span = weeks.length + 2;
+  const head = `<tr class="sheet-banner"><th colspan="${span}">${escapeHtml(title)}</th></tr><tr class="sheet-head"><th>项目</th>${weeks.map(week => `<th>${escapeHtml(weeklyReportWeekShortLabel(week.week_start, week.week_end))}</th>`).join('')}<th>合计</th></tr><tr class="sheet-dates"><td></td>${weeks.map(week => `<td>${escapeHtml(week.week_start)} 至 ${escapeHtml(week.week_end)}</td>`).join('')}<td></td></tr>`;
+  const metrics = SHEET_METRICS.map(([metric, label]) => {
+    const weekTotals = weeks.map(week => addDecimal(names.map(name => formatMetric(findSheetRow(rows, name, week.week_start)?.[metric])).filter(Boolean)));
+    const all = addDecimal(names.flatMap(name => weeks.map(week => formatMetric(findSheetRow(rows, name, week.week_start)?.[metric]))).filter(Boolean));
+    return `<tr class="sheet-grand"><th class="sheet-label">${label}</th>${weekTotals.map((total, index) => `<td class="sheet-sum" data-sum="week" data-metric="${metric}" data-week="${escapeHtml(weeks[index].week_start)}">${escapeHtml(total)}</td>`).join('')}<td class="sheet-sum" data-sum="all" data-metric="${metric}">${escapeHtml(all)}</td></tr>`;
+  }).join('');
+  return `<tbody class="sheet-total-block">${head}${metrics}</tbody>`;
 }
 
 function summaryTables(reports, edit = null) {
   const months = groupWeeklyReportsByMonth(reports);
   const currentMonth = edit?.current ? weeklyReportMonthKey(edit.current.week_end) : '';
-  const ownsCurrent = Boolean(edit?.viewerId && edit.current && reports.some(row => row.week_start === edit.current.week_start && row.user_id === edit.viewerId));
-  if (edit?.canSubmit && edit.viewerId && currentMonth && !ownsCurrent && !months.some(group => group.month === currentMonth)) {
-    months.push({ month: currentMonth, label: weeklyReportMonthLabel(currentMonth), rows: [], totals: sumWeeklyReports([]) });
+  const ownsCurrent = Boolean(edit?.viewerId && reports.some(row => row.user_id === edit.viewerId && row.week_start === edit.current.week_start));
+  if (edit?.canSubmit && currentMonth && !ownsCurrent && !months.some(group => group.month === currentMonth)) {
+    months.push({ month: currentMonth, label: weeklyReportMonthLabel(currentMonth), rows: [] });
     months.sort((a, b) => b.month.localeCompare(a.month));
   }
   if (!months.length) return '<p class="weekly-report-empty">还没有周报。</p>';
   return months.map(group => {
-    const rows = group.rows.slice();
-    if (edit?.canSubmit && edit.viewerId && edit.current && group.month === currentMonth && !ownsCurrent) {
-      rows.push({
-        user_id: edit.viewerId,
-        salesperson_name: edit.viewerName,
-        week_start: edit.current.week_start,
-        week_end: edit.current.week_end,
-        inquiries: null,
-        calls: null,
-        unpaid_orders: null,
-        performance: null,
-        body: '',
-        note: ''
-      });
-      sortReportRows(rows);
-    }
-    const body = rows.map(row => reportRow(row, Boolean(edit?.canSubmit && edit.viewerId && row.user_id === edit.viewerId))).join('');
-    const totals = group.totals;
-    return `<section class="weekly-report-month-block" data-month="${escapeHtml(group.month)}"><h2 class="weekly-report-month">${escapeHtml(group.label)}</h2><article class="weekly-report-card"><div class="weekly-report-table-scroll"><table class="weekly-report-table"><thead><tr><th>业务员</th><th>周期（周四至周三）</th><th>询盘</th><th>电话</th><th>下单未付</th><th>业绩</th><th>周报</th><th>备注</th></tr></thead><tbody>${body}<tr class="weekly-report-total"><th>合计</th><td></td><td>${escapeHtml(totals.inquiries)}</td><td>${escapeHtml(totals.calls)}</td><td>${escapeHtml(totals.unpaid_orders)}</td><td>${escapeHtml(totals.performance)}</td><td></td><td></td></tr></tbody></table></div></article></section>`;
+    const includeCurrent = Boolean(edit?.canSubmit && !ownsCurrent && group.month === currentMonth);
+    const weeks = sheetWeeks(group.rows, includeCurrent ? edit.current : null);
+    const names = orderedNames([...new Set(group.rows.map(personName))]);
+    if (edit?.canSubmit && !names.includes(edit.viewerName) && (includeCurrent || group.rows.some(row => row.user_id === edit.viewerId))) names.push(edit.viewerName);
+    const ordered = orderedNames(names);
+    const blocks = ordered.map(name => personBlock(name, group.rows, weeks, edit?.canSubmit && name === edit.viewerName ? edit : null, includeCurrent ? edit.current : null)).join('');
+    const title = weeklyReportTotalTitle(ordered);
+    return `<section class="sheet-month" data-month="${escapeHtml(group.month)}"><p class="sheet-subtitle">${escapeHtml(group.label)}&nbsp;&nbsp;&nbsp;&nbsp;周期为周四至周三（北京时间）</p><div class="sheet-scroll"><table class="sheet">${blocks}${grandBlock(title, group.rows, ordered, weeks)}</table></div></section>`;
   }).join('');
 }
 
@@ -293,7 +365,7 @@ export function renderWeeklyReport({ access = 'view', reports = [], today = new 
   const canSubmit = access === 'submit';
   const reminder = canSubmit ? weeklyReminder(todayIso, savedOwnCurrentWeek(reports, current.week_start, viewerId)) : null;
   const reminderHtml = reminder ? `<p class="${reminder.kind === 'due' ? 'weekly-report-reminder' : 'weekly-report-defer'}" role="${reminder.kind === 'due' ? 'alert' : 'status'}">${escapeHtml(reminder.text)}</p>` : '';
-  const heading = `<div class="weekly-report-head"><div><p class="kicker">WEEKLY REPORT</p><h1>周报</h1><p>${canSubmit ? '在月度汇总表中修改并保存本人的周报。不能修改他人的数据或备注。' : '查看各业务员的月度汇总，不能代为保存。'}</p></div><div class="weekly-report-head-actions"><button type="button" id="exportWeeklyReport">导出 Excel</button><button type="button" id="closeWeeklyReport">← 返回订单中心</button></div></div>`;
+  const heading = `<div class="weekly-report-head"><div><p class="kicker">WEEKLY REPORT</p><h1>周报</h1><p>${canSubmit ? '在月度汇总表中修改并保存本人的周报。不能修改他人的数据或备注。' : '查看各业务员的月度汇总，不能代为保存。'}</p></div><div class="weekly-report-head-actions"><button type="button" id="closeWeeklyReport">← 返回订单中心</button></div></div>`;
   const edit = canSubmit && viewerId ? { canSubmit, viewerId, viewerName: viewerSalesName(reports, viewerId), current } : null;
   return `<section class="weekly-report-shell" data-access="${canSubmit ? 'submit' : 'view'}">${heading}${reminderHtml}<div class="weekly-report-summary">${summaryTables(reports, edit)}</div></section>`;
 }
@@ -307,45 +379,35 @@ export async function mountWeeklyReport(page, { api, onClose, today = () => new 
       event.stopPropagation();
       onClose?.();
     });
-    page.querySelector('#exportWeeklyReport')?.addEventListener('click', async event => {
-      event.preventDefault();
-      event.stopPropagation();
-      const button = event.currentTarget;
-      const saved = (data.reports || []).filter(row => row?.week_start);
-      if (!saved.length) { alert('还没有可导出的周报'); return; }
-      button.disabled = true;
-      try {
-        const excel = await import('./weekly-report-excel.js');
-        const buffer = await excel.buildWeeklyReportWorkbook(saved);
-        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = excel.weeklyReportExcelFilename(saved);
-        document.body.append(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1500);
-      } catch (error) {
-        alert(error?.message || '导出失败');
-      } finally {
-        button.disabled = false;
-      }
-    });
+    const refreshSheetSums = () => {
+      page.querySelectorAll('[data-month]').forEach(month => {
+        const cells = [...month.querySelectorAll('.sheet-num')].map(cell => ({
+          person: cell.dataset.person,
+          metric: cell.dataset.metric,
+          week: cell.dataset.week,
+          raw: (cell.querySelector('input')?.value ?? cell.dataset.raw ?? '').trim()
+        })).filter(item => item.raw !== '' && Number.isFinite(Number(item.raw)));
+        month.querySelectorAll('[data-sum="person"]').forEach(cell => {
+          cell.textContent = addDecimal(cells.filter(item => item.person === cell.dataset.person && item.metric === cell.dataset.metric).map(item => item.raw));
+        });
+        month.querySelectorAll('[data-sum="week"]').forEach(cell => {
+          cell.textContent = addDecimal(cells.filter(item => item.week === cell.dataset.week && item.metric === cell.dataset.metric).map(item => item.raw));
+        });
+        month.querySelectorAll('[data-sum="all"]').forEach(cell => {
+          cell.textContent = addDecimal(cells.filter(item => item.metric === cell.dataset.metric).map(item => item.raw));
+        });
+      });
+    };
+    page.querySelectorAll('.sheet-num input').forEach(input => input.addEventListener('input', refreshSheetSums));
     page.querySelectorAll('.weekly-report-save').forEach(button => button.addEventListener('click', async event => {
       event.preventDefault();
       event.stopPropagation();
-      const row = button.closest('tr');
-      const input = {
-        week_start: row?.dataset.week || '',
-        inquiries: row?.querySelector('[name="inquiries"]')?.value,
-        calls: row?.querySelector('[name="calls"]')?.value,
-        unpaid_orders: row?.querySelector('[name="unpaid_orders"]')?.value,
-        performance: row?.querySelector('[name="performance"]')?.value,
-        body: row?.querySelector('[name="body"]')?.value
-      };
+      const week = button.dataset.week || '';
+      const block = button.closest('tbody');
+      const field = name => block?.querySelector(`[name="${name}"][data-week="${week}"]`)?.value;
+      const input = { week_start: week, inquiries: field('inquiries'), calls: field('calls'), unpaid_orders: field('unpaid_orders'), performance: field('performance'), body: field('body') };
       const parsed = validateWeeklyReportInput(input);
-      const error = row?.querySelector('.weekly-report-error');
+      const error = block?.querySelector(`.weekly-report-error[data-week="${week}"]`);
       if (!parsed.ok) {
         if (error) error.textContent = parsed.message;
         alert(parsed.message);

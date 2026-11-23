@@ -312,9 +312,9 @@ test('按当前流程 adds the early statuses without a new tab, and 待主管�
   assert.equal(app.includes('按当前流程<select id="workflowStepFilter">'), true);
 
   const steps = JSON.parse(app.match(/const WORKFLOW_FILTER_STEPS=(\[[^\]]+\])/)[1].replace(/'/g, '"'));
-  const previous = ['rendering', 'production', 'shipping_selection', 'tracking', 'air_pickup', 'domestic_customs', 'ocean_tracking', 'ocean_transit', 'overseas_customs', 'warehouse_appointment', 'last_mile_tracking', 'delivery', 'last_mile', 'batch_shipping', 'completed'];
-  assert.deepEqual(steps.slice(0, 3), ['sales_supplement', 'awaiting_factory', 'follower_create']);
-  assert.deepEqual(steps.slice(3), previous);
+  const expected = ['sales_supplement', 'awaiting_factory', 'follower_create', 'business_placed', 'rendering', 'production', 'production_shipping', 'shipping_selection', 'tracking', 'air_pickup', 'delivery', 'domestic_customs', 'ocean_tracking', 'ocean_transit', 'overseas_customs', 'warehouse_appointment', 'last_mile_tracking', 'last_mile', 'batch_shipping', 'completed'];
+  assert.deepEqual(steps, expected);
+  assert.equal(steps.filter(step => step === 'shipping_selection' || step === 'ready_to_ship').length, 1);
 
   const source = [
     lineFunction('followerFactorySaved'),
@@ -335,7 +335,9 @@ test('按当前流程 adds the early statuses without a new tab, and 待主管�
     { id: 'wait', current_step: 'follower_create', factory_name: '', deleted_at: null },
     { id: 'blank', current_step: 'follower_create', factory_name: '   ', deleted_at: null },
     { id: 'ready', current_step: 'follower_create', factory_name: 'Factory A', deleted_at: null },
+    { id: 'placed', current_step: 'business_placed', deleted_at: null },
     { id: 'prod', current_step: 'production', deleted_at: null },
+    { id: 'handoff', current_step: 'production_shipping', deleted_at: null },
     { id: 'ship', current_step: 'shipping_selection', deleted_at: null },
     { id: 'legacy', current_step: 'ready_to_ship', deleted_at: null },
     { id: 'ocean', current_step: 'ocean_transit', deleted_at: null },
@@ -378,13 +380,27 @@ test('按当前流程 adds the early statuses without a new tab, and 待主管�
   assert.equal(options[1].text, '待业务员补充信息 (1)');
   assert.equal(options[2].text, '待主管选择工厂 (2)');
   assert.equal(options[3].text, TAB_LABEL + ' (1)');
+  assert.equal(options.find(option => option.value === 'business_placed').text, '业务员已下单 (1)');
+  assert.equal(options.find(option => option.value === 'rendering').text, '效果图 (0)');
   assert.equal(options.find(option => option.value === 'production').text, '生产 (1)');
-  assert.equal(options.find(option => option.value === 'shipping_selection').text, '选择发货方式 (1)');
+  assert.equal(options.find(option => option.value === 'production_shipping').text, '完成生产并发货 (1)');
+  assert.equal(options.find(option => option.value === 'shipping_selection').text, '选择发货方式 (2)');
+  assert.equal(options.find(option => option.value === 'tracking').text, '填写物流单号 (0)');
+  assert.equal(options.find(option => option.value === 'air_pickup').text, '等待提取 (0)');
+  assert.equal(options.find(option => option.value === 'delivery').text, '等待签收 (0)');
+  assert.equal(options.find(option => option.value === 'domestic_customs').text, '国内清关开船 (0)');
   assert.equal(options.find(option => option.value === 'ocean_tracking').text, '填写海运单号 (1)');
   assert.equal(options.find(option => option.value === 'ocean_transit').text, '海上运输 (0)');
+  assert.equal(options.find(option => option.value === 'overseas_customs').text, '海外清关提柜 (0)');
+  assert.equal(options.find(option => option.value === 'warehouse_appointment').text, '海外仓约车 (0)');
+  assert.equal(options.find(option => option.value === 'last_mile_tracking').text, '填写约车单号 (0)');
+  assert.equal(options.find(option => option.value === 'last_mile').text, '目的地派送 (0)');
+  assert.equal(options.find(option => option.value === 'batch_shipping').text, '分批物流 (0)');
   assert.equal(options.find(option => option.value === 'completed').text, '订单完成 (1)');
   assert.equal(options.filter(option => option.text.startsWith('待主管选择工厂')).length, 1);
   assert.equal(options.filter(option => option.text.startsWith(TAB_LABEL)).length, 1);
+  assert.equal(options.filter(option => option.text.startsWith('选择发货方式')).length, 1);
+  assert.equal(options.some(option => option.value === 'ready_to_ship'), false);
 
   const waiting = rows[1];
   const blank = rows[2];
@@ -401,10 +417,24 @@ test('按当前流程 adds the early statuses without a new tab, and 待主管�
   assert.equal(ctx.matches(rows[0], 'sales_supplement'), true);
   assert.equal(ctx.matches(rows[0], 'awaiting_factory'), false);
   assert.equal(ctx.matches(rows[0], 'follower_create'), false);
-  assert.equal(ctx.matches(rows[4], 'production'), true);
-  assert.equal(ctx.matches(rows[5], 'shipping_selection'), true);
-  assert.equal(ctx.matches(rows[6], 'shipping_selection'), false);
-  assert.equal(ctx.matches(rows[9], 'awaiting_factory'), true);
+  const placed = rows.find(row => row.id === 'placed');
+  const handoff = rows.find(row => row.id === 'handoff');
+  const legacy = rows.find(row => row.id === 'legacy');
+  assert.equal(ctx.label('business_placed'), displayStepLabel(placed));
+  assert.equal(ctx.label('production_shipping'), displayStepLabel(handoff));
+  assert.equal(ctx.label('shipping_selection'), '选择发货方式');
+  assert.equal(displayStepLabel(legacy), '选择发货方式');
+  assert.equal(ctx.matches(placed, 'business_placed'), true);
+  assert.equal(ctx.matches(placed, 'production'), false);
+  assert.equal(ctx.matches(placed, 'follower_create'), false);
+  assert.equal(ctx.matches(rows.find(row => row.id === 'prod'), 'production'), true);
+  assert.equal(ctx.matches(handoff, 'production_shipping'), true);
+  assert.equal(ctx.matches(handoff, 'production'), false);
+  assert.equal(ctx.matches({ current_step: 'production_shipping' }, 'production_shipping'), true);
+  assert.equal(ctx.matches(rows.find(row => row.id === 'ship'), 'shipping_selection'), true);
+  assert.equal(ctx.matches(legacy, 'shipping_selection'), true);
+  assert.equal(ctx.matches(legacy, 'production_shipping'), false);
+  assert.equal(ctx.matches(rows.find(row => row.id === 'gone'), 'awaiting_factory'), true);
   assert.equal(ctx.matches({ current_step: 'production', factory_name: '' }, 'awaiting_factory'), false);
   assert.equal(ctx.matches({ current_step: 'production', factory_name: 'Factory A' }, 'follower_create'), false);
 

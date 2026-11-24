@@ -106,6 +106,10 @@ test('the Shopify sync window stays Beijing 2026-11-21 00:00 and also includes o
   assert.equal(SHOPIFY_IMPORT_START, '2026-11-20T16:00:00Z');
   assert.deepEqual(SHOPIFY_EXPLICIT_ORDER_NUMBERS, ['9050']);
   assert.match(source, /shopifySyncEligible/);
+  assert.match(source, /createdAt requiresShipping/);
+  assert.equal(shopifySyncEligible({name:'#9050',requiresShipping:false}),false);
+  assert.equal(shopifySyncEligible({name:'#9051',createdAt:SHOPIFY_IMPORT_START,requiresShipping:false}),false);
+  assert.equal(shopifySyncEligible({name:'#9051',createdAt:SHOPIFY_IMPORT_START,requiresShipping:true}),true);
   assert.match(source, /created_at:>='"\+SHOPIFY_IMPORT_START\+"'/);
   assert.equal(shopifySyncEligible({ name: '#9050', createdAt: '2026-11-20T15:55:03Z' }), true);
   assert.equal(shopifySyncEligible({ name: '9050', createdAt: '2026-11-20T15:55:03Z' }), true);

@@ -170,8 +170,12 @@ async function rpc(req, res, name, body, user) {
   if (!store.isFollower(user.id)) throw Object.assign(Error('没有操作权限'), { status: 403 });
   const order = store.all('orders').find(row => row.id === body.target_order_id);
   if (['soft_delete_order', 'restore_deleted_order', 'permanently_delete_order'].includes(name) && !order) throw Object.assign(Error('订单不存在'), { status: 404 });
-  if (name === 'soft_delete_order') store.put('orders', { ...order, deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-  else if (name === 'restore_deleted_order') {
+  const pendingShopify = Boolean(order?.shopify_order_id && ['sales_supplement','follower_create'].includes(order.current_step));
+  if (name === 'soft_delete_order') {
+    if (pendingShopify && !store.isSupervisor(user.id)) throw Object.assign(Error('仅主管可以删除待下单的 Shopify 订单'), {status:403});
+    const deletedAt = new Date().toISOString();
+    store.put('orders', { ...order, deleted_at: deletedAt, updated_at: deletedAt });
+  } else if (name === 'restore_deleted_order') {
     if (!store.isSupervisor(user.id)) throw Object.assign(Error('仅主管可以恢复订单'), { status: 403 });
     store.put('orders', { ...order, deleted_at: null, updated_at: new Date().toISOString() });
   } else if (name === 'permanently_delete_order') {
@@ -180,6 +184,7 @@ async function rpc(req, res, name, body, user) {
       const ids = store.all(table).filter(row => row.order_id === order.id).map(row => row.id);
       store.remove(table, ids);
     }
+    if (pendingShopify) store.setMeta('dismissed-shopify-order:'+order.shopify_order_id,'1');
     store.remove('orders', [order.id]);
   } else if (name === 'set_user_role') {
     if (!store.isSupervisor(user.id)) throw Object.assign(Error('仅主管可以分配角色'), { status: 403 });
@@ -356,7 +361,7 @@ const orderQuery = `query ImportOrders($query: String!, $after: String) {
   orders(first: 25, after: $after, query: $query, sortKey: CREATED_AT) {
     pageInfo { hasNextPage endCursor }
     nodes {
-      id name createdAt note email phone
+      id name createdAt requiresShipping note email phone
       customAttributes { key value }
       shippingAddress { name firstName lastName phone address1 address2 city province zip country }
       shippingLines(first: 10) { nodes { title code } }

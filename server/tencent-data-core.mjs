@@ -80,6 +80,7 @@ export const SHOPIFY_IMPORT_START = '2026-11-20T16:00:00Z';
 export const SHOPIFY_EXPLICIT_ORDER_NUMBERS = ['9050'];
 
 export function shopifySyncEligible(order) {
+  if (order?.requiresShipping === false) return false;
   const number = orderNumberKey(order?.name ?? order?.order_no);
   if (SHOPIFY_EXPLICIT_ORDER_NUMBERS.includes(number)) return true;
   const created = Date.parse(order?.createdAt);
@@ -671,6 +672,7 @@ export class TencentDataStore {
   }
 
   shopifyOrderNeedsRefresh(number, id, includeProducts = false) {
+    if (id && this.meta('dismissed-shopify-order:'+id)) return false;
     const order = this.findShopifyOrder(number, id);
     if (order) {
       if (order.deleted_at || order.current_step !== SALES_SUPPLEMENT) return false;
@@ -783,7 +785,7 @@ export class TencentDataStore {
     const live = options.live !== false;
     this.db.exec('begin immediate');
     try {
-      if (!row || !orderNumberKey(row.order_no)) {
+      if (!row || !orderNumberKey(row.order_no) || this.meta('dismissed-shopify-order:'+(row.shopify_order_id || row.id || ''))) {
         this.db.exec('commit');
         return null;
       }

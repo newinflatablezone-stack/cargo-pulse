@@ -44,6 +44,7 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
   store.put('orders', { id: 'second-order', order_no: 'TRACK-2' });
   store.put('orders', {id:'factory-handoff',order_no:'HANDOFF-1',order_date:'2025-01-01',current_step:'business_placed',factory_name:'Factory A'});
   store.put('order_events', {id:'factory-start',order_id:'factory-handoff',step_key:'business_placed'});
+  store.put('orders', {id:'shopify-pending-delete',order_no:'#TEST-DELETE',shopify_order_id:'gid://shopify/Order/12345',current_step:'sales_supplement'});
   store.db.close();
   const child = spawn(process.execPath, [resolve('server/tencent-data-server.mjs')], {
     env: {
@@ -118,6 +119,29 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
     const ai = '/rest/v1/ai';
     const supervisorHeaders = { Authorization: `Bearer ${supervisorSession.access_token}` };
     const request = (path, options) => fetch(baseUrl + path, options);
+    const removePending = (action, token) => request('/rest/v1/rpc/'+action,{
+      method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({target_order_id:'shopify-pending-delete'})
+    });
+    assert.equal((await removePending('soft_delete_order',followerSession.access_token)).status,403);
+    assert.equal((await removePending('soft_delete_order',supervisorSession.access_token)).status,200);
+    const readPending = async token => (await request('/rest/v1/orders?id=eq.shopify-pending-delete',{headers:{Authorization:'Bearer '+token}})).json();
+    assert.deepEqual(await readPending(followerSession.access_token),[]);
+    assert.ok((await readPending(supervisorSession.access_token))[0].deleted_at);
+    const recycleStore=new TencentDataStore(join(dataDir,'test.sqlite'));
+    try {
+      assert.equal(recycleStore.shopifyOrderNeedsRefresh('#TEST-DELETE','gid://shopify/Order/12345',true),false);
+      assert.equal(recycleStore.importShopifyOrder({id:'gid://shopify/Order/12345',order_no:'#TEST-DELETE'}),null);
+    } finally { recycleStore.db.close(); }
+    assert.equal((await removePending('restore_deleted_order',supervisorSession.access_token)).status,200);
+    assert.equal((await readPending(followerSession.access_token)).length,1);
+    assert.equal((await removePending('soft_delete_order',supervisorSession.access_token)).status,200);
+    assert.equal((await removePending('permanently_delete_order',supervisorSession.access_token)).status,200);
+    const checkStore=new TencentDataStore(join(dataDir,'test.sqlite'));
+    try {
+      assert.equal(checkStore.shopifyOrderNeedsRefresh('#TEST-DELETE','gid://shopify/Order/12345',true),false);
+      assert.equal(checkStore.importShopifyOrder({id:'gid://shopify/Order/12345',order_no:'#TEST-DELETE'}),null);
+    } finally { checkStore.db.close(); }
     const handoff = await request('/rest/v1/rpc/transition_order_stage', {
       method:'POST',headers:{...supervisorHeaders,'Content-Type':'application/json'},
       body:JSON.stringify({target_order_id:'factory-handoff',target_next_step:'production',target_deadline:'2025-01-11T00:00:00Z'})

@@ -66,3 +66,32 @@ test('查询页支持 same-origin 配置及外部 Supabase 地址', async () => 
     assert.equal(nodes['#submit-button'].disabled, false);
   }
 });
+
+test('tracking displays confirmed deliveries as completed even when the event has no completed_at', () => {
+  const source=readFileSync(new URL('../public/track/app.js',import.meta.url),'utf8');
+  const document={
+    querySelector:()=>({addEventListener(){}}),
+    createElement:tag=>({tag,children:[],append(...children){this.children.push(...children);}})
+  };
+  const context={document};
+  runInNewContext(source,context);
+  const started='2026-11-25T06:00:00Z', completed='2026-11-25T08:00:00Z';
+  const delivered={step_key:'completed',started_at:started,completed_at:null};
+  const cases=[
+    [{current_step:'completed',step_started_at:started},[delivered]],
+    [{current_step:'completed',step_started_at:started,completed_at:completed},[delivered]],
+    [{current_step:'completed',step_started_at:started},[]]
+  ];
+  for (const [item,events] of cases) {
+    const row=context.renderTimeline(context.normalizeEvents(events,item),item).children[0];
+    assert.equal(row.children[1].children[0].textContent,'Delivered');
+    assert.equal(row.children[1].children[1].textContent,'Completed');
+    assert.doesNotMatch(row.className,/current/);
+    assert.equal(row.children[2].tag,'time');
+    assert.equal(row.children[2].textContent,context.fmt(item.completed_at||started,true));
+  }
+  const item={current_step:'delivery',step_started_at:started};
+  const active=context.renderTimeline(context.normalizeEvents([],item),item).children[0];
+  assert.match(active.className,/current/);
+  assert.equal(active.children[1].children[1].textContent,'In Progress');
+});

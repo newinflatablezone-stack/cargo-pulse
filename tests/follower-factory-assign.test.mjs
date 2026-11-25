@@ -115,13 +115,11 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
   assert.match(catalog, /保存工厂/);
   assert.match(catalog, /action:'assign_factory',id:o\.id,factory_name/);
   assert.match(catalog, /还没有可选工厂/);
-  assert.match(gate, /if\(isSupervisor\(\)\)return false/);
-  assert.equal(gate.includes('openFollowerFactoryAssign'), true);
-  assert.match(gate, /openFollowerFactoryAssign\(o,detailDialog,true\)/);
-  assert.match(gate, /followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}/);
-  assert.match(app, /d\.innerHTML=detailHtml\(o\);d\.showModal\(\);bindFollowerFactoryAssign\(d\.querySelector\('#followerFactoryForm'\),o,d\);mountSupervisorSalesImages\(d,o\);void mountIssueOrder\(o,d\);keepSupervisorFactoryAtBottom\(d\)/);
-  assert.match(app, /if\(supervisorAwaitingFactoryDetail\(o\)\)return supervisorSalesReviewHtml\(o\)/);
-  assert.match(app, /function supervisorSalesReviewHtml\(o\)\{const note=o\.abnormal_note\|\|o\.requirements\|\|'';return `<div class="detail supervisor-sales-review">/);
+  assert.equal(gate.includes('openFollowerFactoryAssign'), false);
+  assert.match(gate, /!followerFactorySaved\(o\)\)return false;openShopifyCreate/);
+  assert.match(app, /d\.innerHTML=detailHtml\(o\);d\.showModal\(\);bindFollowerFactoryAssign\(d\.querySelector\('#followerFactoryForm'\),o,d,!isSupervisor\(\)\);mountSupervisorSalesImages\(d,o\);void mountIssueOrder\(o,d\);keepSupervisorFactoryAtBottom\(d\)/);
+  assert.match(app, /if\(canReviewFactorySelection\(o\)\)return factorySelectionReviewHtml\(o\)/);
+  assert.match(app, /function factorySelectionReviewHtml\(o\)\{const note=o\.abnormal_note\|\|o\.requirements\|\|'';return `<div class="detail supervisor-sales-review">/);
   assert.equal(app.includes('supervisor&&!followerFactorySaved(o)?followerFactoryAssignHtml(o)'), false);
   assert.equal(create.includes('openFollowerFactoryAssign(o,detailDialog);return'), false);
   assert.match(create, /input\.readOnly=true/);
@@ -148,6 +146,7 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
     partners,
     profile: { role: 'business', email: '505863160@qq.com' },
     STEP_LABELS: { follower_create: '待跟单创建订单' },
+    canFollowOrders: () => true,
     flowFor: () => ['production', 'completed'],
     stableStepKey: step => step,
     esc: value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])),
@@ -172,12 +171,12 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
     line('followerFactoryFields'),
     line('followerFactoryAssignHtml'),
     line('orderAwaitingFactory'),
-    line('supervisorAwaitingFactoryDetail'),
+    line('canReviewFactorySelection'),
     line('salespersonOrderNoLabel'),
     line('salespersonShippingLabel'),
     line('salespersonBlowerLabel'),
     line('salespersonSubmittedValue'),
-    line('supervisorSalesReviewHtml'),
+    line('factorySelectionReviewHtml'),
     line('detailHtml'),
     line('bindFollowerFactoryAssign'),
     line('orderMatchesStatusTab'),
@@ -240,11 +239,15 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
   assert.equal(custom.includes('后台订单号'), false);
 
   sandbox.profile = { role: 'follower', email: 'follow@example.com' };
-  const merchandiser = runInNewContext(source + '\ndetailHtml(order)', { ...sandbox, order });
-  assert.equal(merchandiser.includes('followerFactoryForm'), false);
-  assert.equal(merchandiser.includes('supervisor-sales-fields'), false);
-  assert.match(merchandiser, /步骤时间线/);
-  assert.match(merchandiser, /id="shopifyCreate">创建订单/);
+  const merchandiser = runInNewContext(source + '\ndetailHtml(order)', {
+    ...sandbox, order:{...order,shopify_order_id:'gid://shopify/Order/9053'},
+    isSupervisor:()=>false, productRowsHtml:()=>'<section>蓝色产品下单要求</section>'
+  });
+  const factoryForm = merchandiser.indexOf('id="followerFactoryForm"');
+  assert.ok(factoryForm > 0);
+  assert.match(merchandiser.slice(0,factoryForm), /请加急，备注要完整显示，不要截断/);
+  assert.match(merchandiser.slice(0,factoryForm), /蓝色产品下单要求/);
+  assert.doesNotMatch(merchandiser, /id="deleteOrder"/);
 
   sandbox.profile = { role: 'business', email: '505863160@qq.com' };
   const deleted = runInNewContext(source + '\ndetailHtml(order)', { ...sandbox, order: { ...order, deleted_at: '2026-11-01' } });

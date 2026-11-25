@@ -158,7 +158,7 @@ test('the create-order form diagnoses customer info after prefill, not the empty
   assert.ok(filled > 0 && diagnosed > filled);
   assert.equal(create.indexOf('bindCustomerInfoRule(form)', diagnosed + 1), -1);
   assert.match(app, /if\(openFollowerCreate\(o\)\)return/);
-  assert.match(app, /followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}/);
+  assert.match(app, /!followerFactorySaved\(o\)\)return false;openShopifyCreate\(o,detailDialog\);return true/);
   assert.match(app, /#shopifyCreate'\)\?\.addEventListener\('click',\(\)=>openFollowerCreate\(o,d\)\)/);
   const line = app.split('\n').find(item => item.startsWith('function bindCustomerInfoRule'));
   const bindCustomerInfoRule = runInNewContext(`${line}\nbindCustomerInfoRule`, { customerInfoReminder });

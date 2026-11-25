@@ -262,10 +262,9 @@ test('a merchandiser click on 待跟单创建订单 opens the create-order form 
   const production = { id: 'prod-1', current_step: 'production', deleted_at: null, business_id: 'demi-1' };
   const done = { id: 'done-1', current_step: 'completed', deleted_at: null, business_id: 'demi-1' };
   const ownedBySupervisor = { id: 'wait-boss', current_step: 'follower_create', deleted_at: null, business_id: 'supervisor-1', business_name: 'Demi' };
-  const selectFactory = id => 'factory:' + id;
 
-  assert.deepEqual(clickOrder(waiting, follower), ['read:wait-1', selectFactory('wait-1')]);
-  assert.deepEqual(clickOrder(blankFactory, follower), ['read:wait-1', selectFactory('wait-1')]);
+  assert.deepEqual(clickOrder(waiting, follower), ['read:wait-1', 'detail:wait-1']);
+  assert.deepEqual(clickOrder(blankFactory, follower), ['read:wait-1', 'detail:wait-1']);
   assert.equal(clickOrder(waiting, follower).includes('create:wait-1'), false);
   assert.deepEqual(clickOrder(assigned, follower), ['read:wait-ready', 'create:wait-ready']);
   assert.deepEqual(clickOrder(waiting, { ...supervisor, role: 'follower' }), ['read:wait-1', 'detail:wait-1']);
@@ -289,11 +288,11 @@ test('a merchandiser click on 待跟单创建订单 opens the create-order form 
 
   assert.match(app, /if\(o\)void markOrderNotificationsRead\(o\.id\);if\(o&&!o\.deleted_at&&o\.current_step==='sales_supplement'&&profile\?\.role==='business'&&!isSupervisor\(\)\)\{openShopifyPlace\(o\);return\}if\(orderAction\?\.dataset\.orderView==='place'&&orderCardDate\(o\)>=SALESPERSON_DETAIL_CUTOFF\)\{if\(o&&!o\.deleted_at&&o\.current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}/);
   assert.match(app, /openSalespersonSupplement\(o\);return\}return\}if\(openFollowerCreate\(o\)\)return;/);
-  assert.match(app, /function openFollowerCreate\(o,detailDialog\)\{if\(!o\|\|o\.deleted_at\|\|o\.current_step!=='follower_create'\|\|!canFollowOrders\(\)\)return false;if\(followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}if\(isSupervisor\(\)\)return false;openFollowerFactoryAssign\(o,detailDialog,true\);return true\}/);
-  assert.equal(app.slice(app.indexOf('function openFollowerCreate'), app.indexOf('const factoryExportSelection')).includes('openFollowerFactoryAssign'), true);
+  assert.match(app, /!canFollowOrders\(\)\|\|!followerFactorySaved\(o\)\)return false;openShopifyCreate\(o,detailDialog\);return true/);
+  assert.equal(app.slice(app.indexOf('function openFollowerCreate'), app.indexOf('const factoryExportSelection')).includes('openFollowerFactoryAssign'), false);
   assert.match(app, /class="step-name">\$\{esc\(displayStepLabel\(o\)\)\}/);
-  assert.match(app, /if\(supervisorAwaitingFactoryDetail\(o\)\)return supervisorSalesReviewHtml\(o\)/);
-  assert.match(app, /function supervisorSalesReviewHtml\(o\)\{const note=o\.abnormal_note\|\|o\.requirements\|\|'';return `<div class="detail supervisor-sales-review">/);
+  assert.match(app, /if\(canReviewFactorySelection\(o\)\)return factorySelectionReviewHtml\(o\)/);
+  assert.match(app, /function factorySelectionReviewHtml\(o\)\{const note=o\.abnormal_note\|\|o\.requirements\|\|'';return `<div class="detail supervisor-sales-review">/);
   const create = app.slice(app.indexOf('function openShopifyCreate'), app.indexOf('function detailHtml'));
   assert.match(create, /d\.innerHTML=orderForm\(true,true\)/);
   assert.match(create, /textContent='创建订单'/);

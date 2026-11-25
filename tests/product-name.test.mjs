@@ -254,7 +254,7 @@ test('the salesperson forms show one Chinese-only error and 创建订单 does no
   assert.equal(factory.includes('product-name-reminder'), false);
   assert.equal(factory.includes('bindProductNameRule'), false);
   assert.match(app, /if\(openFollowerCreate\(o\)\)return/);
-  assert.match(app, /followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}/);
+  assert.match(app, /!followerFactorySaved\(o\)\)return false;openShopifyCreate\(o,detailDialog\);return true/);
   assert.equal(app.includes('须改为中文或中英混合'), false);
   assert.equal(app.includes('不能直接提交 Shopify 导入的名称'), false);
   assert.equal(app.includes('英文可以写在中文旁边'), false);

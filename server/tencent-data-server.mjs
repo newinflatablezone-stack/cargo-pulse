@@ -14,6 +14,42 @@ const LEGACY_KEY = process.env.LEGACY_SUPABASE_KEY || '';
 await mkdir(DATA_DIR, { recursive: true });
 await mkdir(UPLOAD_DIR, { recursive: true });
 const store = new TencentDataStore(DB_FILE);
+
+// One-time cleanup of the closed test thread reported for order #8934.
+function archiveTestIssue8934() {
+  const backupKey = 'archived_test_issue_8934_20261016';
+  const matchesTime = (value, expected) => Math.floor(Date.parse(value) / 1000) === Date.parse(expected) / 1000;
+  const db = store.db;
+  db.exec('begin immediate');
+  try {
+    const orderIds = new Set(store.all('orders').filter(order => order.order_no === '#8934').map(order => order.id));
+    const matches = store.all('order_issues').filter(issue =>
+      orderIds.has(issue.order_id) && issue.category !== 'after_sales' && issue.status === 'closed' &&
+      matchesTime(issue.created_at, '2026-10-16T10:57:22Z') &&
+      issue.messages?.length === 4 &&
+      issue.messages[0].kind === 'message' && issue.messages[0].body === 'test' &&
+      issue.messages[1].kind === 'message' && issue.messages[1].body === 'faweg' &&
+      issue.messages[2].kind === 'reminder' && issue.messages[3].kind === 'closed' &&
+      matchesTime(issue.messages[3].created_at, '2026-10-16T11:01:15Z')
+    );
+    if (orderIds.size === 1 && matches.length === 1 && !db.prepare('select 1 from meta where key=?').get(backupKey)) {
+      const [issue] = matches;
+      const reads = store.all('order_issue_reads').filter(read => read.issue_id === issue.id);
+      db.prepare('insert into meta(key,value) values(?,?)').run(backupKey, JSON.stringify({ issue, reads }));
+      const removeRecord = db.prepare('delete from records where table_name=? and record_id=?');
+      for (const read of reads) removeRecord.run('order_issue_reads', read.id);
+      removeRecord.run('order_issues', issue.id);
+    }
+    db.exec('commit');
+  } catch (error) {
+    db.exec('rollback');
+    throw error;
+  } finally {
+    store.tableCache.clear();
+  }
+}
+
+archiveTestIssue8934();
 const ensureInvite = key => {
   const existing = store.all('app_settings').find(row => row.key === key);
   if (existing?.value) return existing.value;

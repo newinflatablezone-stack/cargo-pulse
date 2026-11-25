@@ -42,32 +42,34 @@ function createIssueView(afterSales) {
           };
           anchor.after(entry);
         }
-        const unread = summary?.issues.filter(issue => issue.unread).length || 0;
-        entry.textContent = summary?.total ? `售后（${summary.total}）` : '售后';
-        if (unread) entry.textContent += ' · 未读 '+unread;
+        entry.textContent = '售后';
       }
     } else if (stats) {
-    stats.classList.add('q-stats');
-    let card = stats.querySelector('.q-summary');
-    if (!card) {
-      card = document.createElement('article');
-      card.className = 'q-summary';
-      card.tabIndex = 0; card.setAttribute('role','button');
-      card.onclick = () => showSummary();
-      card.onkeydown = event => {if (event.key === 'Enter' || event.key === ' ') {event.preventDefault();showSummary();}};
-      stats.append(card);
-    }
-    card.innerHTML = `<small>未结束的问题</small><b>${summary ? summary.total : '…'}</b><span>${summary ? '查看问题、售后与回复' : '正在加载问题'}</span>`;
-    }
-    const unreadOrders = new Set((summary?.issues || []).filter(issue => issue.unread && (afterSales || issue.category !== 'after_sales')).map(issue => issue.order_id));
-    document.querySelectorAll('.order-card[data-order]').forEach(order => {
-      order.querySelector('.q-unread-dot.'+panelClass)?.remove();
-      if (unreadOrders.has(order.dataset.order)) {
-        const dot = document.createElement('span'); dot.className='q-unread-dot '+panelClass;dot.textContent=afterSales?'售后新消息':'新消息';dot.setAttribute('aria-label','问题有未读消息');dot.title='问题有未读消息，打开订单查看';(order.querySelector('.card-top')||order).append(dot);
+      stats.classList.add('q-stats');
+      let card = stats.querySelector('.q-summary');
+      if (!card) {
+        card = document.createElement('article');
+        card.className = 'q-summary';
+        card.tabIndex = 0; card.setAttribute('role','button');
+        card.onclick = () => showSummary();
+        card.onkeydown = event => {if (event.key === 'Enter' || event.key === ' ') {event.preventDefault();showSummary();}};
+        stats.append(card);
       }
-    });
+      card.innerHTML = `<small>未结束的问题</small><b>${summary ? summary.total : '…'}</b><span>${summary ? '查看问题、售后与回复' : '正在加载问题'}</span>`;
+      const unreadOrders = new Set((summary?.issues || []).filter(issue => issue.unread && issue.category !== 'after_sales').map(issue => issue.order_id));
+      document.querySelectorAll('.order-card[data-order]').forEach(order => {
+        order.querySelector('.q-unread-dot.'+panelClass)?.remove();
+        if (unreadOrders.has(order.dataset.order)) {
+          const dot = document.createElement('span');
+          dot.className='q-unread-dot '+panelClass;dot.textContent='新消息';
+          dot.setAttribute('aria-label','问题有未读消息');
+          dot.title='问题有未读消息，打开订单查看';
+          (order.querySelector('.card-top')||order).append(dot);
+        }
+      });
+    }
     if (activeOrder?.panel.isConnected && summary) {
-      const changed = summary.issues.some(issue => (afterSales || issue.category !== 'after_sales') && issue.order_id === activeOrder.id && issue.sequence > (activeOrder.sequences.get(issue.id) || 0));
+      const changed = summary.issues.some(issue => (afterSales || issue.category !== 'after_sales') && issue.order_id === activeOrder.id && (!activeOrder.issueId || issue.id === activeOrder.issueId) && issue.sequence > (activeOrder.sequences.get(issue.id) || 0));
       activeOrder.panel.querySelector('.q-refresh').hidden = !changed;
     }
   }
@@ -126,36 +128,33 @@ function createIssueView(afterSales) {
       (filter === 'history' || (filter === 'all' ? issue.status !== 'closed' : issue.status === filter)) &&
       (!factorySelect?.value || issue.factory === factorySelect.value)
     );
-    summaryDialog.querySelector('.q-total').textContent = `未结束的${afterSales?topic:'问题和售后'}共 ${summary?.total ?? '…'} 个`;
+    const total = summaryDialog.querySelector('.q-total');
+    if (total) total.textContent = `未结束的问题和售后共 ${summary?.total ?? '…'} 个`;
     const list = summaryDialog.querySelector('.q-list');
     list.innerHTML = summary ? issues.map(issue => `<button type="button" class="q-list-item" data-issue-order="${escape(issue.order_id)}" data-issue-id="${escape(issue.id)}"><span><strong>${escape(issue.order_no)}</strong>${issue.unread?'<i class="q-inline-dot" aria-label="未读"></i>':''}<small>${escape(stateLabel[issue.status])}${issue.category==='after_sales'?' · 售后 · '+escape(issue.factory||'工厂未填写'):''} · ${escape(issue.creator_name || '业务员')}</small></span><p>${escape(issue.subject)}</p><small>最新：${escape(issue.preview)} · ${escape(date(issue.updated_at))}</small></button>`).join('') || `<p class="q-empty">暂无符合条件的${topic}</p>` : '<p>正在加载…</p>';
+    const recordsById = new Map(issues.map(issue=>[issue.id,issue]));
     list.querySelectorAll('[data-issue-order]').forEach(button => button.onclick = () => {
-      if (!afterSales) {
-        summaryDialog.close();
-        context.openOrder(button.dataset.issueOrder,button.dataset.issueId);
-        return;
-      }
-      const detail = summaryDialog.querySelector('.q-after-sales-detail');
-      detail.hidden = false;
-      detail.innerHTML = '<button type="button" class="q-detail-back">返回列表</button><div class="detail"></div>';
-      detail.querySelector('.q-detail-back').onclick = () => { detail.hidden = true; detail.replaceChildren(); };
-      const record = issues.find(issue=>issue.id===button.dataset.issueId);
-      const heading = document.createElement('h2');
-      heading.textContent = record.order_no;
-      detail.querySelector('.detail').append(heading);
-      void mountOrder({id:record.order_id},detail,record.id);
-      detail.scrollIntoView({block:'start'});
+      const issue = recordsById.get(button.dataset.issueId);
+      if (!issue) return;
+      if (!afterSales) summaryDialog.close();
+      if (issue.category === 'after_sales') afterSalesView.openFollowup(issue);
+      else context.openOrder(issue.order_id,issue.id);
     });
+  }
+
+  function openFollowup(issue) {
+    const detail = dialog('售后跟进 · '+issue.order_no,'<div class="detail"></div>');
+    void mountOrder({id:issue.order_id},detail,issue.id);
   }
 
   async function showSummary() {
     if (!summaryDialog?.isConnected) {
-      const content = `<p class="q-total"></p>${afterSales ? '<button type="button" class="q-create q-start-after-sales" hidden>发起售后</button>' : ''}<label>查看范围<select><option value="all">全部未结束</option><option value="waiting_follower">待跟单回复</option><option value="waiting_business">待业务员确认</option>${afterSales ? '<option value="closed">已解决</option><option value="history">全部记录</option>' : ''}</select></label>${afterSales ? '<label>工厂<select name="factory_filter"><option value="">全部工厂</option></select></label>' : ''}<p class="q-error" role="alert"></p><div class="q-list"></div>`;
+      const content = `${afterSales ? '<button type="button" class="q-create q-start-after-sales" hidden>发起售后</button>' : '<p class="q-total"></p>'}<label>查看范围<select><option value="all">全部未结束</option><option value="waiting_follower">待跟单回复</option><option value="waiting_business">待业务员确认</option>${afterSales ? '<option value="closed">已解决</option><option value="history">全部记录</option>' : ''}</select></label>${afterSales ? '<label>工厂<select name="factory_filter"><option value="">全部工厂</option></select></label>' : ''}<p class="q-error" role="alert"></p><div class="q-list"></div>`;
       if (afterSales) {
         const main = document.querySelector('#app main');
         if (!main) return;
         main.className = 'q-after-sales-page';
-        main.innerHTML = `<section class="q-modal q-page-content"><div class="q-page-heading"><h1>售后</h1><button type="button" class="q-return">返回订单中心</button></div><section class="q-after-sales-form" hidden></section><section class="q-after-sales-detail" hidden></section>${content}</section>`;
+        main.innerHTML = `<section class="q-modal q-page-content"><div class="q-page-heading"><h1>售后</h1><button type="button" class="q-return">返回订单中心</button></div><section class="q-after-sales-form" hidden></section>${content}</section>`;
         summaryDialog = main;
         main.querySelector('.q-return').onclick = () => {
           history.pushState({},'',location.pathname);
@@ -182,6 +181,7 @@ function createIssueView(afterSales) {
       await rpc('create', {order_id:matches[0].id, factory:fields.factory.value, body, request_id:requestId});
       if (revision !== generation || !summaryDialog?.isConnected) return;
       summaryDialog.querySelector('select').value = 'all';
+      void issueView.sync(true).catch(()=>{});
       void sync(true).catch(error => {
         const hint = summaryDialog?.querySelector('.q-error');
         if (hint) hint.textContent = '售后已提交，刷新汇总失败：' + error.message;
@@ -238,16 +238,17 @@ function createIssueView(afterSales) {
     let panel=detail.querySelector('.'+panelClass);
     if(!panel){panel=document.createElement('section');panel.className='q-order '+panelClass;panel.innerHTML=`<h3>${orderTitle}</h3><p>正在加载…</p>`;detail.querySelector('.detail').append(panel);}
     const loadToken=Symbol();panel.issueLoadToken=loadToken;
-    const valid=()=>revision===generation&&identity===userId&&panel.issueLoadToken===loadToken&&panel.isConnected&&(issueId ? !detail.hidden : detail.open);
+    const valid=()=>revision===generation&&identity===userId&&panel.issueLoadToken===loadToken&&panel.isConnected&&detail.open;
     try {
       const data=await rpc('order',{order_id:order.id});
       if(!valid())return;
-      activeOrder={id:order.id,panel,sequences:new Map(data.issues.map(issue=>[issue.id,issue.sequence]))};
-      panel.innerHTML=`<div class="q-order-head"><h3>${orderTitle}</h3><button type="button" class="q-refresh" hidden>有新消息，点击刷新</button></div><p class="q-error" role="alert"></p><div class="q-threads">${data.issues.map(issue=>`<article class="q-thread ${issue.status==='closed'?'q-closed':''}" data-issue="${escape(issue.id)}"><div class="q-thread-head"><strong>${escape(stateLabel[issue.status])}${afterSales?' · '+escape(issue.factory||'工厂未填写'):''}</strong><small>${escape(date(issue.created_at))}</small></div><div class="q-messages">${issue.messages.map(message=>`<div class="q-message ${message.author_id===userId?'q-mine':''} ${message.kind!=='message'?'q-system':''}"><small>${escape(message.author_role==='follower'?'跟单':'业务员')} · ${escape(message.author_name || (message.author_role === 'follower' ? '跟单' : '业务员'))} · ${escape(date(message.created_at))}</small><p>${escape(message.body)}</p></div>`).join('')}</div><div class="q-thread-actions">${issue.can_reply?'<button type="button" data-reply>回复</button>':''}${issue.can_close?`<button type="button" class="q-end" data-close>${closeLabel}</button>`:''}${issue.can_remind?'<button type="button" data-remind>提醒业务员确认</button>':''}</div></article>`).join('')||`<p class="q-empty">暂无${topic}</p>`}</div>${!afterSales&&data.can_create?'<button type="button" class="q-create">提交问题</button>':''}`;
+      const issues = issueId ? data.issues.filter(issue=>issue.id===issueId) : data.issues;
+      activeOrder={id:order.id,issueId,panel,sequences:new Map(issues.map(issue=>[issue.id,issue.sequence]))};
+      panel.innerHTML=`<div class="q-order-head"><h3>${orderTitle}</h3><button type="button" class="q-refresh" hidden>有新消息，点击刷新</button></div><p class="q-error" role="alert"></p><div class="q-threads">${issues.map(issue=>`<article class="q-thread ${issue.status==='closed'?'q-closed':''}" data-issue="${escape(issue.id)}"><div class="q-thread-head"><strong>${escape(stateLabel[issue.status])}${afterSales?' · '+escape(issue.factory||'工厂未填写'):''}</strong><small>${escape(date(issue.created_at))}</small></div><div class="q-messages">${issue.messages.map(message=>`<div class="q-message ${message.author_id===userId?'q-mine':''} ${message.kind!=='message'?'q-system':''}"><small>${escape(message.author_role==='follower'?'跟单':'业务员')} · ${escape(message.author_name || (message.author_role === 'follower' ? '跟单' : '业务员'))} · ${escape(date(message.created_at))}</small><p>${escape(message.body)}</p></div>`).join('')}</div><div class="q-thread-actions">${issue.can_reply?'<button type="button" data-reply>回复</button>':''}${issue.can_close?`<button type="button" class="q-end" data-close>${closeLabel}</button>`:''}${issue.can_remind?'<button type="button" data-remind>提醒业务员确认</button>':''}</div></article>`).join('')||`<p class="q-empty">暂无${topic}</p>`}</div>${!afterSales&&data.can_create?'<button type="button" class="q-create">提交问题</button>':''}`;
       panel.querySelector('.q-refresh').onclick=()=>mountOrder(order,detail,issueId);
       const reload=async()=>{await mountOrder(order,detail,issueId);await sync(true);};
       panel.querySelector('.q-create')?.addEventListener('click',()=>{const requestId=crypto.randomUUID();compose('提交问题',async body=>{await rpc('create',{order_id:order.id,body,request_id:requestId});await reload();});});
-      for(const issue of data.issues){
+      for(const issue of issues){
         const row=[...panel.querySelectorAll('[data-issue]')].find(node=>node.dataset.issue===issue.id);
         row.querySelector('[data-reply]')?.addEventListener('click',()=>{
           let host = null;
@@ -272,8 +273,11 @@ function createIssueView(afterSales) {
       const focusId=detail.dataset.issueFocus;
       if(focusId){const row=[...panel.querySelectorAll('[data-issue]')].find(node=>node.dataset.issue===focusId);if(row){row.scrollIntoView({block:'center'});delete detail.dataset.issueFocus;}}
       // Acknowledge only the messages actually displayed, never later arrivals.
-      await Promise.all(data.issues.filter(issue=>issue.unread).map(issue=>rpc('read',{issue_id:issue.id,sequence:issue.sequence})));
-      if(valid())await sync(true);
+      await Promise.all(issues.filter(issue=>issue.unread).map(issue=>rpc('read',{issue_id:issue.id,sequence:issue.sequence})));
+      if(valid()) {
+        await sync(true);
+        if(afterSales)void issueView.sync(true).catch(()=>{});
+      }
     } catch(error) {
       if(!valid())return;
       const hint=panel.querySelector('.q-error')||panel.querySelector('p');hint.textContent=topic+'加载失败：'+error.message;
@@ -281,7 +285,7 @@ function createIssueView(afterSales) {
     }
   }
 
-  return {mountHome,mountOrder};
+  return {mountHome,mountOrder,openFollowup,sync};
 }
 
 const issueView = createIssueView(false);
@@ -293,5 +297,5 @@ export function mountIssueHome(options) {
 }
 
 export async function mountIssueOrder(order, detail) {
-  await Promise.all([issueView.mountOrder(order, detail), afterSalesView.mountOrder(order, detail)]);
+  await issueView.mountOrder(order, detail);
 }

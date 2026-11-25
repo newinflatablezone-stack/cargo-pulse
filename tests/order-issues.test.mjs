@@ -123,6 +123,13 @@ test('after-sales reaches followers and supervisor, stays separate and retains r
   assert.equal(call(other,'summary',{include_after_sales:true}).total,0);
   assert.equal(sales(follower,'summary').issues[0].unread,true);
   assert.equal(sales(supervisor,'summary').issues[0].unread,true);
+  sales(supervisor,'read',{issue_id:issue.id,sequence:issue.sequence});
+  const ownSummary=call(supervisor,'summary',{include_after_sales:true});
+  const followerSummary=call(follower,'summary',{include_after_sales:true});
+  assert.equal(ownSummary.issues.find(row=>row.id===issue.id).unread,false);
+  assert.equal(followerSummary.issues.find(row=>row.id===issue.id).unread,true);
+  assert.equal(ownSummary.total,2);
+  assert.equal(followerSummary.total,2);
   assert.equal(sales(other,'summary').total,0);
   assert.throws(()=>sales(other,'order',{order_id:'o1'}),error=>error.status===404);
   assert.throws(()=>call(follower,'reply',{issue_id:issue.id,body:'Wrong category'}),error=>error.status===404);

@@ -143,7 +143,24 @@ function createIssueView(afterSales) {
   }
 
   function openFollowup(issue) {
-    const detail = dialog('售后跟进 · '+issue.order_no,'<div class="detail"></div>');
+    const detail = dialog('售后跟进 · '+issue.order_no,
+      '<div class="detail"><section class="q-linked-order" aria-label="关联订单"></section></div>');
+    const container = detail.querySelector('.q-linked-order');
+    const owner = generation;
+    const valid = () => owner === generation && detail.open && container.isConnected;
+    async function loadOrder() {
+      container.textContent = '正在读取关联订单…';
+      try { await context.loadOrderContext(container,issue.order_id,valid); }
+      catch (error) {
+        if (!valid()) return;
+        const retry = document.createElement('button');
+        retry.type = 'button'; retry.textContent = '重试'; retry.onclick = loadOrder;
+        const message = document.createElement('p');
+        message.textContent = '关联订单读取失败：'+error.message;
+        container.replaceChildren(message,retry);
+      }
+    }
+    void loadOrder();
     void mountOrder({id:issue.order_id},detail,issue.id);
   }
 

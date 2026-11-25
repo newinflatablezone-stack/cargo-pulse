@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {runInNewContext} from 'node:vm';
 import {TencentDataStore} from '../server/tencent-data-core.mjs';
 
 function fixture(t){
@@ -174,4 +175,35 @@ test('Shopify intake deduplicates numbers and enforces claim and handoff roles',
   assert.equal(store.canReadOrder(other.id,order),false);
   assert.equal(store.all('order_events').find(row=>row.order_id===id).step_key,'business_placed');
   assert.throws(()=>call(business,'submit',{id:imported.id}),error=>error.status===409);
+});
+
+test('shared after-sales follow-up loads current order details and product photos',async()=>{
+  const app=readFileSync(new URL('../app-v2.js',import.meta.url),'utf8');
+  const followup=readFileSync(new URL('../order-issues.js',import.meta.url),'utf8');
+  assert.match(followup,/afterSalesView\.openFollowup\(issue\)/);
+  assert.match(followup,/loadOrderContext\(container,issue\.order_id,valid\)/);
+  const calls=[];
+  const order={id:'o-1',order_no:'#4100',factory_name:'工厂 A',customer_info:'<Customer>',products:[{product_name:'城堡'}]};
+  const source=app.slice(app.indexOf('async function loadAfterSalesOrderContext('),app.indexOf('function openIssueOrder('));
+  const load=runInNewContext(source+'\nloadAfterSalesOrderContext',{
+    api:async path=>{calls.push(path);return [order];},
+    displayStepLabel:()=> '生产',
+    factoryDisplay:value=>value.factory_name,
+    salespersonShippingLabel:()=> '海运',
+    productRowsHtml:value=>'<h4>'+value.products[0].product_name+'</h4>',
+    paintOrderProductImages:(_,value)=>calls.push(value.id),
+    trackingEntries:()=>[{number:'TRACK123'}],
+    esc:value=>String(value??'').replaceAll('<','&lt;').replaceAll('>','&gt;')
+  });
+  const closed={innerHTML:''};
+  await load(closed,order.id,()=>false);
+  assert.equal(closed.innerHTML,'');
+  const open={innerHTML:''};
+  await load(open,order.id,()=>true);
+  assert.match(open.innerHTML,/#4100/);
+  assert.match(open.innerHTML,/&lt;Customer&gt;/);
+  assert.match(open.innerHTML,/工厂 A/);
+  assert.match(open.innerHTML,/城堡/);
+  assert.match(open.innerHTML,/TRACK123/);
+  assert.deepEqual(calls,['/rest/v1/orders?id=eq.o-1&select=*','/rest/v1/orders?id=eq.o-1&select=*','o-1']);
 });

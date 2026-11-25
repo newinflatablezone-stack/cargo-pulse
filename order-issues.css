@@ -53,3 +53,7 @@
   border-radius: 8px;
   padding: 10px 15px;
 }
+
+.q-linked-order { overflow-wrap: anywhere; }
+.q-linked-order dd { white-space: pre-wrap; }
+.q-linked-order .q-shopify-images img { max-width: 100%; height: auto; }

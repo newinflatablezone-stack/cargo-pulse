@@ -304,17 +304,17 @@ test('salesperson 下单 then merchandiser 创建订单 follows the normal order
     current_step: 'production', step_started_at: '2020-01-01T00:00:00.000Z', step_deadline: '2020-01-11T00:00:00.000Z'
   });
   const order = store.all('orders').find(row => row.id === created.id);
-  assert.equal(order.current_step, 'production');
+  assert.equal(order.current_step, 'business_placed');
   assert.equal(order.order_date, beijingOrderDate());
   assert.notEqual(order.order_date, '2020-01-01');
   const started = Date.parse(order.step_started_at);
   assert.ok(started >= beforeCreate && started <= Date.now());
-  assert.equal(Date.parse(order.step_deadline) - started, 10 * 86400000);
-  assert.equal(store.all('order_events').find(row => row.order_id === order.id && row.step_key === 'production' && !row.completed_at).started_at, order.step_started_at);
+  assert.equal(order.step_deadline, null);
+  assert.equal(store.all('order_events').find(row => row.order_id === order.id && row.step_key === 'business_placed' && !row.completed_at).started_at, order.step_started_at);
   assert.equal(order.business_id, other.id);
   assert.equal(order.factory_name, 'Factory A');
   assert.equal(order.shopify_order_id, 'gid://shopify/Order/9053');
-  assert.equal(store.all('order_events').some(row => row.order_id === order.id && row.step_key === 'production' && !row.completed_at), true);
+  assert.equal(store.all('order_events').some(row => row.order_id === order.id && row.step_key === 'business_placed' && !row.completed_at), true);
   assert.equal(store.all('order_factories').filter(row => row.order_id === order.id).length, 1);
   assert.equal(store.canReadOrder(business.id, order), false);
   assert.equal(store.importShopifyOrder({ id: order.shopify_order_id, order_no: '#9053', product_name: 'Duplicate' }), null);

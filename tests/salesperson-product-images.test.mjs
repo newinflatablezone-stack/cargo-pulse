@@ -130,12 +130,12 @@ test('after 下单 and after 创建订单 only that order salesperson can delete
     needs_rendering: false, shipping_mode: 'domestic_sea', blower: '包风机', requirements: '跟单单独要求',
     factory_name: 'Factory A', factory_names: ['Factory A'], current_step: 'production'
   });
-  assert.equal(created.current_step, 'production');
+  assert.equal(created.current_step, 'business_placed');
   const beforeDelete = store.all('orders').find(row => row.id === created.id);
   store.removeSalespersonProductImage(business.id, { id: created.id, image_url: IMAGE_B });
   store.removeSalespersonProductImage(business.id, { id: created.id, object_path: upload });
   const issued = store.all('orders').find(row => row.id === created.id);
-  assert.equal(issued.current_step, 'production');
+  assert.equal(issued.current_step, 'business_placed');
   assert.equal(issued.requirements, '跟单单独要求');
   assert.equal(issued.order_date, beforeDelete.order_date);
   assert.equal(issued.factory_name, 'Factory A');

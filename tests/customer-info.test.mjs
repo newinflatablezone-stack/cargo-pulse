@@ -135,7 +135,7 @@ test('the reported US customer block is not missing and does not block submit', 
   assert.throws(() => create(usWithoutPhone), error => error.status === 400 && error.message === '客户信息还缺少：电话');
   assert.equal(store.all('orders').find(row => row.id === imported.id).current_step, 'follower_create');
   const created = create(usBlock);
-  assert.equal(created.current_step, 'production');
+  assert.equal(created.current_step, 'business_placed');
   assert.equal(store.all('orders').find(row => row.id === imported.id).customer_info, usBlock);
   const url = new URL('http://local/rest/v1/orders');
   assert.throws(() => store.mutate('orders', 'POST', url, {

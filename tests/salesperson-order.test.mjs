@@ -85,13 +85,13 @@ test('a salesperson 新建下单 lands in 待跟单创建订单 for everyone, wi
     requirements: '请加急', factory_name: 'Factory A', factory_names: ['Factory A'], current_step: 'production'
   });
   const order = store.all('orders').find(row => row.id === created.id);
-  assert.equal(order.current_step, 'production');
+  assert.equal(order.current_step, 'business_placed');
   assert.equal(order.order_date, beijingOrderDate());
   assert.notEqual(order.order_date, '2020-01-01');
   assert.equal(order.shopify_order_id, undefined);
   const started = Date.parse(order.step_started_at);
   assert.ok(started >= beforeCreate && started <= Date.now());
-  assert.equal(Date.parse(order.step_deadline) - started, 10 * 86400000);
+  assert.equal(order.step_deadline, null);
   assert.equal(store.canReadOrder(rayna.id, order), false);
   assert.equal(store.canReadOrder(business.id, order), true);
   assert.equal(store.canReadOrder(follower.id, order), true);

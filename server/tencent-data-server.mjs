@@ -204,6 +204,10 @@ async function rpc(req, res, name, body, user) {
     return send(res, 200, { ...store.issueSession(targetAccount), impersonated_by: { id: user.id, email: user.email } });
   }
   if (!store.isFollower(user.id)) throw Object.assign(Error('没有操作权限'), { status: 403 });
+  if (name === 'create_follower_order') {
+    if (req.method !== 'POST') throw Object.assign(Error('请使用 POST 请求'), { status: 405 });
+    return send(res, 200, store.createFollowerOrder(user.id, body));
+  }
   const order = store.all('orders').find(row => row.id === body.target_order_id);
   if (['soft_delete_order', 'restore_deleted_order', 'permanently_delete_order'].includes(name) && !order) throw Object.assign(Error('订单不存在'), { status: 404 });
   const pendingShopify = Boolean(order?.shopify_order_id && ['sales_supplement','follower_create'].includes(order.current_step));
@@ -234,6 +238,7 @@ async function rpc(req, res, name, body, user) {
     store.setUserActive(target.id, Boolean(body.active));
   } else if (name === 'transition_order_stage') {
     if (!order || order.deleted_at) throw Object.assign(Error('订单不存在'), { status: 404 });
+    if (body.target_current_step && body.target_current_step !== order.current_step) throw Object.assign(Error('订单已推进，请刷新后查看'), { status: 409 });
     if (['sales_supplement', 'follower_create'].includes(order.current_step)) throw Object.assign(Error('请通过订单交接完成这一步'), {status:409});
     if (order.current_step === 'business_placed' && !String(order.factory_name || '').trim()) throw Object.assign(Error('请先填写主工厂，再确认向工厂下单'), {status:400});
     if (order.current_step === 'completed') throw Object.assign(Error('已完成订单不能继续推进'), { status: 409 });
@@ -250,10 +255,8 @@ async function rpc(req, res, name, body, user) {
       stageDeadline = new Date(Date.parse(transitionTime) + next[1] * 86400000).toISOString();
     }
     const active = store.all('order_events').filter(row => row.order_id === order.id && !row.completed_at);
-    active.forEach(row => store.put('order_events', { ...row, completed_at: transitionTime, completed_by: user.id }));
-    store.put('order_events', { id: randomUUID(), order_id: order.id, step_key: body.target_next_step, started_at: transitionTime, deadline_at: stageDeadline, completed_at: null, completed_by: null, note: null, created_at: transitionTime });
     const shipping = body.target_shipping || {};
-    store.put('orders', {
+    const nextOrder = {
       ...order,
       ...(body.target_shipping ? { shipped_at: shipping.shipped_at, shipping_mode: shipping.shipping_mode, forwarder_name: shipping.forwarder_name, sea_region: shipping.sea_region || null, overseas_method: shipping.overseas_method || null } : {}),
       ...(body.target_tracking_no ? { tracking_no: body.target_tracking_no } : {}),
@@ -263,7 +266,23 @@ async function rpc(req, res, name, body, user) {
       ...(factoryOrder ? { order_date: orderDate } : {}),
       rollback_used: false,
       updated_at: transitionTime
-    });
+    };
+    store.db.exec('begin immediate');
+    try {
+      active.forEach(row => store.put('order_events', { ...row, completed_at: transitionTime, completed_by: user.id }));
+      store.put('order_events', { id: randomUUID(), order_id: order.id, step_key: body.target_next_step, started_at: transitionTime, deadline_at: stageDeadline, completed_at: null, completed_by: null, note: null, created_at: transitionTime });
+      store.put('orders', nextOrder);
+      if (factoryOrder && body.target_next_step === 'production') {
+        for (const factory of store.all('order_factories').filter(row => row.order_id === order.id && !row.started_at)) {
+          store.put('order_factories', { ...factory, started_at: transitionTime, deadline_at: stageDeadline, updated_at: transitionTime });
+        }
+      }
+      store.db.exec('commit');
+    } catch (error) {
+      store.db.exec('rollback');
+      for (const table of ['orders', 'order_events', 'order_factories']) store.tableCache.delete(table);
+      throw error;
+    }
     if (factoryOrder) return send(res, 200, { started_at: transitionTime, deadline_at: stageDeadline, order_date: orderDate });
   } else throw Object.assign(Error('暂不支持该事务操作'), { status: 404 });
   return send(res, 200, null);

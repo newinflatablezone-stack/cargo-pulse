@@ -1,4 +1,4 @@
-export const STEP_LABELS={sales_supplement:'待业务员认领下单',follower_create:'待跟单创建订单',business_placed:'业务员已下单',rendering:"效果图",production:"生产",production_shipping:"完成生产并发货",ready_to_ship:"选择发货方式",shipping_selection:"选择发货方式",tracking:"填写物流单号",air_pickup:"等待提取",delivery:"等待签收",domestic_customs:"国内清关开船",ocean_tracking:"填写海运单号",ocean_transit:"海上运输",overseas_customs:"海外清关提柜",warehouse_appointment:"海外仓约车",last_mile_tracking:"填写约车单号",last_mile:"目的地派送",batch_shipping:"分批物流",completed:"订单完成"};
+export const STEP_LABELS={sales_supplement:'待业务员认领下单',follower_create:'待跟单创建订单',business_placed:'待下单给工厂',rendering:"效果图",production:"生产",production_shipping:"完成生产并发货",ready_to_ship:"选择发货方式",shipping_selection:"选择发货方式",tracking:"填写物流单号",air_pickup:"等待提取",delivery:"等待签收",domestic_customs:"国内清关开船",ocean_tracking:"填写海运单号",ocean_transit:"海上运输",overseas_customs:"海外清关提柜",warehouse_appointment:"海外仓约车",last_mile_tracking:"填写约车单号",last_mile:"目的地派送",batch_shipping:"分批物流",completed:"订单完成"};
 export function firstStep(order){if(order.inventory_mode==='stock')return {key:'shipping_selection',days:1};if(order.needs_rendering)return {key:'rendering',days:3};return {key:'production',days:10}}
 export function nextShipping(order){
  if(!order.shipping_mode)return {key:'shipping_selection',days:1};
@@ -48,7 +48,7 @@ export function trackingNoteNumber(note) {
  return text.startsWith('tracking:')?text.slice(9).replace(/\s*\[rollback-count:\d+\]/g,'').trim():'';
 }
 export function eventsWithinCurrentFlow(order,events) {
- const flow=flowFor(order).map(canonicalStage),position=flow.indexOf(canonicalStage(order.current_step));
+ const flow=['business_placed',...flowFor(order).map(canonicalStage)],position=flow.indexOf(canonicalStage(order.current_step));
  if(position<0)return [];
  const scoped=events.filter(event=>!event.order_id||event.order_id===order.id);
  return scoped.filter(event=>{

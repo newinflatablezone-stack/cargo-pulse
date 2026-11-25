@@ -1100,12 +1100,11 @@ export class TencentDataStore {
     const needsRendering = input.needs_rendering === true || input.needs_rendering === 'true';
     const expectedStep = inventory === 'stock' ? 'shipping_selection' : needsRendering ? 'rendering' : 'production';
     if (input.current_step !== expectedStep) fail('下一阶段不正确，请刷新订单', 409);
-    // Official 后台下单时间 is this click, in Beijing time. Shopify's created
-    // date, the import date, and the salesperson 下单 click are not used.
+    // Use the Beijing creation date while waiting. Factory confirmation resets it to the actual order date.
     const timestamp = now();
     const orderDate = beijingOrderDate(new Date(timestamp));
-    const stepDays = inventory === 'stock' ? 1 : needsRendering ? 3 : 10;
-    const stepDeadline = new Date(Date.parse(timestamp) + stepDays * 86400000).toISOString();
+    const currentStep = inventory === 'stock' ? expectedStep : 'business_placed';
+    const stepDeadline = inventory === 'stock' ? new Date(Date.parse(timestamp) + 86400000).toISOString() : null;
     const names = [...new Set([assignedFactory, ...(Array.isArray(input.factory_names) ? input.factory_names : []), requestedFactory].map(name => String(name || '').trim()).filter(Boolean))];
     let next = {
       ...order,
@@ -1130,7 +1129,7 @@ export class TencentDataStore {
       destination_risk_acknowledged: input.destination_risk_acknowledged === true || input.destination_risk_acknowledged === 'true',
       destination_risk_acknowledged_at: input.destination_risk_acknowledged_at || null,
       destination_risk_acknowledged_by: input.destination_risk_acknowledged_by || null,
-      current_step: expectedStep,
+      current_step: currentStep,
       step_started_at: timestamp,
       step_deadline: stepDeadline,
       created_by: userId,
@@ -1152,11 +1151,10 @@ export class TencentDataStore {
       for (const event of this.all('order_events').filter(row => row.order_id === order.id && !row.completed_at)) {
         this.put('order_events', { ...event, completed_at: timestamp, completed_by: userId });
       }
-      this.put('order_events', { order_id: saved.id, step_key: expectedStep, started_at: saved.step_started_at, deadline_at: saved.step_deadline, created_at: timestamp });
+      this.put('order_events', { order_id: saved.id, step_key: currentStep, started_at: saved.step_started_at, deadline_at: saved.step_deadline, created_at: timestamp });
       if (inventory !== 'stock') {
-        const active = expectedStep === 'production';
         for (const factory_name of names) {
-          this.put('order_factories', { order_id: saved.id, factory_name, started_at: active ? saved.step_started_at : null, deadline_at: active ? saved.step_deadline : null });
+          this.put('order_factories', { order_id: saved.id, factory_name, started_at: null, deadline_at: null });
         }
       }
       this.db.exec('commit');
@@ -1636,6 +1634,34 @@ export class TencentDataStore {
     if (range) { rows = rows.slice(Number(range[1]), Number(range[2]) + 1); }
     else { if (offset) rows = rows.slice(offset); if (limit) rows = rows.slice(0, limit); }
     return rows.map(row => project(row, url.searchParams.get('select')));
+  }
+
+  createFollowerOrder(userId, input) {
+    if (!this.isFollower(userId)) throw Object.assign(Error('没有操作权限'), { status: 403 });
+    const { id, factory_names, ...fields } = input;
+    const names = [...new Set([fields.factory_name, ...(Array.isArray(factory_names) ? factory_names : [])]
+      .map(value => String(value || '').trim()).filter(Boolean))];
+    const stock = fields.inventory_mode === 'stock';
+    const timestamp = now();
+    const step = stock ? 'shipping_selection' : 'business_placed';
+    this.db.exec('begin immediate');
+    try {
+      const duplicate = this.all('orders').some(order => orderNumberKey(order.order_no) === orderNumberKey(fields.order_no));
+      if (!String(fields.order_no || '').trim()) throw Object.assign(Error('请填写订单号'), { status: 400 });
+      if (duplicate) throw Object.assign(Error('订单号已存在'), { status: 409 });
+      const [order] = this.mutate('orders', 'POST', new URL('http://local/rest/v1/orders'), {
+        ...fields, factory_name: names[0] || null, created_by: userId, current_step: step,
+        step_started_at: timestamp, step_deadline: stock ? new Date(Date.parse(timestamp) + 86400000).toISOString() : null
+      }, userId);
+      this.put('order_events', { order_id: order.id, step_key: step, started_at: timestamp, deadline_at: order.step_deadline, created_at: timestamp });
+      if (!stock) for (const factory_name of names) this.put('order_factories', { order_id: order.id, factory_name, started_at: null, deadline_at: null });
+      this.db.exec('commit');
+      return { id: order.id, current_step: step };
+    } catch (error) {
+      this.db.exec('rollback');
+      for (const table of ['orders', 'order_events', 'order_factories']) this.tableCache.delete(table);
+      throw error;
+    }
   }
 
   mutate(table, method, url, body, userId, prefer = '', rangeHeader = '') {

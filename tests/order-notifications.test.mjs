@@ -156,7 +156,7 @@ test('after 创建订单 the same salesperson can supplement without resetting t
     ...supplementFields({ product_name: '修订城堡', shipping_mode: 'air_freight', abnormal_note: '补充尺寸说明' })
   });
   const order = store.all('orders').find(row => row.id === updated.id);
-  assert.equal(order.current_step, 'production');
+  assert.equal(order.current_step, 'business_placed');
   assert.equal(order.product_name, '修订城堡');
   assert.equal(order.shipping_mode, 'air_freight');
   assert.equal(order.requirements, '跟单单独要求');

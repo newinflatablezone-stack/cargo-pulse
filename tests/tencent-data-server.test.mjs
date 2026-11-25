@@ -142,6 +142,36 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
       assert.equal(checkStore.shopifyOrderNeedsRefresh('#TEST-DELETE','gid://shopify/Order/12345',true),false);
       assert.equal(checkStore.importShopifyOrder({id:'gid://shopify/Order/12345',order_no:'#TEST-DELETE'}),null);
     } finally { checkStore.db.close(); }
+    const createFollowerOrder = (order_no, extra = {}) => request('/rest/v1/rpc/create_follower_order', {
+      method: 'POST', headers: followerHeaders, body: JSON.stringify({
+        order_no, order_date: '2025-01-01', product_name: '水上滑梯', quantity: 1,
+        customer_info: 'Ada\n1 Main St, Austin, TX 78701\nada@example.com\n+1 5551234567',
+        factory_name: 'Factory A', factory_names: ['Factory A', 'Factory B'], ...extra
+      })
+    });
+    const direct = await createFollowerOrder('DIRECT-FACTORY');
+    assert.equal(direct.status, 200);
+    const pending = await direct.json();
+    assert.equal(pending.current_step, 'business_placed');
+    assert.equal((await createFollowerOrder('DIRECT-FACTORY')).status, 409);
+    const factoryRows = async () => (await request('/rest/v1/order_factories?order_id=eq.'+pending.id, {headers:followerHeaders})).json();
+    assert.deepEqual((await factoryRows()).map(row => row.started_at), [null, null]);
+    const confirmFactory = () => request('/rest/v1/rpc/transition_order_stage', {
+      method: 'POST', headers: followerHeaders, body: JSON.stringify({
+        target_order_id: pending.id, target_current_step: 'business_placed', target_next_step: 'production', target_deadline: '2025-01-11T00:00:00Z'
+      })
+    });
+    const confirmed = await confirmFactory();
+    assert.equal(confirmed.status, 200);
+    const factoryStart = await confirmed.json();
+    assert.deepEqual((await factoryRows()).map(row => row.started_at), [factoryStart.started_at, factoryStart.started_at]);
+    assert.equal((await confirmFactory()).status, 409);
+    const directEvents = await (await request('/rest/v1/order_events?order_id=eq.'+pending.id, {headers:followerHeaders})).json();
+    assert.deepEqual(directEvents.filter(row => !row.completed_at).map(row => row.step_key), ['production']);
+    const stockOrder = await createFollowerOrder('DIRECT-STOCK', { inventory_mode: 'stock', factory_name: null, factory_names: [] });
+    assert.equal(stockOrder.status, 200);
+    assert.equal((await stockOrder.json()).current_step, 'shipping_selection');
+
     const handoff = await request('/rest/v1/rpc/transition_order_stage', {
       method:'POST',headers:{...supervisorHeaders,'Content-Type':'application/json'},
       body:JSON.stringify({target_order_id:'factory-handoff',target_next_step:'production',target_deadline:'2025-01-11T00:00:00Z'})

@@ -87,7 +87,7 @@ test('a merchandiser cannot create 待跟单创建订单 until a merchandiser or
   const replaced = store.shopifyHandoff(supervisor.id, { action: 'assign_factory', id: 'wait-1', factory_name: 'Factory A' });
   assert.equal(replaced.factory_name, 'Factory A');
   const created = store.shopifyHandoff(follower.id, createPayload({ factory_names: ['Factory A', 'Extra Shop'] }));
-  assert.equal(created.current_step, 'production');
+  assert.equal(created.current_step, 'business_placed');
   const order = store.all('orders').find(row => row.id === 'wait-1');
   assert.equal(order.factory_name, 'Factory A');
   assert.deepEqual(store.all('order_factories').filter(row => row.order_id === order.id).map(row => row.factory_name), ['Factory A', 'Extra Shop']);
@@ -421,10 +421,10 @@ test('a supervisor can save 库存 or 海外仓, and a merchandiser can then cre
     assert.equal(waiting.current_step, 'follower_create');
     assert.equal(waiting.order_no, orderNo);
     const created = store.shopifyHandoff(follower.id, createPayload({ id, order_no: orderNo, factory_name: name }));
-    assert.equal(created.current_step, 'production');
+    assert.equal(created.current_step, 'business_placed');
     const order = store.all('orders').find(row => row.id === id);
     assert.equal(order.factory_name, name);
-    assert.equal(order.current_step, 'production');
+    assert.equal(order.current_step, 'business_placed');
     assert.deepEqual(store.all('order_factories').filter(row => row.order_id === id).map(row => row.factory_name), [name]);
   }
   assert.equal(store.all('partners').some(partner => partner.active !== false && (partner.name === '库存' || partner.name === '海外仓')), false);

@@ -80,7 +80,11 @@ test('待跟单创建订单 is the existing follower_create step', () => {
   assert.equal(STEP_LABELS.follower_create, TAB_LABEL);
   assert.equal(app.includes("data-status=\"follower_create\">" + TAB_LABEL), true);
   assert.equal(app.includes('data-status="pending_create"'), false);
-  assert.match(app, /function orderMatchesStatusTab\(order,status\)\{if\(status==='trash'\)return true;if\(status==='delivered'\)return order\.current_step==='completed';if\(status==='follower_create'\)return order\.current_step==='follower_create'&&followerFactorySaved\(order\);return order\.current_step!=='completed'\}/);
+  const pending = { current_step: 'business_placed' };
+  assert.equal(orderMatchesStatusTab(pending, 'business_placed'), true);
+  assert.equal(orderMatchesStatusTab(pending, 'active'), false);
+  assert.equal(orderMatchesStatusTab({ current_step: 'production' }, 'business_placed'), false);
+  assert.equal(button(statusTabs('business_placed', true, [pending], []), 'business_placed').text, '待下单给工厂 1');
   assert.match(app, /source=statusFilter==='trash'&&follower\?deletedOrders:activeOrders,filteredList=source\.filter\(o=>orderMatchesStatusTab\(o,statusFilter\)/);
   const filterAt = app.indexOf('filteredList=source.filter(o=>orderMatchesStatusTab(o,statusFilter)');
   const sliceAt = app.indexOf('list=filteredList.slice', filterAt);

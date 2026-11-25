@@ -137,7 +137,7 @@ test('下单 blocks anything that is not Chinese only, and accepts Chinese even 
     customer_info: CUSTOMER, business_name: 'Demi', destination_country: '美国', inventory_mode: 'production',
     needs_rendering: false, current_step: 'production'
   });
-  assert.equal(created.current_step, 'production');
+  assert.equal(created.current_step, 'business_placed');
   assert.equal(store.all('orders').find(row => row.id === created.id).product_name, IMPORTED);
   assert.equal(store.all('orders').find(row => row.id === created.id).shopify_product_name, '气垫');
 });
@@ -182,7 +182,7 @@ test('保存 blocks a name that is not Chinese only, including non-Shopify order
   );
   const saved = store.updateSalespersonSupplement(business.id, supplementBody(created.id, '气垫地板'));
   assert.equal(store.all('orders').find(row => row.id === saved.id).product_name, '气垫地板');
-  assert.equal(store.all('orders').find(row => row.id === saved.id).current_step, 'production');
+  assert.equal(store.all('orders').find(row => row.id === saved.id).current_step, 'business_placed');
   const draft = store.salespersonOrder(business.id, { action: 'draft' });
   store.put('order_images', { order_id: draft.id, object_path: `${draft.id}/product-image-photo.jpg`, file_name: '产品图片' });
   const placeCustom = product_name => store.salespersonOrder(business.id, { action: 'place', id: draft.id, ...supplementBody(draft.id, product_name, { order_no: 'IZ-200' }) });

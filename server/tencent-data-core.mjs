@@ -999,7 +999,7 @@ export class TencentDataStore {
   }
 
   assignFollowerFactory(userId, order, input, fail) {
-    if (!this.isSupervisor(userId)) fail('仅主管可以选择并保存工厂', 403);
+    if (!this.canReadAllOrders(userId)) fail('仅主管和跟单可以选择并保存工厂', 403);
     if (order.current_step !== FOLLOWER_CREATE) fail('订单已不在待跟单创建订单', 409);
     const factory = typeof input.factory_name === 'string' ? input.factory_name.trim() : '';
     if (!factory || factory.length > 120) fail('请选择工厂', 400);
@@ -1077,10 +1077,10 @@ export class TencentDataStore {
     if (profile.role !== 'follower') fail('仅跟单可以创建订单', 403);
     if (order.current_step !== FOLLOWER_CREATE) fail('订单已不在待跟单创建订单', 409);
     const assignedFactory = String(order.factory_name || '').trim();
-    if (!assignedFactory) fail('主管须先选择工厂并保存后，跟单才能创建订单。', 400);
+    if (!assignedFactory) fail('请先选择并保存工厂，再创建订单。', 400);
     const value = key => typeof input[key] === 'string' ? input[key].trim() : '';
     const requestedFactory = value('factory_name');
-    if (requestedFactory && requestedFactory !== assignedFactory) fail('工厂已由主管保存，不能在创建订单时修改', 400);
+    if (requestedFactory && requestedFactory !== assignedFactory) fail('工厂已保存，请通过更换工厂修改', 400);
     const orderNo = value('order_no');
     const products = Array.isArray(order.products) && order.products.length ? order.products : null;
     const summary = products ? productOrderSummary(products) : null;

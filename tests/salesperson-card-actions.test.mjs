@@ -54,6 +54,7 @@ function clickCard(order, person, view) {
     },
     c: { dataset: { order: order.id } },
     openShopifyPlace(row) { opened.push('place:' + row.id); },
+    openFollowerFactoryAssign(row) { opened.push('factory:' + row.id); },
     openShopifyCreate(row) { opened.push('create:' + row.id); },
     openSalespersonSupplement(row) { opened.push('supplement:' + row.current_step + ':' + row.id); },
     markOrderNotificationsRead(id) { opened.push('read:' + id); },
@@ -166,7 +167,7 @@ test('merchandiser and supervisor cards keep 查看详情 and their existing cli
   const current = order();
   const waiting = order({ id: 'wait-1', current_step: 'follower_create', factory_name: '' });
   const ready = { ...waiting, id: 'wait-ready', factory_name: 'Factory A' };
-  const blocked = 'alert:主管须先选择工厂并保存后，跟单才能创建订单。';
+  const selectFactory = 'factory:wait-1';
 
   assert.equal(cardHtml(current, follower), LEGACY);
   assert.equal(cardHtml(waiting, follower), LEGACY);
@@ -175,7 +176,7 @@ test('merchandiser and supervisor cards keep 查看详情 and their existing cli
   assert.equal(cardHtml(current, other), LEGACY);
   assert.equal(cardHtml(order({ deleted_at: '2026-11-23' }), owner), LEGACY);
 
-  assert.deepEqual(clickCard(waiting, follower).opened, ['read:wait-1', blocked]);
+  assert.deepEqual(clickCard(waiting, follower).opened, ['read:wait-1', selectFactory]);
   assert.deepEqual(clickCard(ready, follower).opened, ['read:wait-ready', 'create:wait-ready']);
   assert.deepEqual(clickCard(current, follower).opened, ['read:order-1', 'detail:order-1']);
   assert.deepEqual(clickCard(waiting, supervisorUser).opened, ['read:wait-1', 'detail:wait-1']);
@@ -189,7 +190,7 @@ test('merchandiser and supervisor cards keep 查看详情 and their existing cli
   assert.deepEqual(clickCard(sharedSupplement, other).opened, ['read:shared-1', 'place:shared-1']);
   assert.deepEqual(clickCard(sharedSupplement, other, 'place').opened, ['read:shared-1', 'place:shared-1']);
 
-  assert.match(app, /function openFollowerCreate\(o,detailDialog\)\{if\(!o\|\|o\.deleted_at\|\|o\.current_step!=='follower_create'\|\|!canFollowOrders\(\)\)return false;if\(followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}if\(isSupervisor\(\)\)return false;alert\(FOLLOWER_FACTORY_REQUIRED\);return true\}/);
+  assert.match(app, /function openFollowerCreate\(o,detailDialog\)\{if\(!o\|\|o\.deleted_at\|\|o\.current_step!=='follower_create'\|\|!canFollowOrders\(\)\)return false;if\(followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}if\(isSupervisor\(\)\)return false;openFollowerFactoryAssign\(o,detailDialog,true\);return true\}/);
   assert.match(app, /if\(supervisorAwaitingFactoryDetail\(o\)\)return supervisorSalesReviewHtml\(o\)/);
 });
 

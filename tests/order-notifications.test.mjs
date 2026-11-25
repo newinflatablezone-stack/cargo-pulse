@@ -299,7 +299,7 @@ test('the order salesperson card opens the order detail popup, while follower an
   const deleted = { id: 'del-1', current_step: 'production', deleted_at: '2026-11-01', business_id: 'demi-1', business_name: 'Demi' };
 
   assert.deepEqual(clickOrderCard(waiting, owner), ['read:wait-1', 'detail:wait-1']);
-  assert.deepEqual(clickOrderCard(waiting, follower), ['read:wait-1', 'alert:主管须先选择工厂并保存后，跟单才能创建订单。']);
+  assert.deepEqual(clickOrderCard(waiting, follower), ['read:wait-1', 'factory:wait-1']);
   assert.deepEqual(clickOrderCard({ ...waiting, factory_name: 'Factory A' }, follower), ['read:wait-1', 'create:wait-1']);
   const supervisorWaiting = { id: 'wait-boss', current_step: 'follower_create', deleted_at: null, business_id: 'boss-1', business_name: 'Demi' };
   assert.deepEqual(clickOrderCard(supervisorWaiting, { ...supervisor, role: 'business', display_name: 'Demi' }), ['read:wait-boss', 'detail:wait-boss']);

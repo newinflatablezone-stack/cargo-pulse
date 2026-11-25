@@ -7,7 +7,7 @@ import { runInNewContext } from 'node:vm';
 import { TencentDataStore } from '../server/tencent-data-core.mjs';
 
 const CUSTOMER = 'Ada\n1 Main St, Austin, TX 78701\nada@example.com\n+1 5551234567';
-const BLOCKED = '主管须先选择工厂并保存后，跟单才能创建订单。';
+const BLOCKED = '请先选择并保存工厂，再创建订单。';
 const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
 
 function fixture(t) {
@@ -35,7 +35,7 @@ function createPayload(extra = {}) {
   };
 }
 
-test('a merchandiser cannot create 待跟单创建订单 until the supervisor saves a catalog factory', t => {
+test('a merchandiser cannot create 待跟单创建订单 until a merchandiser or supervisor saves a catalog factory', t => {
   const { store, follower, supervisor, business } = fixture(t);
   assert.equal(supervisor.role, 'follower');
   assert.throws(
@@ -44,10 +44,6 @@ test('a merchandiser cannot create 待跟单创建订单 until the supervisor sa
   );
   assert.equal(store.all('orders').find(row => row.id === 'wait-1').current_step, 'follower_create');
   assert.equal(store.all('orders').find(row => row.id === 'wait-1').factory_name, undefined);
-  assert.throws(
-    () => store.shopifyHandoff(follower.id, { action: 'assign_factory', id: 'wait-1', factory_name: 'Factory A' }),
-    error => error.status === 403 && error.message === '仅主管可以选择并保存工厂'
-  );
   assert.throws(
     () => store.shopifyHandoff(business.id, { action: 'assign_factory', id: 'wait-1', factory_name: 'Factory A' }),
     error => error.status === 403
@@ -74,7 +70,7 @@ test('a merchandiser cannot create 待跟单创建订单 until the supervisor sa
     error => error.status === 400 && error.message === BLOCKED
   );
 
-  const saved = store.shopifyHandoff(supervisor.id, { action: 'assign_factory', id: 'wait-1', factory_name: ' Factory A ' });
+  const saved = store.shopifyHandoff(follower.id, { action: 'assign_factory', id: 'wait-1', factory_name: ' Factory A ' });
   assert.equal(saved.factory_name, 'Factory A');
   assert.equal(saved.current_step, 'follower_create');
   const waiting = store.all('orders').find(row => row.id === 'wait-1');
@@ -83,7 +79,7 @@ test('a merchandiser cannot create 待跟单创建订单 until the supervisor sa
   assert.equal(waiting.order_no, '#9053');
   assert.throws(
     () => store.shopifyHandoff(follower.id, createPayload({ factory_name: 'Factory B' })),
-    error => error.status === 400 && error.message === '工厂已由主管保存，不能在创建订单时修改'
+    error => error.status === 400 && error.message === '工厂已保存，请通过更换工厂修改'
   );
   assert.equal(store.all('orders').find(row => row.id === 'wait-1').current_step, 'follower_create');
   assert.equal(store.all('orders').find(row => row.id === 'wait-1').factory_name, 'Factory A');
@@ -120,8 +116,8 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
   assert.match(catalog, /action:'assign_factory',id:o\.id,factory_name/);
   assert.match(catalog, /还没有可选工厂/);
   assert.match(gate, /if\(isSupervisor\(\)\)return false/);
-  assert.equal(gate.includes('openFollowerFactoryAssign'), false);
-  assert.match(gate, /alert\(FOLLOWER_FACTORY_REQUIRED\)/);
+  assert.equal(gate.includes('openFollowerFactoryAssign'), true);
+  assert.match(gate, /openFollowerFactoryAssign\(o,detailDialog,true\)/);
   assert.match(gate, /followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}/);
   assert.match(app, /d\.innerHTML=detailHtml\(o\);d\.showModal\(\);bindFollowerFactoryAssign\(d\.querySelector\('#followerFactoryForm'\),o,d\);mountSupervisorSalesImages\(d,o\);void mountIssueOrder\(o,d\);keepSupervisorFactoryAtBottom\(d\)/);
   assert.match(app, /if\(supervisorAwaitingFactoryDetail\(o\)\)return supervisorSalesReviewHtml\(o\)/);
@@ -129,7 +125,7 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
   assert.equal(app.includes('supervisor&&!followerFactorySaved(o)?followerFactoryAssignHtml(o)'), false);
   assert.equal(create.includes('openFollowerFactoryAssign(o,detailDialog);return'), false);
   assert.match(create, /input\.readOnly=true/);
-  assert.match(create, /工厂由主管选择并保存，跟单不能修改/);
+  assert.match(create, /通过更换工厂保存后生效/);
   assert.match(create, /id='changeFollowerFactory'/);
   assert.match(create, /payload\.factory_name=String\(o\.factory_name\|\|''\)\.trim\(\)/);
   assert.match(create, /action:'create'/);
@@ -199,7 +195,7 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
   const formAt = view.html.indexOf('id="followerFactoryForm"');
   const saveAt = view.html.indexOf('保存工厂');
   assert.ok(imagesAt > cursor && formAt > imagesAt && saveAt > formAt);
-  assert.match(view.html, /<h2>待主管选择工厂<\/h2>/);
+  assert.match(view.html, /<h2>待选择工厂<\/h2>/);
   assert.match(view.html, /<h3>选择工厂<\/h3>/);
   assert.match(view.html, /class="detail supervisor-sales-review"/);
   assert.equal(view.html.includes('<h2>选择工厂</h2>'), false);
@@ -229,7 +225,7 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
   assert.equal(view.html.includes('Factory B'), false);
   assert.equal(view.html.includes('Forwarder A'), false);
   assert.equal(view.html.includes('备用要求'), false);
-  assert.equal(view.label, '待主管选择工厂');
+  assert.equal(view.label, '待选择工厂');
   assert.equal(view.tab, false);
   assert.equal(view.active, true);
   assert.match(app, /label=esc\(displayStepLabel\(o\)\)/);
@@ -277,7 +273,7 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
     }
   };
   const orders = [order];
-  runInNewContext(line('bindFollowerFactoryAssign') + '\nbindFollowerFactoryAssign(form, order, dialog);', {
+  runInNewContext(line('bindFollowerFactoryAssign') + '\nbindFollowerFactoryAssign(form, order, dialog, true);', {
     form,
     order,
     dialog,
@@ -287,6 +283,7 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
       return { factory_name: 'Factory A', current_step: 'follower_create' };
     },
     refresh: async () => { calls.push({ path: 'refresh' }); },
+    openShopifyCreate(row) { calls.push({ path: 'create', factory: row.factory_name }); },
     FormData: class {
       get(name) { return name === 'factory_name' ? 'Factory A' : ''; }
     }
@@ -297,6 +294,7 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
       body: { action: 'assign_factory', id: 'wait-1', factory_name: 'Factory A' }
     });
     assert.equal(calls[1].path, 'refresh');
+    assert.deepEqual(calls[2],{path:'create',factory:'Factory A'});
     assert.equal(dialog.open, false);
     assert.equal(order.factory_name, 'Factory A');
     assert.equal(order.current_step, 'follower_create');
@@ -397,10 +395,6 @@ test('a supervisor can save 库存 or 海外仓, and a merchandiser can then cre
     id: 'wait-2', order_no: '#9054', current_step: 'follower_create', product_name: 'Arch', quantity: 2,
     customer_info: CUSTOMER, business_name: 'Demi', business_id: business.id
   });
-  assert.throws(
-    () => store.shopifyHandoff(follower.id, { action: 'assign_factory', id: 'wait-1', factory_name: '库存' }),
-    error => error.status === 403 && error.message === '仅主管可以选择并保存工厂'
-  );
   assert.throws(
     () => store.shopifyHandoff(supervisor.id, { action: 'assign_factory', id: 'wait-1', factory_name: '库存仓' }),
     error => error.status === 400 && error.message === '请选择已有工厂'

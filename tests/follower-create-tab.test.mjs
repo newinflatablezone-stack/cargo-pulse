@@ -198,13 +198,13 @@ test('clicking 待跟单创建订单 filters every visible order in that step, t
   assert.equal(tabOrders(rows, 'follower_create', false).some(order => order.current_step === 'follower_create'), true);
 });
 
-test('orders without a saved factory stay in 进行中 as 待主管选择工厂, then join 待跟单创建订单 after the factory is saved', () => {
+test('orders without a saved factory stay in 进行中 as 待选择工厂, then join 待跟单创建订单 after the factory is saved', () => {
   const waiting = { id: 'await-1', current_step: 'follower_create', deleted_at: null, factory_name: '' };
   const blank = { id: 'await-2', current_step: 'follower_create', deleted_at: null, factory_name: '   ' };
   const ready = { id: 'ready-1', current_step: 'follower_create', deleted_at: null, factory_name: 'Factory A' };
   const production = { id: 'prod-1', current_step: 'production', deleted_at: null, factory_name: 'Factory A' };
-  assert.equal(displayStepLabel(waiting), '待主管选择工厂');
-  assert.equal(displayStepLabel(blank), '待主管选择工厂');
+  assert.equal(displayStepLabel(waiting), '待选择工厂');
+  assert.equal(displayStepLabel(blank), '待选择工厂');
   assert.equal(displayStepLabel(ready), TAB_LABEL);
   assert.equal(displayStepLabel(production), '生产');
   assert.equal(orderMatchesStatusTab(waiting, 'follower_create'), false);
@@ -217,7 +217,7 @@ test('orders without a saved factory stay in 进行中 as 待主管选择工厂,
   waiting.factory_name = 'Factory A';
   assert.equal(orderMatchesStatusTab(waiting, 'follower_create'), true);
   assert.equal(displayStepLabel(waiting), TAB_LABEL);
-  assert.match(app, /function displayStepLabel\(o\)\{if\(o\?\.current_step==='follower_create'&&!followerFactorySaved\(o\)\)return '待主管选择工厂'/);
+  assert.match(app, /function displayStepLabel\(o\)\{if\(o\?\.current_step==='follower_create'&&!followerFactorySaved\(o\)\)return '待选择工厂'/);
   assert.match(app, /activeOrders\.filter\(o=>orderMatchesStatusTab\(o,'follower_create'\)\)\.length/);
 });
 
@@ -262,10 +262,10 @@ test('a merchandiser click on 待跟单创建订单 opens the create-order form 
   const production = { id: 'prod-1', current_step: 'production', deleted_at: null, business_id: 'demi-1' };
   const done = { id: 'done-1', current_step: 'completed', deleted_at: null, business_id: 'demi-1' };
   const ownedBySupervisor = { id: 'wait-boss', current_step: 'follower_create', deleted_at: null, business_id: 'supervisor-1', business_name: 'Demi' };
-  const blocked = 'alert:主管须先选择工厂并保存后，跟单才能创建订单。';
+  const selectFactory = id => 'factory:' + id;
 
-  assert.deepEqual(clickOrder(waiting, follower), ['read:wait-1', blocked]);
-  assert.deepEqual(clickOrder(blankFactory, follower), ['read:wait-1', blocked]);
+  assert.deepEqual(clickOrder(waiting, follower), ['read:wait-1', selectFactory('wait-1')]);
+  assert.deepEqual(clickOrder(blankFactory, follower), ['read:wait-1', selectFactory('wait-1')]);
   assert.equal(clickOrder(waiting, follower).includes('create:wait-1'), false);
   assert.deepEqual(clickOrder(assigned, follower), ['read:wait-ready', 'create:wait-ready']);
   assert.deepEqual(clickOrder(waiting, { ...supervisor, role: 'follower' }), ['read:wait-1', 'detail:wait-1']);
@@ -289,8 +289,8 @@ test('a merchandiser click on 待跟单创建订单 opens the create-order form 
 
   assert.match(app, /if\(o\)void markOrderNotificationsRead\(o\.id\);if\(o&&!o\.deleted_at&&o\.current_step==='sales_supplement'&&profile\?\.role==='business'&&!isSupervisor\(\)\)\{openShopifyPlace\(o\);return\}if\(orderAction\?\.dataset\.orderView==='place'&&orderCardDate\(o\)>=SALESPERSON_DETAIL_CUTOFF\)\{if\(o&&!o\.deleted_at&&o\.current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}/);
   assert.match(app, /openSalespersonSupplement\(o\);return\}return\}if\(openFollowerCreate\(o\)\)return;/);
-  assert.match(app, /function openFollowerCreate\(o,detailDialog\)\{if\(!o\|\|o\.deleted_at\|\|o\.current_step!=='follower_create'\|\|!canFollowOrders\(\)\)return false;if\(followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}if\(isSupervisor\(\)\)return false;alert\(FOLLOWER_FACTORY_REQUIRED\);return true\}/);
-  assert.equal(app.slice(app.indexOf('function openFollowerCreate'), app.indexOf('const factoryExportSelection')).includes('openFollowerFactoryAssign'), false);
+  assert.match(app, /function openFollowerCreate\(o,detailDialog\)\{if\(!o\|\|o\.deleted_at\|\|o\.current_step!=='follower_create'\|\|!canFollowOrders\(\)\)return false;if\(followerFactorySaved\(o\)\)\{openShopifyCreate\(o,detailDialog\);return true\}if\(isSupervisor\(\)\)return false;openFollowerFactoryAssign\(o,detailDialog,true\);return true\}/);
+  assert.equal(app.slice(app.indexOf('function openFollowerCreate'), app.indexOf('const factoryExportSelection')).includes('openFollowerFactoryAssign'), true);
   assert.match(app, /class="step-name">\$\{esc\(displayStepLabel\(o\)\)\}/);
   assert.match(app, /if\(supervisorAwaitingFactoryDetail\(o\)\)return supervisorSalesReviewHtml\(o\)/);
   assert.match(app, /function supervisorSalesReviewHtml\(o\)\{const note=o\.abnormal_note\|\|o\.requirements\|\|'';return `<div class="detail supervisor-sales-review">/);
@@ -305,9 +305,9 @@ test('a merchandiser click on 待跟单创建订单 opens the create-order form 
   assert.match(app, /id="shopifyCreate">创建订单/);
 });
 
-test('按当前流程 adds the early statuses without a new tab, and 待主管选择工厂 does not count as 待跟单创建订单', () => {
+test('按当前流程 adds the early statuses without a new tab, and 待选择工厂 does not count as 待跟单创建订单', () => {
   const tabs = app.slice(app.indexOf('<div class="status-tabs">'), app.indexOf('</div><div class="result-count">'));
-  assert.equal(tabs.includes('待主管选择工厂'), false);
+  assert.equal(tabs.includes('待选择工厂'), false);
   assert.equal(tabs.includes('awaiting_factory'), false);
   assert.equal(app.includes('按当前流程<select id="workflowStepFilter">'), true);
 
@@ -376,14 +376,14 @@ test('按当前流程 adds the early statuses without a new tab, and 待主管�
   assert.deepEqual(options.map(option => option.value), ['all', ...steps]);
   assert.equal(options[0].text, '全部流程');
   assert.equal(options[1].text, '待业务员认领下单 (1)');
-  assert.equal(options[2].text, '待主管选择工厂 (2)');
+  assert.equal(options[2].text, '待选择工厂 (2)');
   assert.equal(options[3].text, TAB_LABEL + ' (1)');
   assert.equal(options.length, 4);
   assert.equal(html.includes('生产'), false);
   assert.equal(html.includes('选择发货方式'), false);
   assert.equal(html.includes('业务员已下单'), false);
   assert.equal(html.includes('完成生产并发货'), false);
-  assert.equal(options.filter(option => option.text.startsWith('待主管选择工厂')).length, 1);
+  assert.equal(options.filter(option => option.text.startsWith('待选择工厂')).length, 1);
   assert.equal(options.filter(option => option.text.startsWith(TAB_LABEL)).length, 1);
 
   const waiting = rows[1];

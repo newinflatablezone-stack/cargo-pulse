@@ -259,8 +259,18 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
   const ready = runInNewContext(source + '\n({html:detailHtml(order),tab:orderMatchesStatusTab(order,"follower_create"),label:displayStepLabel(order)})', { ...sandbox, order: savedOrder, displayStepKey: row => row.current_step });
   assert.equal(ready.html.includes('followerFactoryForm'), false);
   assert.match(ready.html, /id="shopifyCreate">创建订单/);
+  assert.match(ready.html, /<strong>运输方式：<\/strong>海运/);
   assert.equal(ready.tab, true);
   assert.equal(ready.label, '待跟单创建订单');
+
+  const productionDetail = shipping_mode => runInNewContext(source + '\ndetailHtml(order)', {
+    ...sandbox,
+    profile: { role: 'business' },
+    order: { ...savedOrder, current_step: 'production', shipping_mode },
+    productRowsHtml: () => '<h3>产品明细</h3>'
+  });
+  assert.match(productionDetail('domestic_express'), /<strong>运输方式：<\/strong>快递.*<h3>产品明细<\/h3>/);
+  assert.doesNotMatch(productionDetail(null), /运输方式/);
 
   const calls = [];
   const button = { disabled: false };

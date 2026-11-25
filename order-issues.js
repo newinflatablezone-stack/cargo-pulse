@@ -1,4 +1,5 @@
 import './order-issues.css';
+import { bindManualFactorySuggestion, MANUAL_FACTORY_LABEL } from './factory-suggestions.js';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const stateLabel = {waiting_follower:'待跟单回复',waiting_business:'待业务员确认',closed:'已结束'};
@@ -205,6 +206,7 @@ function createIssueView(afterSales) {
       });
     }, '<label>订单号<input name="order_no" list="after-sales-order-options" autocomplete="off" required disabled placeholder="正在加载订单…"></label><datalist id="after-sales-order-options"></datalist><label>工厂<input name="factory" list="after-sales-factory-options" autocomplete="off" maxlength="120" required placeholder="选择已有工厂或输入新名称"></label><datalist id="after-sales-factory-options"></datalist>',host);
     const input = node.querySelector('[name="order_no"]');
+    bindManualFactorySuggestion(node.querySelector('[name="factory"]'));
     const submit = node.querySelector('[type="submit"]');
     submit.disabled = true;
     try {
@@ -215,6 +217,7 @@ function createIssueView(afterSales) {
       for (const order of orders) orderOptions.append(new Option(order.product_name || order.order_no, order.order_no));
       const factoryOptions = node.querySelector('#after-sales-factory-options');
       for (const name of result.factories || []) factoryOptions.append(new Option(name, name));
+      factoryOptions.append(new Option(MANUAL_FACTORY_LABEL, MANUAL_FACTORY_LABEL));
       input.placeholder = orders.length ? '输入订单号搜索或选择' : '暂无可发起售后的订单';
       input.disabled = submit.disabled = !orders.length;
       if (orders.length) input.focus();

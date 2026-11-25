@@ -1002,9 +1002,9 @@ export class TencentDataStore {
     if (!this.canReadAllOrders(userId)) fail('仅主管和跟单可以选择并保存工厂', 403);
     if (order.current_step !== FOLLOWER_CREATE) fail('订单已不在待跟单创建订单', 409);
     const factory = typeof input.factory_name === 'string' ? input.factory_name.trim() : '';
-    if (!factory || factory.length > 120) fail('请选择工厂', 400);
+    if (!factory || factory.length > 120) fail(input.manual_factory === true ? '请输入工厂名称，最多 120 字' : '请选择工厂', 400);
     const known = BUILTIN_FOLLOWER_FACTORIES.has(factory) || this.all('partners').some(partner => partner.kind === 'factory' && partner.active !== false && String(partner.name || '').trim() === factory);
-    if (!known) fail('请选择已有工厂', 400);
+    if (!known && input.manual_factory !== true) fail('请选择已有工厂', 400);
     const saved = this.put('orders', { ...order, factory_name: factory, updated_at: now() });
     return { id: saved.id, factory_name: saved.factory_name, current_step: saved.current_step };
   }

@@ -114,7 +114,7 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
   assert.match(catalog, /select name="factory_name"/);
   assert.match(catalog, /保存工厂/);
   assert.match(catalog, /action:'assign_factory',id:o\.id,factory_name/);
-  assert.match(catalog, /还没有可选工厂/);
+  assert.match(catalog, /其他（手动输入）<\/option><\/select>/);
   assert.equal(gate.includes('openFollowerFactoryAssign'), false);
   assert.match(gate, /!followerFactorySaved\(o\)\)return false;openShopifyCreate/);
   assert.match(app, /d\.innerHTML=detailHtml\(o\);d\.showModal\(\);bindFollowerFactoryAssign\(d\.querySelector\('#followerFactoryForm'\),o,d,!isSupervisor\(\)\);mountSupervisorSalesImages\(d,o\);void mountIssueOrder\(o,d\);keepSupervisorFactoryAtBottom\(d\)/);
@@ -203,7 +203,7 @@ test('a supervisor opens the full order and saves a catalog factory at the botto
   assert.equal(view.html.includes('签收证明'), false);
   assert.equal(view.html.includes('id="shopifyCreate"'), false);
   assert.equal(view.html.includes('<textarea'), false);
-  assert.equal(view.html.includes('<input'), false);
+  assert.match(view.html, /<input name="manual_factory_name"[^>]+disabled>/);
   assert.equal(view.html.includes('type="file"'), false);
   assert.equal(view.html.includes('product-image-delete'), false);
   assert.equal(view.html.includes('添加图片'), false);
@@ -371,7 +371,7 @@ test('库存 and 海外仓 stay with the catalog list, including 更换工厂, w
     open: false,
     showModal() { this.open = true; },
     close() { this.open = false; },
-    querySelector() { return {}; }
+    querySelector(selector) { return selector === '#followerFactoryForm' ? { querySelector() { return null; } } : {}; }
   };
   runInNewContext(
     [line('followerFactoryChoices'), line('followerFactoryFields'), line('bindFollowerFactoryAssign'), line('openFollowerFactoryAssign')].join('\n') + '\nopenFollowerFactoryAssign(order);',
@@ -399,6 +399,27 @@ test('库存 and 海外仓 stay with the catalog list, including 更换工厂, w
   const stock = dialog.innerHTML.indexOf('<option value="库存"');
   const overseas = dialog.innerHTML.indexOf('<option value="海外仓"');
   assert.ok(factoryA > 0 && factoryA < stock && stock < overseas);
+  assert.match(dialog.innerHTML, /其他（手动输入）<\/option><\/select>/);
+  const manual = runInNewContext([line('followerFactoryChoices'), line('followerFactoryFields')].join('\n') + '\nfollowerFactoryFields(order)', {
+    partners: [], order: { factory_name: '临时工厂' }, esc: String
+  });
+  assert.match(manual, /value="__manual_factory__" selected>其他（手动输入）/);
+  assert.match(manual, /name="manual_factory_name" maxlength="120" value="临时工厂" required/);
+});
+
+test('staff can assign a manual factory without adding it to the shared catalog', t => {
+  const { store, follower, business } = fixture(t);
+  const args = { action: 'assign_factory', id: 'wait-1', manual_factory: true };
+  assert.throws(() => store.shopifyHandoff(business.id, { ...args, factory_name: '临时工厂' }), error => error.status === 403);
+  for (const factory_name of ['  ', '工'.repeat(121)]) {
+    assert.throws(() => store.shopifyHandoff(follower.id, { ...args, factory_name }), error => error.status === 400);
+  }
+  const assigned = store.shopifyHandoff(follower.id, { ...args, factory_name: ' 临时工厂 ' });
+  assert.equal(assigned.factory_name, '临时工厂');
+  const created = store.shopifyHandoff(follower.id, createPayload({ factory_name: '临时工厂' }));
+  assert.equal(created.current_step, 'business_placed');
+  assert.equal(store.all('order_factories').find(row => row.order_id === 'wait-1').factory_name, '临时工厂');
+  assert.equal(store.all('partners').some(row => row.name === '临时工厂'), false);
 });
 
 test('a supervisor can save 库存 or 海外仓, and a merchandiser can then create the order', t => {

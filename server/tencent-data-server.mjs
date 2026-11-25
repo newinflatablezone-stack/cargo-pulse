@@ -1,7 +1,8 @@
 import http from 'node:http';
+import { isIP } from 'node:net';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
-import { dirname, join, normalize } from 'node:path';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { dirname, extname, join, normalize } from 'node:path';
 import { TencentDataStore, TABLES, isPublicRequest, lookupCustomerTracking, shopifyLineSummary, shopifyVariantChoices, shopifyGraphqlErrorDetail, shopifyCustomerInfo, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible } from './tencent-data-core.mjs';
 
 const PORT = Number(process.env.PORT || 8788);
@@ -60,19 +61,67 @@ const ensureInvite = key => {
 ensureInvite('business_invite');
 ensureInvite('follower_invite');
 const DATA_REVISION = createHash('sha256').update(await readFile(new URL('./tencent-data-core.mjs', import.meta.url))).digest('hex');
+const securityHeaders = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin' };
 const send = (res, status, value, headers = {}) => {
   const body = value == null ? '' : JSON.stringify(value);
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Cargo-Pulse-Data-Revision': DATA_REVISION, ...(value?.access_token ? { 'Set-Cookie': `cp_order_images=${value.access_token}; HttpOnly; Secure; SameSite=Strict; Path=/storage/v1/; Max-Age=3600` } : {}), ...headers });
+  res.writeHead(status, { ...securityHeaders, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Cargo-Pulse-Data-Revision': DATA_REVISION, ...(value?.access_token ? { 'Set-Cookie': `cp_order_images=${value.access_token}; HttpOnly; Secure; SameSite=Strict; Path=/storage/v1/; Max-Age=3600` } : {}), ...headers });
   res.end(body);
 };
-const error = (res, caught) => send(res, caught.status || 500, { message: caught.message || '服务器错误' });
+const error = (res, caught) => {
+  const status = caught.status || 500;
+  if (status >= 500) console.error('[cargo-data] request failed', caught.code || caught.name || 'Error');
+  send(res, status, { message: status >= 500 ? '服务器错误' : caught.message }, caught.retryAfter ? { 'Retry-After': String(caught.retryAfter) } : {});
+};
+
+const LIMIT_WINDOW = 5 * 60 * 1000;
+const attempts = new Map();
+const loggedLimits = new Map();
+const cleanLimits = setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of attempts) if (value.until <= now) attempts.delete(key);
+}, LIMIT_WINDOW);
+cleanLimits.unref();
+
+function enforceLimit(scope, subject, maximum) {
+  const key = `${scope}:${subject}`, now = Date.now();
+  let counter = attempts.get(key);
+  if (counter?.until <= now) counter = undefined;
+  if (!counter && (attempts.has(key) || attempts.size < 20000)) {
+    counter = { count: 0, until: now + LIMIT_WINDOW };
+    attempts.set(key, counter);
+  }
+  if (counter && counter.count < maximum) {
+    counter.count++;
+    return key;
+  }
+  if ((loggedLimits.get(scope) || 0) <= now) {
+    loggedLimits.set(scope, now + 60_000);
+    console.warn('[cargo-data] request rate limit reached', scope);
+  }
+  throw Object.assign(Error('请求过于频繁，请稍后再试'), { status: 429, retryAfter: Math.max(1, Math.ceil(((counter?.until || (now + LIMIT_WINDOW)) - now) / 1000)) });
+}
+
+function clientAddress(req) {
+  const peer = req.socket.remoteAddress || 'unknown';
+  const forwarded = req.headers['x-cargo-client-ip'];
+  // The loopback-only service receives this header from Nginx, which overwrites client input.
+  return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(peer) && typeof forwarded === 'string' && isIP(forwarded) ? forwarded : peer;
+}
 const bearer = req => String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
 const readBody = async (req, max = 25 * 1024 * 1024) => {
+  const tooLarge = () => Object.assign(Error('请求内容过大'), { status: 413 });
+  if (Number(req.headers['content-length']) > max) { req.resume(); throw tooLarge(); }
   const chunks = []; let size = 0;
-  for await (const chunk of req) { size += chunk.length; if (size > max) throw Object.assign(Error('请求内容过大'), { status: 413 }); chunks.push(chunk); }
+  for await (const chunk of req.iterator({ destroyOnReturn: false })) {
+    size += chunk.length;
+    if (size > max) { req.resume(); throw tooLarge(); }
+    chunks.push(chunk);
+  }
   const buffer = Buffer.concat(chunks);
   if (!buffer.length) return {};
-  return String(req.headers['content-type'] || '').includes('application/json') ? JSON.parse(buffer.toString('utf8')) : buffer;
+  if (!String(req.headers['content-type'] || '').includes('application/json')) return buffer;
+  try { return JSON.parse(buffer.toString('utf8')); }
+  catch { throw Object.assign(Error('请求不是有效的 JSON'), { status: 400 }); }
 };
 const requireUser = req => {
   const user = store.session(bearer(req));
@@ -95,8 +144,8 @@ const storageUser = req => {
 
 async function authRoute(req, res, url) {
   if (url.pathname.endsWith('/logout') && req.method === 'POST') {
-    const body = await readBody(req), token = bearer(req), user = store.session(token);
-    if (user && store.session(body.refresh_token, 'refresh')?.id === user.id) store.revokeSession(body.refresh_token);
+    const body = await readBody(req, 16 * 1024), token = bearer(req), user = store.session(token);
+    if (user && store.session(body?.refresh_token, 'refresh')?.id === user.id) store.revokeSession(body.refresh_token);
     store.revokeSession(token);
     return send(res, 200, { ok: true }, { 'Set-Cookie': 'cp_order_images=; HttpOnly; Secure; SameSite=Strict; Path=/storage/v1/; Max-Age=0' });
   }
@@ -104,19 +153,29 @@ async function authRoute(req, res, url) {
     const user = requireUser(req);
     return send(res, 200, { id: user.id, email: user.email });
   }
-  const body = await readBody(req);
-  if (url.pathname.endsWith('/signup')) {
-    if (!body.email || String(body.password || '').length < 6) throw Object.assign(Error('邮箱或密码不符合要求'), { status: 400 });
-    if (store.accountByEmail(body.email)) throw Object.assign(Error('账号已经存在'), { status: 409 });
+  const signup = url.pathname === '/auth/v1/signup';
+  const grant = url.pathname === '/auth/v1/token' ? url.searchParams.get('grant_type') : null;
+  if (!signup && !['password', 'refresh_token'].includes(grant)) throw Object.assign(Error('不支持的登录操作'), { status: 404 });
+  if (req.method !== 'POST') return send(res, 405, { message: '请使用 POST 请求' }, { Allow: 'POST' });
+  const address = clientAddress(req);
+  enforceLimit(signup ? 'signup' : grant, address, signup ? 20 : grant === 'password' ? 45 : 120);
+  const body = await readBody(req, 16 * 1024);
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Buffer.isBuffer(body)) throw Object.assign(Error('请求格式不正确'), { status: 400 });
+  if (signup) {
+    if (typeof body.email !== 'string' || !body.email.trim() || body.email.length > 254 || typeof body.password !== 'string' || body.password.length < 6 || body.password.length > 4096) throw Object.assign(Error('邮箱或密码不符合要求'), { status: 400 });
     const requestedRole = body.data?.registration_role === 'follower' || !body.data?.registration_role && body.data?.follower_invite ? 'follower' : 'business';
     const suppliedInvite = String(body.data?.registration_invite || body.data?.follower_invite || '');
     const setting = store.all('app_settings').find(row => row.key === `${requestedRole}_invite`);
     if (!suppliedInvite || suppliedInvite !== setting?.value) throw Object.assign(Error('注册链接无效，请联系主管获取最新邀请链接'), { status: 403 });
+    if (store.accountByEmail(body.email)) throw Object.assign(Error('账号已经存在'), { status: 409 });
     const role = requestedRole;
     const user = store.upsertAccount({ email: body.email, password: body.password, role });
     return send(res, 200, store.issueSession(user));
   }
-  if (url.searchParams.get('grant_type') === 'password') {
+  if (grant === 'password') {
+    if (typeof body.email !== 'string' || !body.email.trim() || body.email.length > 254 || typeof body.password !== 'string' || !body.password || body.password.length > 4096) throw Object.assign(Error('邮箱或密码错误'), { status: 400 });
+    body.email = body.email.trim();
+    const accountKey = enforceLimit('password-account', createHash('sha256').update(body.email.toLowerCase()).digest('hex'), 8);
     let session = store.login(body.email, body.password);
     if (!session && LEGACY_URL && LEGACY_KEY) {
       const response = await fetch(`${LEGACY_URL}/auth/v1/token?grant_type=password`, { method: 'POST', headers: { apikey: LEGACY_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: body.email, password: body.password }) });
@@ -129,9 +188,10 @@ async function authRoute(req, res, url) {
       }
     }
     if (!session) throw Object.assign(Error('邮箱或密码错误'), { status: 400 });
+    attempts.delete(accountKey);
     return send(res, 200, session);
   }
-  if (url.searchParams.get('grant_type') === 'refresh_token') {
+  if (grant === 'refresh_token') {
     let session = store.refresh(body.refresh_token);
     if (!session && LEGACY_URL && LEGACY_KEY) {
       const response = await fetch(`${LEGACY_URL}/auth/v1/token?grant_type=refresh_token`, { method: 'POST', headers: { apikey: LEGACY_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: body.refresh_token }) });
@@ -151,7 +211,7 @@ async function authRoute(req, res, url) {
 
 async function rpc(req, res, name, body, user) {
   if (name === 'lookup_customer_tracking') {
-    return send(res, 200, lookupCustomerTracking(store, body.p_email));
+    return send(res, 200, lookupCustomerTracking(store, typeof body?.p_email === 'string' ? body.p_email : ''));
   }
   if (!user) throw Object.assign(Error('请先登录'), { status: 401 });
   if (name === 'order_issues') {
@@ -321,10 +381,18 @@ async function serveObject(req, res, url) {
   const ownerId = url.searchParams.get('uid');
   if (!user || user.id !== ownerId || !store.canReadObject(user.id, decodeURIComponent(raw))) throw Object.assign(Error('图片不存在或无权访问'), { status: 404 });
   const expected = objectSignature(raw, expires, ownerId);
-  const valid = expires > Math.floor(Date.now() / 1000) && supplied.length === expected.length && timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
+  const valid = expires > Math.floor(Date.now() / 1000) && Buffer.byteLength(supplied) === expected.length && timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
   if (!valid) throw Object.assign(Error('图片链接已失效'), { status: 403 });
   const file = safeUploadPath(raw);
-  const info = await stat(file); res.writeHead(200, { 'Content-Length': info.size, 'Cache-Control': 'private, no-store' }); res.end(await readFile(file));
+  const types = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.avif': 'image/avif', '.svg': 'image/svg+xml', '.bmp': 'image/bmp', '.heic': 'image/heic', '.heif': 'image/heif', '.tif': 'image/tiff', '.tiff': 'image/tiff', '.ico': 'image/x-icon' };
+  const type = types[extname(file).toLowerCase()];
+  const content = await readFile(file);
+  res.writeHead(200, {
+    ...securityHeaders, 'Content-Length': content.length, 'Content-Type': type || 'application/octet-stream',
+    ...(!type ? { 'Content-Disposition': 'attachment' } : {}),
+    'Content-Security-Policy': "sandbox; default-src 'none'", 'Cache-Control': 'private, no-store'
+  });
+  res.end(content);
 }
 
 const AI_READ_TABLES = new Set([
@@ -366,6 +434,11 @@ async function handleRequest(req, res) {
     // request's error boundary. Returning the promise directly would let a
     // normal 4xx error become an unhandled rejection and terminate Node.
     if (url.pathname.startsWith('/auth/v1/')) return await authRoute(req, res, url);
+    if (url.pathname === '/rest/v1/rpc/lookup_customer_tracking') {
+      if (req.method !== 'POST') return send(res, 405, { message: '请使用 POST 请求' }, { Allow: 'POST' });
+      enforceLimit('customer-tracking', clientAddress(req), 120);
+      return await rpc(req, res, 'lookup_customer_tracking', await readBody(req, 4096), null);
+    }
     if (url.pathname === '/admin/import' && req.method === 'POST') {
       if (!IMPORT_SECRET || req.headers['x-import-secret'] !== IMPORT_SECRET) throw Object.assign(Error('禁止导入'), { status: 403 });
       const body = await readBody(req, 1024 * 1024 * 1024);

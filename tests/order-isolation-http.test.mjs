@@ -40,6 +40,9 @@ test('真实 HTTP：业务员互相不可见，图片链接绑定登录人，转
   assert.equal((await fetch(signed)).status,404);
   assert.equal((await fetch(signed,{headers:headers(sessionB)})).status,404);
   const image=await fetch(signed,{headers:{Cookie:cookie}});assert.equal(image.status,200);assert.equal(await image.text(),'private-image-a');assert.equal(image.headers.get('cache-control'),'private, no-store');
+  assert.equal(image.headers.get('content-type'),'image/png');
+  assert.equal(image.headers.get('x-content-type-options'),'nosniff');
+  assert.match(image.headers.get('content-security-policy'), /sandbox/);
   const loginB=await fetch(base+'/auth/v1/token?grant_type=password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:b.email,password:'password-b'})});assert.equal(loginB.status,200);
   const cookieB=loginB.headers.get('set-cookie').split(';')[0];assert.equal((await fetch(signed,{headers:{Cookie:cookieB}})).status,404);
   // A signed link is re-authorized against the live ownership record on every read.

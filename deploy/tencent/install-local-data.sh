@@ -138,8 +138,9 @@ for p,s in candidates:
  if marker not in s: continue
  # One file may contain separate HTTP and HTTPS server blocks. Remove the
  # generated block first, then insert it before every Cargo Pulse API marker.
- s=s.replace(block,'')
- p.write_text(s.replace(marker,block+marker))
+ secured_block=block.replace('        proxy_pass', '        proxy_set_header X-Cargo-Client-IP $remote_addr;\n        proxy_pass')
+ s=s.replace(secured_block,'').replace(block,'')
+ p.write_text(s.replace(marker,secured_block+marker))
  patched+=1
 if not patched:
  raise SystemExit('未找到 Cargo Pulse 当前生效的 Nginx 配置')

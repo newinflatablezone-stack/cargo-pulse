@@ -235,6 +235,31 @@ test('错误密码只返回 400，不会导致本地数据服务退出', async (
     assert.equal(accepted.status, 200);
     const acceptedSession = await accepted.json();
     assert.ok(acceptedSession.access_token);
+    assert.equal(accepted.headers.get('x-content-type-options'), 'nosniff');
+
+    const trialLogin = (address, email = 'test-throttle@example.com') => request('/auth/v1/token?grant_type=password', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Cargo-Client-IP': address },
+      body: JSON.stringify({ email, password: 'wrong-password' })
+    });
+    for (let n = 0; n < 8; n++) assert.equal((await trialLogin('192.0.2.10')).status, 400);
+    const accountLimited = await trialLogin('192.0.2.11', 'TEST-THROTTLE@example.com');
+    assert.equal(accountLimited.status, 429);
+    assert.ok(Number(accountLimited.headers.get('retry-after')) > 0);
+    assert.equal((await trialLogin('192.0.2.10', 'other-test@example.com')).status, 400);
+
+    const trackingRequest = (body, address = '192.0.2.20') => request('/rest/v1/rpc/lookup_customer_tracking', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Cargo-Client-IP': address }, body
+    });
+    assert.equal((await trackingRequest('{')).status, 400);
+    assert.equal((await trackingRequest(JSON.stringify({ p_email: 'x'.repeat(4096) }))).status, 413);
+    for (let n = 2; n < 120; n++) assert.equal((await trackingRequest('{}')).status, 200);
+    assert.equal((await trackingRequest('{}')).status, 429);
+    assert.equal((await trackingRequest('{}', '192.0.2.21')).status, 200);
+
+    const refreshed = await request('/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: acceptedSession.refresh_token })
+    });
+    assert.equal(refreshed.status, 200);
 
     const retiredFeature = await fetch(`${baseUrl}/rest/v1/rpc/ticket_bootstrap`, {
       method: 'POST',

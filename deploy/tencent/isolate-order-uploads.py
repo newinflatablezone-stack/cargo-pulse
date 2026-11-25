@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Remove the public static bypass for private order attachments."""
+"""Maintain the Nginx protections deployed with Cargo Pulse."""
 import json
 import os
 from pathlib import Path
@@ -20,6 +20,44 @@ GUARD = '''    # cargo-pulse-private-order-uploads
 
 '''
 
+PROXY_CLIENT_IP = '        proxy_set_header X-Cargo-Client-IP $remote_addr;\n'
+HTML_HEADERS = {
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'SAMEORIGIN',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Content-Security-Policy': "frame-ancestors 'self'; object-src 'none'; base-uri 'self'",
+}
+
+
+def harden_site(text):
+    def update_server(server):
+        block = server.group()
+
+        def set_client_ip(proxy):
+            prefix = block[:proxy.start()]
+            if re.search(r'(?im)^\s*proxy_set_header\s+X-Cargo-Client-IP\s+\$remote_addr\s*;\s*$', prefix.rsplit('{', 1)[-1]):
+                return proxy.group()
+            return PROXY_CLIENT_IP + proxy.group()
+
+        block = re.sub(r'(?m)^[ \t]*proxy_pass\s+http://127\.0\.0\.1:8788\s*;', set_client_ip, block)
+        if not re.search(r'^\s*root\s+/var/www/cargo-pulse\s*;', block, re.M):
+            return block
+
+        def add_headers(location):
+            section = location.group()
+            # Cargo Pulse locations already declare Cache-Control. Limit edits to
+            # those blocks so introducing add_header cannot mask inherited headers.
+            if not re.search(r'\badd_header\s+Cache-Control\b', section, re.I):
+                return section
+            additions = ''.join(f'        add_header {name} "{value}" always;\n'
+                                for name, value in HTML_HEADERS.items()
+                                if not re.search(r'\badd_header\s+' + re.escape(name) + r'\s', section, re.I))
+            return section.replace('\n', '\n' + additions, 1)
+
+        return re.sub(r'(?m)^[ \t]*location(?:\s+=\s+/index\.html|\s+/)\s*\{[^{}]*\}', add_headers, block)
+
+    return re.sub(r'(?ms)^[ \t]*server[ \t]*\{.*?(?=^[ \t]*server[ \t]*\{|\Z)', update_server, text)
+
 def prepare_patches(root):
     paths = set()
     for folder in ('sites-enabled', 'conf.d'):
@@ -29,13 +67,14 @@ def prepare_patches(root):
     patches = {}
     for path in sorted(paths):
         text = path.read_text()
-        if '/var/lib/cargo-pulse/uploads/' not in text:
-            continue
-        base = text.replace(GUARD, '')
-        if re.search(r'location\s+(?:(?:\^~|=)\s+)?/uploads/orders/?\s*\{', base):
-            raise RuntimeError(f'Existing manual order-upload location requires review: {path}')
-        updated, count = re.subn(r'(?m)^[ \t]*location\s+(?:\^~\s+)?/uploads/\s*\{', lambda match: GUARD + match.group(), base)
-        if count and updated != text:
+        updated = text
+        if '/var/lib/cargo-pulse/uploads/' in text:
+            base = text.replace(GUARD, '')
+            if re.search(r'location\s+(?:(?:\^~|=)\s+)?/uploads/orders/?\s*\{', base):
+                raise RuntimeError(f'Existing manual order-upload location requires review: {path}')
+            updated = re.sub(r'(?m)^[ \t]*location\s+(?:\^~\s+)?/uploads/\s*\{', lambda match: GUARD + match.group(), base)
+        updated = harden_site(updated)
+        if updated != text:
             patches[path] = (text, updated)
     if not patches and any('/var/lib/cargo-pulse/uploads/' in path.read_text() for path in paths) and not any('cargo-pulse-private-order-uploads' in path.read_text() for path in paths):
         raise RuntimeError('No active Cargo Pulse upload location was found')
@@ -46,7 +85,7 @@ def main():
         raise SystemExit('Please run with sudo python3')
     patches = prepare_patches('/etc/nginx')
     if not patches:
-        print('No public order-upload configuration changes required')
+        print('No Cargo Pulse Nginx changes required')
         return
     backup = Path(tempfile.mkdtemp(prefix='cargo-order-privacy-backup-'))
     manifest = {}
@@ -64,7 +103,7 @@ def main():
         for path, (before, after) in patches.items():
             path.write_text(before)
         raise
-    print('Private order-upload static routes blocked. Backup:', backup)
+    print('Cargo Pulse Nginx protections applied. Backup:', backup)
 
 if __name__ == '__main__':
     main()

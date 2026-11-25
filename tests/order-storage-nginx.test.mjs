@@ -27,6 +27,18 @@ with tempfile.TemporaryDirectory() as directory:
  assert updated.index('location ^~ /uploads/orders/')<updated.index('location /uploads/')
  path.write_text(updated)
  assert module['prepare_patches'](root)=={}
+ html='    location = /index.html {\\n        add_header Cache-Control "no-store" always;\\n    }\\n'
+ proxy='    location /api/ {\\n        proxy_pass http://127.0.0.1:8788;\\n    }\\n'
+ unrelated='server {\\n    root /var/www/other;\\n'+html+proxy.replace('8788','8789')+'}\\n'
+ cargo='server {\\n    root /var/www/cargo-pulse;\\n'+html+proxy+'}\\n'
+ path.write_text(cargo+unrelated)
+ hardened=module['prepare_patches'](root)[path.resolve()][1]
+ assert hardened.endswith(unrelated)
+ assert hardened.count('proxy_set_header X-Cargo-Client-IP $remote_addr;')==1
+ for name in module['HTML_HEADERS']:
+  assert hardened.count('add_header '+name+' ')==1
+ path.write_text(hardened)
+ assert module['prepare_patches'](root)=={}
  print('PASS')
 `],{cwd:process.cwd(),encoding:'utf8'});
  assert.match(result,/PASS/);

@@ -41,11 +41,12 @@ export function customerInfoReminder(value) {
 
 // Browser copy lives in product-name.mjs and must stay behavior-identical.
 // The live deployer installs this core file directly and does not copy that module.
-const PRODUCT_NAME_HAN_ONLY = /^[\u3400-\u9fff\s]+$/;
-export const PRODUCT_NAME_RULE = '产品名称必须为中文';
+const PRODUCT_NAME_HAN = /\p{Script=Han}/u;
+const PRODUCT_NAME_ALLOWED = /^[\p{Script=Han}\p{Nd}\p{P}\s+＋×]+$/u;
+export const PRODUCT_NAME_RULE = '产品名称须含中文，可加数字和标点，请勿填写英文字母';
 export function productNameReminder(value) {
   const name = String(value ?? '').trim();
-  if (!PRODUCT_NAME_HAN_ONLY.test(name)) return PRODUCT_NAME_RULE;
+  if (!PRODUCT_NAME_HAN.test(name) || !PRODUCT_NAME_ALLOWED.test(name)) return PRODUCT_NAME_RULE;
   return '';
 }
 

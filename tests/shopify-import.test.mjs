@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { TencentDataStore, shopifyLineSummary, shopifyShippingChoice, shopifyBlowerChoice, shopifyVariantChoices, shopifyGraphqlErrorDetail, shopifyCustomerInfo, lookupCustomerTracking, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible, normalizeBlowerChoice, beijingOrderDate } from '../server/tencent-data-core.mjs';
 import { overallDeadline } from '../workflow.js';
 
@@ -110,6 +111,11 @@ test('the Shopify sync window stays Beijing 2026-11-21 00:00 and also includes o
   assert.equal(shopifySyncEligible({name:'#9050',requiresShipping:false}),false);
   assert.equal(shopifySyncEligible({name:'#9051',createdAt:SHOPIFY_IMPORT_START,requiresShipping:false}),false);
   assert.equal(shopifySyncEligible({name:'#9051',createdAt:SHOPIFY_IMPORT_START,requiresShipping:true}),true);
+  for (const name of ['#9050', '#9051']) {
+    const order = { name, createdAt: SHOPIFY_IMPORT_START, requiresShipping: true };
+    assert.equal(shopifySyncEligible({ ...order, displayFinancialStatus: 'REFUNDED' }), false);
+    assert.equal(shopifySyncEligible({ ...order, displayFinancialStatus: 'PARTIALLY_REFUNDED' }), true);
+  }
   assert.match(source, /created_at:>='"\+SHOPIFY_IMPORT_START\+"'/);
   assert.equal(shopifySyncEligible({ name: '#9050', createdAt: '2026-11-20T15:55:03Z' }), true);
   assert.equal(shopifySyncEligible({ name: '9050', createdAt: '2026-11-20T15:55:03Z' }), true);
@@ -117,6 +123,61 @@ test('the Shopify sync window stays Beijing 2026-11-21 00:00 and also includes o
   assert.equal(shopifySyncEligible({ name: '#9048', createdAt: '2026-11-20T15:59:59Z' }), false);
   assert.equal(shopifySyncEligible({ name: '#9051', createdAt: '2026-11-20T16:00:00Z' }), true);
   assert.equal(shopifySyncEligible({ name: '#9051', createdAt: '2026-11-20T15:59:59Z' }), false);
+});
+
+test('the sync skips full refunds, archives existing Shopify orders, and keeps partial refunds and unrelated orders', async t => {
+  const { store } = fixture(t);
+  const source = readFileSync(new URL('../server/tencent-data-server.mjs', import.meta.url), 'utf8');
+  const worker = source.slice(source.indexOf('const period ='), source.indexOf('function promoteUnclaimedShopifyOrders'))
+    .replace('  void sync();', '');
+  const base = 'gid://shopify/Order/';
+  const current = { id: base + '9051', name: '#9051', requiresShipping: true, displayFinancialStatus: 'PARTIALLY_REFUNDED', createdAt: SHOPIFY_IMPORT_START,
+    lineItems: { nodes: [{ name: '产品', quantity: 2 }], pageInfo: { hasNextPage: false } } };
+  const freshFull = { id: base + '9052', name: '#9052', requiresShipping: true, displayFinancialStatus: 'REFUNDED', createdAt: SHOPIFY_IMPORT_START };
+  const legacy = { id: base + '9040', displayFinancialStatus: 'REFUNDED' };
+  const oldLocal = store.importShopifyOrder({ id: legacy.id, order_no: '#9040', product_name: '旧订单', quantity: 1 });
+  store.put('orders', { ...oldLocal, current_step: 'production' });
+  store.put('orders', { id: 'manual-same-number', order_no: '#9052', current_step: 'production' });
+  store.put('shopify_order_intake', { id: freshFull.id, order_no: '#9052' });
+  const calls = [];
+  let tick;
+  runInNewContext(worker + "\nstartShopifySync(store,{SHOPIFY_ORDER_SHOP:'example.myshopify.com',SHOPIFY_ORDER_TOKEN:'test-only'});", {
+    store, AbortSignal, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible, shopifyLineSummary, shopifyVariantChoices,
+    shopifyGraphqlErrorDetail, shopifyCustomerInfo, console: { log() {}, warn(...args) { throw Error(args.join(' ')); } },
+    setInterval(callback, interval) { assert.equal(interval, 30 * 60 * 1000); tick = callback; return { unref() {} }; },
+    async fetch(_url, request) {
+      const { query, variables } = JSON.parse(request.body);
+      calls.push({ query, variables });
+      const data = query.includes('ImportedOrderRefundStatus') ? { nodes: [legacy, null] } : {
+        orders: { nodes: variables.query.startsWith('created_at:') ? [current, freshFull] : [], pageInfo: { hasNextPage: false } }
+      };
+      return { ok: true, json: async () => ({ data }) };
+    }
+  });
+  await tick();
+  const rows = () => store.all('orders');
+  const byId = id => rows().find(row => row.id === id);
+  const partial = rows().find(row => row.shopify_order_id === current.id);
+  assert.equal(partial.current_step, 'sales_supplement');
+  assert.equal(Boolean(partial.deleted_at), false);
+  assert.equal(rows().some(row => row.shopify_order_id === freshFull.id), false);
+  assert.equal(Boolean(byId('manual-same-number').deleted_at), false);
+  assert.ok(byId(oldLocal.id).deleted_at);
+  assert.equal(byId(oldLocal.id).current_step, 'production');
+  assert.ok(store.all('shopify_order_intake').find(row => row.id === freshFull.id).submitted_at);
+  assert.equal(store.shopifyOrderNeedsRefresh('#9052', freshFull.id, true), false);
+  assert.deepEqual(calls.find(call => call.query.includes('ImportedOrderRefundStatus')).variables.ids, [legacy.id]);
+
+  current.displayFinancialStatus = 'REFUNDED';
+  current.requiresShipping = false;
+  await tick();
+  const removedAt = byId(partial.id).deleted_at;
+  assert.ok(removedAt);
+  assert.equal(byId(partial.id).shopify_fully_refunded_at, removedAt);
+  await tick();
+  assert.equal(byId(partial.id).deleted_at, removedAt);
+  store.remove('orders', [partial.id]);
+  assert.equal(store.importShopifyOrder({ id: current.id, order_no: current.name, displayFinancialStatus: 'PAID' }), null);
 });
 
 test('order 9050 imports once into 待业务员认领下单 and an existing later-stage order is left alone', t => {

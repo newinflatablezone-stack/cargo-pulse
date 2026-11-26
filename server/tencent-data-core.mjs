@@ -81,7 +81,7 @@ export const SHOPIFY_IMPORT_START = '2026-11-20T16:00:00Z';
 export const SHOPIFY_EXPLICIT_ORDER_NUMBERS = ['9050'];
 
 export function shopifySyncEligible(order) {
-  if (order?.requiresShipping === false) return false;
+  if (order?.requiresShipping === false || order?.displayFinancialStatus === 'REFUNDED') return false;
   const number = orderNumberKey(order?.name ?? order?.order_no);
   if (SHOPIFY_EXPLICIT_ORDER_NUMBERS.includes(number)) return true;
   const created = Date.parse(order?.createdAt);
@@ -684,6 +684,42 @@ export class TencentDataStore {
     return Boolean(orderNumberKey(number) || String(id || ''));
   }
 
+  shopifyIdsToCheckForRefunds() {
+    const ids = [
+      ...this.all('orders').filter(row => !row.deleted_at).map(row => row.shopify_order_id || row.id),
+      ...this.all('shopify_order_intake').filter(row => !row.submitted_at).map(row => row.id)
+    ];
+    return new Set(ids.filter(id => /^gid:\/\/shopify\/Order\/\d+$/.test(id || '')));
+  }
+
+  archiveFullyRefundedShopifyOrder(source) {
+    const id = source?.id;
+    if (source?.displayFinancialStatus !== 'REFUNDED' || !/^gid:\/\/shopify\/Order\/\d+$/.test(id || '')) return 0;
+    const dismissal = 'dismissed-shopify-order:' + id;
+    if (this.meta(dismissal) === 'fully_refunded') return 0;
+    const timestamp = now();
+    let archived = 0;
+    this.db.exec('begin immediate');
+    try {
+      this.setMeta(dismissal, 'fully_refunded');
+      for (const order of this.all('orders')) {
+        if ((order.shopify_order_id || order.id) !== id || order.shopify_fully_refunded_at) continue;
+        this.put('orders', {
+          ...order, deleted_at: order.deleted_at || timestamp,
+          shopify_fully_refunded_at: timestamp, updated_at: timestamp
+        });
+        if (!order.deleted_at) archived++;
+      }
+      this.closeOpenShopifyIntake('', id, null, timestamp);
+      this.db.exec('commit');
+      return archived;
+    } catch (error) {
+      this.db.exec('rollback');
+      for (const table of ['orders', 'shopify_order_intake']) this.tableCache.delete(table);
+      throw error;
+    }
+  }
+
   readOrderProducts(order, input, fail) {
     if (input.products == null) {
       if (order.products?.length) fail('请提交每一行产品明细');
@@ -783,6 +819,10 @@ export class TencentDataStore {
   }
 
   importShopifyOrder(row, options = {}) {
+    if (row?.displayFinancialStatus === 'REFUNDED') {
+      this.archiveFullyRefundedShopifyOrder({ ...row, id: row.shopify_order_id || row.id });
+      return null;
+    }
     const live = options.live !== false;
     this.db.exec('begin immediate');
     try {
@@ -852,6 +892,10 @@ export class TencentDataStore {
     try {
       const open = this.all('shopify_order_intake').filter(row => !row.submitted_at);
       for (const row of open) {
+        if (this.meta('dismissed-shopify-order:' + row.id)) {
+          this.closeOpenShopifyIntake('', row.id, null, now());
+          continue;
+        }
         const key = orderNumberKey(row.order_no);
         if (!key) {
           result.skipped.push({ id: row.id, reason: 'missing_order_no' });

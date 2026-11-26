@@ -277,6 +277,7 @@ async function rpc(req, res, name, body, user) {
     store.put('orders', { ...order, deleted_at: deletedAt, updated_at: deletedAt });
   } else if (name === 'restore_deleted_order') {
     if (!store.isSupervisor(user.id)) throw Object.assign(Error('仅主管可以恢复订单'), { status: 403 });
+    if (order.shopify_fully_refunded_at) throw Object.assign(Error('Shopify 全额退款订单不能恢复'), { status: 409 });
     store.put('orders', { ...order, deleted_at: null, updated_at: new Date().toISOString() });
   } else if (name === 'permanently_delete_order') {
     if (!store.isSupervisor(user.id)) throw Object.assign(Error('仅主管可以永久删除订单'), { status: 403 });
@@ -284,7 +285,7 @@ async function rpc(req, res, name, body, user) {
       const ids = store.all(table).filter(row => row.order_id === order.id).map(row => row.id);
       store.remove(table, ids);
     }
-    if (pendingShopify) store.setMeta('dismissed-shopify-order:'+order.shopify_order_id,'1');
+    if (pendingShopify && !store.meta('dismissed-shopify-order:'+order.shopify_order_id)) store.setMeta('dismissed-shopify-order:'+order.shopify_order_id,'1');
     store.remove('orders', [order.id]);
   } else if (name === 'set_user_role') {
     if (!store.isSupervisor(user.id)) throw Object.assign(Error('仅主管可以分配角色'), { status: 403 });
@@ -489,7 +490,7 @@ const orderQuery = `query ImportOrders($query: String!, $after: String) {
   orders(first: 25, after: $after, query: $query, sortKey: CREATED_AT) {
     pageInfo { hasNextPage endCursor }
     nodes {
-      id name createdAt requiresShipping note email phone
+      id name createdAt requiresShipping displayFinancialStatus note email phone
       customAttributes { key value }
       shippingAddress { name firstName lastName phone address1 address2 city province zip country }
       shippingLines(first: 10) { nodes { title code } }
@@ -498,6 +499,11 @@ const orderQuery = `query ImportOrders($query: String!, $after: String) {
         pageInfo { hasNextPage endCursor }
       }
     }
+  }
+}`;
+const refundStatusQuery = `query ImportedOrderRefundStatus($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on Order { id displayFinancialStatus }
   }
 }`;
 const lineQuery = `query ImportOrderItems($id: ID!, $after: String) {
@@ -520,6 +526,7 @@ function mapShopifyOrder(order, items) {
   const note = order.note || '';
   return {
     id: order.id, order_no: String(order.name || '').trim(),
+    displayFinancialStatus: order.displayFinancialStatus,
     order_date: new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(order.createdAt)),
     product_name: summary.product_name, quantity: summary.quantity,
     products: items.map(item => {
@@ -585,12 +592,18 @@ function startShopifySync(store, env = process.env) {
     if(running)return;
     running=true;
     try {
-      let changed = 0;
+      let changed = 0, archived = 0;
+      const unchecked = store.shopifyIdsToCheckForRefunds();
       async function importSearch(search) {
         let after = null;
         do {
           const {orders} = await query(orderQuery,{query:search,after});
           for(const order of orders.nodes){
+            unchecked.delete(order.id);
+            if(order.displayFinancialStatus==='REFUNDED'){
+              archived+=store.archiveFullyRefundedShopifyOrder(order);
+              continue;
+            }
             if(!shopifySyncEligible(order)||!store.shopifyOrderNeedsRefresh(order.name, order.id, true))continue;
             let connection=order.lineItems;
             const items=[...connection.nodes];
@@ -606,7 +619,17 @@ function startShopifySync(store, env = process.env) {
       }
       await importSearch("created_at:>='"+SHOPIFY_IMPORT_START+"'");
       for (const number of SHOPIFY_EXPLICIT_ORDER_NUMBERS) await importSearch('name:#'+number);
+      const ids = [...unchecked];
+      for (let offset = 0; offset < ids.length; offset += 50) {
+        try {
+          const { nodes } = await query(refundStatusQuery, { ids: ids.slice(offset, offset + 50) });
+          for (const order of nodes) archived += store.archiveFullyRefundedShopifyOrder(order);
+        } catch (error) {
+          console.warn('Shopify 历史订单退款状态读取失败', error.message);
+        }
+      }
       if(changed) console.log('Shopify 自北京时间 2026-11-21 00:00 起、以及指定的 9050，系统中尚未建档的订单已写入待业务员认领下单：'+changed+' 单');
+      if(archived) console.log('Shopify 全额退款订单移入回收站：'+archived+' 单');
     }catch(error){console.warn('Shopify 自动导入失败',error.message);}
     finally{running=false;}
   }

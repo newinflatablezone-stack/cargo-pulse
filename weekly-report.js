@@ -326,8 +326,13 @@ function personBlock(name, rows, weeks, own, current) {
     return `<tr><th class="sheet-label">${label}</th>${weeks.map(week => numberCell(findSheetRow(rows, name, week.week_start, own?.viewerId), name, week, metric, decimal, editableWeeks.has(week.week_start))).join('')}<td class="sheet-sum" data-sum="person" data-person="${escapeHtml(name)}" data-metric="${metric}">${escapeHtml(total)}</td></tr>`;
   }).join('');
   const noteRow = `<tr><th class="sheet-label">备注</th>${weeks.map(week => {
-    const note = String(findSheetRow(rows, name, week.week_start, own?.viewerId)?.note || '').trim();
-    return `<td class="sheet-note">${note ? escapeHtml(note) : '—'}</td>`;
+    const row = findSheetRow(rows, name, week.week_start, own?.viewerId);
+    const note = String(row?.note || '');
+    const editable = editableWeeks.has(week.week_start) || Boolean(row?.id && own?.viewerId && row.user_id === own.viewerId);
+    if (!editable) return `<td class="sheet-note">${note ? escapeHtml(note) : '—'}</td>`;
+    const date = escapeHtml(week.week_start);
+    const save = row ? `<button type="button" class="weekly-report-save" data-week="${date}" data-report="${escapeHtml(row.id)}">保存备注</button><p class="weekly-report-error" data-week="${date}" role="alert"></p>` : '';
+    return `<td class="sheet-note"><textarea name="note" data-week="${date}" aria-label="${date} 周报备注" maxlength="8000" rows="3">${escapeHtml(note)}</textarea>${save}</td>`;
   }).join('')}<td class="sheet-sum"></td></tr>`;
   const saveRow = editableWeeks.size ? `<tr class="sheet-save"><th></th>${weeks.map(week => {
     if (!editableWeeks.has(week.week_start)) return '<td></td>';
@@ -363,7 +368,10 @@ function summaryTables(reports, edit = null) {
     const names = orderedNames([...new Set(group.rows.map(personName))]);
     if (edit?.canSubmit && !names.includes(edit.viewerName) && (includeCurrent || group.rows.some(row => row.user_id === edit.viewerId))) names.push(edit.viewerName);
     const ordered = orderedNames(names);
-    const blocks = ordered.map(name => personBlock(name, group.rows, weeks, edit?.canSubmit && name === edit.viewerName ? edit : null, includeCurrent ? edit.current : null)).join('');
+    const blocks = ordered.map(name => {
+      const canEdit = edit?.canSubmit && (name === edit.viewerName || group.rows.some(row => row.user_id === edit.viewerId && personName(row) === name));
+      return personBlock(name, group.rows, weeks, canEdit ? edit : null, includeCurrent && name === edit.viewerName ? edit.current : null);
+    }).join('');
     const total = edit?.canSubmit ? '' : grandBlock(weeklyReportTotalTitle(ordered), group.rows, ordered, weeks);
     return `<section class="sheet-month" data-month="${escapeHtml(group.month)}"><p class="sheet-subtitle">${escapeHtml(group.label)}&nbsp;&nbsp;&nbsp;&nbsp;周期为周四至周三（北京时间）</p><div class="sheet-scroll"><table class="sheet">${blocks}${total}</table></div></section>`;
   }).join('');
@@ -375,7 +383,7 @@ export function renderWeeklyReport({ access = 'view', reports = [], today = new 
   const canSubmit = access === 'submit';
   const reminder = canSubmit ? weeklyReminder(todayIso, savedOwnCurrentWeek(reports, current.week_start, viewerId)) : null;
   const reminderHtml = reminder ? `<p class="${reminder.kind === 'due' ? 'weekly-report-reminder' : 'weekly-report-defer'}" role="${reminder.kind === 'due' ? 'alert' : 'status'}">${escapeHtml(reminder.text)}</p>` : '';
-  const heading = `<div class="weekly-report-head"><div><p class="kicker">WEEKLY REPORT</p><h1>周报</h1><p>${canSubmit ? '只显示并保存本人的周报。已保存的周期不能再改。' : '查看各业务员的月度汇总，不能代为保存。'}</p></div><div class="weekly-report-head-actions"><button type="button" id="closeWeeklyReport">← 返回订单中心</button></div></div>`;
+  const heading = `<div class="weekly-report-head"><div><p class="kicker">WEEKLY REPORT</p><h1>周报</h1><p>${canSubmit ? '只显示本人的周报。已提交的周报可单独修改备注。' : '查看各业务员的月度汇总，不能代为保存。'}</p></div><div class="weekly-report-head-actions"><button type="button" id="closeWeeklyReport">← 返回订单中心</button></div></div>`;
   const visible = canSubmit && viewerId ? reports.filter(row => row.user_id === viewerId) : reports;
   const edit = canSubmit && viewerId ? { canSubmit, viewerId, viewerName: viewerSalesName(visible, viewerId), current } : null;
   return `<section class="weekly-report-shell" data-access="${canSubmit ? 'submit' : 'view'}">${heading}${reminderHtml}<div class="weekly-report-summary">${summaryTables(visible, edit)}</div></section>`;
@@ -410,15 +418,34 @@ export async function mountWeeklyReport(page, { api, onClose, today = () => new 
       });
     };
     page.querySelectorAll('.sheet-num input').forEach(input => input.addEventListener('input', refreshSheetSums));
+    page.querySelectorAll('.sheet-note textarea').forEach(input => {
+      const button = input.closest('.sheet-note')?.querySelector('[data-report]');
+      if (button) input.addEventListener('input', () => { button.textContent = '保存备注'; });
+    });
     page.querySelectorAll('.weekly-report-save').forEach(button => button.addEventListener('click', async event => {
       event.preventDefault();
       event.stopPropagation();
       const week = button.dataset.week || '';
       const block = button.closest('tbody');
       const field = name => block?.querySelector(`[name="${name}"][data-week="${week}"]`)?.value;
+      const error = block?.querySelector(`.weekly-report-error[data-week="${week}"]`);
+      if (error) error.textContent = '';
+      const note = field('note') || '';
+      if (button.dataset.report) {
+        button.disabled = true;
+        try {
+          const { report } = await api('/rest/v1/rpc/weekly_report', { method: 'POST', body: JSON.stringify({ action: 'save_note', id: button.dataset.report, note }) });
+          data.reports = data.reports.map(row => row.id === report.id ? report : row);
+          if (field('note') === note) button.textContent = '已保存备注';
+        } catch (caught) {
+          if (error) error.textContent = caught.message || '保存失败';
+        } finally {
+          button.disabled = false;
+        }
+        return;
+      }
       const input = { week_start: week, inquiries: field('inquiries'), calls: field('calls'), unpaid_orders: field('unpaid_orders'), performance: field('performance'), body: button.dataset.body || '' };
       const parsed = validateWeeklyReportInput(input);
-      const error = block?.querySelector(`.weekly-report-error[data-week="${week}"]`);
       if (!parsed.ok) {
         if (error) error.textContent = parsed.message;
         alert(parsed.message);
@@ -426,7 +453,7 @@ export async function mountWeeklyReport(page, { api, onClose, today = () => new 
       }
       button.disabled = true;
       try {
-        await api('/rest/v1/rpc/weekly_report', { method: 'POST', body: JSON.stringify({ action: 'save', ...parsed.value }) });
+        await api('/rest/v1/rpc/weekly_report', { method: 'POST', body: JSON.stringify({ action: 'save', ...parsed.value, note }) });
         await load();
       } catch (caught) {
         if (error) error.textContent = caught.message || '保存失败';

@@ -1487,6 +1487,7 @@ export class TencentDataStore {
     }
     const id = `${userId}:${week.week_start}`;
     const existing = this.all(WEEKLY_REPORTS).find(row => row.id === id);
+    const note = Object.hasOwn(body, 'note') ? this.parseWeeklyReportNote(body.note) : String(existing?.note || '');
     const saved = this.put(WEEKLY_REPORTS, {
       id,
       user_id: userId,
@@ -1498,10 +1499,23 @@ export class TencentDataStore {
       unpaid_orders: unpaidOrders,
       performance,
       body: text,
-      note: typeof existing?.note === 'string' ? existing.note : '',
+      note,
       created_at: existing?.created_at || now(),
       updated_at: now()
     });
+    return { access, report: this.weeklyReportView(saved) };
+  }
+
+  parseWeeklyReportNote(note) {
+    if (typeof note !== 'string' || note.length > 8000) throw Object.assign(Error('备注最多 8000 字'), { status: 400 });
+    return note.trim();
+  }
+
+  saveWeeklyReportNote(userId, access, body) {
+    if (access !== 'submit') throw Object.assign(Error('只能查看周报，不能保存'), { status: 403 });
+    const existing = this.all(WEEKLY_REPORTS).find(row => row.id === body.id && row.user_id === userId);
+    if (!existing) throw Object.assign(Error('周报不存在或无权编辑'), { status: 404 });
+    const saved = this.put(WEEKLY_REPORTS, { ...existing, note: this.parseWeeklyReportNote(body.note), updated_at: now() });
     return { access, report: this.weeklyReportView(saved) };
   }
 
@@ -1511,6 +1525,7 @@ export class TencentDataStore {
     const action = String(body?.action || '');
     if (action === 'list') return this.listWeeklyReports(userId, access);
     if (action === 'save') return this.saveWeeklyReport(userId, access, body);
+    if (action === 'save_note') return this.saveWeeklyReportNote(userId, access, body);
     throw Object.assign(Error('不支持的周报操作'), { status: 400 });
   }
 

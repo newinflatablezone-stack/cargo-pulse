@@ -233,7 +233,7 @@ test('shared monthly summary is the same for viewers and salespeople, and a week
   const view = renderWeeklyReport({ access: 'view', reports: history.reports, today: '2026-11-16' });
   const submit = renderWeeklyReport({
     access: 'submit',
-    reports: history.reports.map(row => ({ ...row, user_id: row.salesperson_name })),
+    reports: history.reports.map(row => ({ ...row, id: `${row.salesperson_name}:${row.week_start}`, user_id: row.salesperson_name })),
     weekStart: WEEK,
     today: '2026-11-16',
     viewerId: 'Sherry'
@@ -276,8 +276,8 @@ test('shared monthly summary is the same for viewers and salespeople, and a week
   assert.equal(submit.includes('导出 Excel'), false);
   assert.equal(view.includes('导出 Excel'), false);
   assert.equal(submit.match(/<input /g), null);
-  assert.equal(submit.includes('<textarea'), false);
-  assert.equal(submit.includes('weekly-report-save'), false);
+  assert.equal((submit.match(/<textarea name="note"/g) || []).length, 3);
+  assert.equal((submit.match(/>保存备注</g) || []).length, 3);
   const own = submit.slice(submit.indexOf('data-own="true"'), submit.indexOf('</tbody>', submit.indexOf('data-own="true"')));
   assert.match(own, />Sherry</);
   assert.equal(own.includes('<input'), false);
@@ -299,7 +299,7 @@ test('shared monthly summary is the same for viewers and salespeople, and a week
   assert.equal(submit.includes('value="22"'), false);
   assert.equal(submit.includes('value="24176"'), false);
   assert.equal(submit.includes('value="809.73"'), false);
-  assert.equal(own.includes('name="note"'), false);
+  assert.match(own, /name="note" data-week="2026-10-29"/);
   assert.equal(submit.includes('尚未保存'), false);
   assert.match(own, /询盘另\+2地址不存在；下单未付另\+1电话冲突/);
   assert.match(submit, />51</);
@@ -312,7 +312,7 @@ test('shared monthly summary is the same for viewers and salespeople, and a week
   assert.equal(unsaved.includes('导出 Excel'), false);
   const unsavedOwn = unsaved.slice(unsaved.indexOf('data-own="true"'), unsaved.indexOf('</tbody>', unsaved.indexOf('data-own="true"')));
   assert.equal(unsavedOwn.match(/<input /g).length, 4);
-  assert.equal(unsavedOwn.includes('<textarea'), false);
+  assert.match(unsavedOwn, /<textarea name="note"/);
   assert.equal(unsavedOwn.includes('class="sheet-label">周报<'), false);
   assert.equal(unsaved.match(/class="weekly-report-save"/g).length, 1);
   assert.equal(unsaved.includes('value="22"'), false);
@@ -322,7 +322,7 @@ test('shared monthly summary is the same for viewers and salespeople, and a week
   assert.equal(unsaved.includes('三人合计'), false);
   assert.equal(unsaved.includes('15149'), false);
   assert.equal((unsaved.match(/data-own="true"/g) || []).length, 1);
-  assert.equal(unsavedOwn.includes('name="note"'), false);
+  assert.match(unsavedOwn, /name="note" data-week="2026-11-12"/);
   assert.equal(unsavedOwn.includes('name="inquiries" data-week="2026-10-29"'), false);
   assert.match(unsavedOwn, /name="inquiries" data-week="2026-11-12"/);
   assert.equal((unsavedOwn.match(/class="weekly-report-save"/g) || []).length, 1);
@@ -426,17 +426,26 @@ test('salespeople can save and update only their own week; Ella, the supervisor,
   assert.throws(() => saved(store, sherry, { week_start: '2026-11-18' }), error => error.status === 400);
   assert.throws(() => saved(store, sherry, { inquiries: '6.2' }), error => error.status === 400);
   assert.equal(store.all('weekly_reports').length, 0);
-  const first = saved(store, sherry, { performance: '5189.15', note: '不应写入' });
+  const first = saved(store, sherry, { performance: '5189.15', note: ' 提交时的备注 ' });
   assert.equal(first.report.performance, '5189.15');
-  assert.equal(first.report.note, '');
+  assert.equal(first.report.note, '提交时的备注');
   assert.equal(first.report.salesperson_name, 'Sherry');
   assert.equal(first.report.week_end, '2026-11-18');
   assert.equal(JSON.stringify(first).includes('@'), false);
   store.put('weekly_reports', { ...store.all('weekly_reports')[0], note: '历史备注' });
-  const updated = saved(store, sherry, { inquiries: '9', calls: '4', unpaid_orders: '2', performance: '15149', body: '已更新', note: '替换备注' });
+  const updated = saved(store, sherry, { inquiries: '9', calls: '4', unpaid_orders: '2', performance: '15149', body: '已更新' });
   assert.equal(updated.report.inquiries, '9');
   assert.equal(updated.report.body, '已更新');
   assert.equal(updated.report.note, '历史备注');
+  const changeNote = (user, note, extra = {}) => store.weeklyReport(user.id, { action: 'save_note', id: first.report.id, note, ...extra });
+  assert.throws(() => changeNote(demi, '跨账号写入'), error => error.status === 404);
+  assert.throws(() => changeNote(ella, '只读账号'), error => error.status === 403);
+  assert.throws(() => changeNote(sherry, '字'.repeat(8001)), error => error.status === 400);
+  const edited = changeNote(sherry, '更新的备注', { inquiries: '99', body: '不应覆盖正文' });
+  assert.equal(edited.report.note, '更新的备注');
+  assert.equal(edited.report.inquiries, '9');
+  assert.equal(edited.report.body, '已更新');
+  assert.equal(changeNote(sherry, '').report.note, '');
   assert.equal(store.all('weekly_reports').length, 1);
   saved(store, demi, { week_start: '2026-10-29', inquiries: '2', calls: '0', unpaid_orders: '3', performance: '5189.15', body: '' });
   const sherryList = store.weeklyReport(sherry.id, { action: 'list' });
@@ -539,7 +548,14 @@ test('weekly report API enforces the same permissions and does not expose a tabl
   assert.equal((await rpc(demiHeaders, { action: 'save', week_start: '2026-10-29', inquiries: '2', calls: '0', unpaid_orders: '3', performance: '5189.15', body: '' })).status, 200);
   const updated = await rpc(sherryHeaders, { action: 'save', week_start: WEEK, inquiries: '21', calls: '6', unpaid_orders: '4', performance: '24176', body: '已更新' });
   assert.equal(updated.status, 200);
-  assert.equal((await updated.json()).report.inquiries, '21');
+  const { report: sherryReport } = await updated.json();
+  assert.equal(sherryReport.inquiries, '21');
+  const saveNote = { action: 'save_note', id: sherryReport.id, note: '已核对数据' };
+  assert.equal((await rpc(demiHeaders, saveNote)).status, 404);
+  assert.equal((await rpc(supervisor, saveNote)).status, 403);
+  const noteSaved = await rpc(sherryHeaders, saveNote);
+  assert.equal(noteSaved.status, 200);
+  assert.equal((await noteSaved.json()).report.note, saveNote.note);
   const own = await (await rpc(sherryHeaders, { action: 'list' })).json();
   assert.equal(own.access, 'submit');
   assert.equal(own.viewer_id, sherry.id);

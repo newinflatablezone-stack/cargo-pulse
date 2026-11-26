@@ -1515,7 +1515,9 @@ main.internal-resource-page-shell{width:100%;max-width:none!important;min-height
 .sheet-label{width:88px;background:#fff;color:#222;font-weight:700;text-align:left;white-space:nowrap}
 .sheet-num{text-align:center;min-width:108px}
 .sheet-sum{background:#f4f4f4;color:#222;font-weight:700;text-align:center}
-.sheet-note{min-width:140px;color:#222;font-size:12px;line-height:1.45;text-align:left;vertical-align:top}
+.sheet-note{min-width:140px;color:#222;font-size:12px;line-height:1.45;text-align:left;vertical-align:top;white-space:pre-wrap;overflow-wrap:anywhere}
+.sheet-note textarea{display:block;width:100%;box-sizing:border-box;min-height:64px;resize:vertical;font:inherit}
+.sheet-note .weekly-report-save{margin-top:6px}
 .sheet input{width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:6px;background:#fff;color:#222;font:inherit;padding:6px 8px;text-align:center}
 .sheet .weekly-report-save{border:0;border-radius:8px;background:#222;color:#fff;padding:6px 12px;font-weight:700}
 .sheet .weekly-report-error{min-height:0;margin:6px 0 0}

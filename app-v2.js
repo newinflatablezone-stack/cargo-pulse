@@ -182,8 +182,18 @@ function resourceRowImagesHtml(row,rowId){const images=imagesForResourceRow(row,
 function resourceColumnValues(row,column){return [...new Set(row.rows.map(values=>String(values[column]??'')))].sort((a,b)=>a.localeCompare(b,'zh-CN',{numeric:true,sensitivity:'base'}))}
 function resourceColumnFilterEnabled(key,header){const name=String(header||'').trim();if(key==='logistics')return ['产品名称','工厂'].includes(name);if(key==='inventory')return !['目前库存','当前库存'].includes(name);return true}
 function resourceColumnClass(key,header){if(key!=='logistics')return '';const name=String(header||'').trim(),classes={'产品名称':'resource-col-product','产品尺寸':'resource-col-size','尺寸':'resource-col-size','重量':'resource-col-weight','打包尺寸':'resource-col-package','风机':'resource-col-blower','工厂':'resource-col-factory'};return classes[name]||'resource-col-other'}
-function resourceFilteredEntries(row,query='',filters={}){const keyword=query.trim().toLowerCase();return row.rows.map((values,index)=>({values,index,rowId:row.rowIds[index]})).filter(entry=>(!keyword||entry.values.some(value=>String(value).toLowerCase().includes(keyword))||imagesForResourceRow(row,entry.rowId).some(({image})=>image.file_name.toLowerCase().includes(keyword)))&&Object.entries(filters).every(([column,value])=>String(entry.values[Number(column)]??'')===value))}
-function resourceTableHtml(row,query='',filters={},key=row.resource_key,showFilters=true){if(!row.headers.length)return '<div class="internal-resource-empty"><b>暂时没有数据</b><span>跟单员可点击右上角“编辑页面”添加资料。</span></div>';const entries=resourceFilteredEntries(row,query,filters),body=entries.length?entries.map(({values,index,rowId})=>`<tr><td class="resource-row-number">${index+1}</td><td class="resource-images-column">${resourceRowImagesHtml(row,rowId)}</td>${values.map((value,column)=>`<td class="${resourceColumnClass(key,row.headers[column])}">${esc(value)}</td>`).join('')}</tr>`).join(''):`<tr class="resource-filter-empty"><td colspan="${row.headers.length+2}">没有符合条件的数据，请调整或清除筛选。</td></tr>`;return `<div class="internal-table-scroll"><table class="internal-data-table resource-${esc(key||'table')}-table"><thead><tr><th class="resource-row-number">序号</th><th class="resource-images-column">产品图片</th>${row.headers.map((header,column)=>{const columnClass=resourceColumnClass(key,header);if(!showFilters||!resourceColumnFilterEnabled(key,header))return `<th class="${columnClass}"><span class="resource-column-title">${esc(header)}</span></th>`;const values=resourceColumnValues(row,column),selected=Object.hasOwn(filters,column)?filters[column]:null;return `<th class="${columnClass}"><span class="resource-column-title">${esc(header)}</span><select class="resource-column-filter ${selected!==null?'active':''}" data-resource-column-filter="${column}" aria-label="筛选${esc(header)}"><option value="">全部</option>${values.map((value,index)=>`<option value="${index}" data-filter-value="${esc(value)}" ${selected===value?'selected':''}>${esc(value||'（空白）')}</option>`).join('')}</select></th>`}).join('')}</tr></thead><tbody>${body}</tbody></table></div>`}
+function resourceFilteredEntries(row,query='',filters={},productKeyword=''){
+ const keyword=query.trim().toLowerCase();
+ const product=productKeyword.trim().toLowerCase();
+ const productColumn=product?row.headers.findIndex(header=>String(header).trim()==='产品名称'):-1;
+ return row.rows.map((values,index)=>({values,index,rowId:row.rowIds[index]})).filter(entry=>
+  (productColumn<0||String(entry.values[productColumn]??'').toLowerCase().includes(product))&&
+  Object.entries(filters).every(([column,value])=>String(entry.values[Number(column)]??'')===value)&&
+  (!keyword||entry.values.some(value=>String(value).toLowerCase().includes(keyword))||imagesForResourceRow(row,entry.rowId).some(({image})=>image.file_name.toLowerCase().includes(keyword)))
+ );
+}
+function resourceTableRowsHtml(row,entries,key){return entries.length?entries.map(({values,index,rowId})=>`<tr><td class="resource-row-number">${index+1}</td><td class="resource-images-column">${resourceRowImagesHtml(row,rowId)}</td>${values.map((value,column)=>`<td class="${resourceColumnClass(key,row.headers[column])}">${esc(value)}</td>`).join('')}</tr>`).join(''):`<tr class="resource-filter-empty"><td colspan="${row.headers.length+2}">没有符合条件的数据，请调整或清除筛选。</td></tr>`}
+function resourceTableHtml(row,query='',filters={},key=row.resource_key,showFilters=true,productKeyword=''){if(!row.headers.length)return '<div class="internal-resource-empty"><b>暂时没有数据</b><span>跟单员可点击右上角“编辑页面”添加资料。</span></div>';const entries=resourceFilteredEntries(row,query,filters,productKeyword),body=resourceTableRowsHtml(row,entries,key);return `<div class="internal-table-scroll"><table class="internal-data-table resource-${esc(key||'table')}-table"><thead><tr><th class="resource-row-number">序号</th><th class="resource-images-column">产品图片</th>${row.headers.map((header,column)=>{const columnClass=resourceColumnClass(key,header);if(!showFilters||!resourceColumnFilterEnabled(key,header))return `<th class="${columnClass}"><span class="resource-column-title">${esc(header)}</span></th>`;const values=resourceColumnValues(row,column),selected=Object.hasOwn(filters,column)?filters[column]:null;return `<th class="${columnClass}"><span class="resource-column-title">${esc(header)}</span><select class="resource-column-filter ${selected!==null?'active':''}" data-resource-column-filter="${column}" aria-label="筛选${esc(header)}"><option value="">全部</option>${values.map((value,index)=>`<option value="${index}" data-filter-value="${esc(value)}" ${selected===value?'selected':''}>${esc(value||'（空白）')}</option>`).join('')}</select>${key==='logistics'&&String(header).trim()==='产品名称'?`<input class="resource-column-keyword ${productKeyword.trim()?'active':''}" type="search" data-resource-product-keyword="${column}" aria-label="按产品名称关键词筛选" placeholder="输入产品名称关键词" value="${esc(productKeyword)}" autocomplete="off">`:''}</th>`}).join('')}</tr></thead><tbody>${body}</tbody></table></div>`}
 function resourceSheetView(row,sheet){const rowIds=new Set(sheet.rowIds);return {...row,...sheet,images:row.allImages.filter(image=>rowIds.has(image.row_id))}}
 function resourceAllSearch(row,query,key){const groups=row.sheets.map(sheet=>{const view=resourceSheetView(row,sheet),count=resourceFilteredEntries(view,query).length;return {view,count}}).filter(group=>group.count);if(!groups.length)return {count:0,html:'<div class="internal-resource-empty"><b>所有子表均未找到相关内容</b><span>请尝试其他关键词。</span></div>'};return {count:groups.reduce((total,group)=>total+group.count,0),html:`<div class="resource-global-results">${groups.map(({view,count})=>`<section data-resource-search-sheet="${esc(view.id)}"><div class="resource-search-sheet-head"><b>${esc(view.name)}</b><span>${count} 条结果</span></div>${resourceTableHtml(view,query,{},key,false)}</section>`).join('')}</div>`}}
 const resourceImageUrlCache=new Map();
@@ -227,8 +237,65 @@ function renderInternalResourceDialog(dialog,key,inputRow,editing=false){
  dialog.querySelector('#addResourceSheet')?.addEventListener('click',()=>{const name=prompt('请输入新子表名称，例如：产品尺寸');if(!name?.trim())return;const sheet={id:crypto.randomUUID(),name:name.trim(),headers:['列 1'],rows:[['']],rowIds:[crypto.randomUUID()]};renderResourceExcelEditor(dialog,key,{...row,sheets:[...row.sheets,sheet],activeSheetId:sheet.id})});
  dialog.querySelectorAll('[data-delete-resource-sheet]').forEach(button=>button.addEventListener('click',async()=>{const removing=row.sheets.find(sheet=>sheet.id===button.dataset.deleteResourceSheet);if(!removing||row.sheets.length<2||!confirmResourceSheetDeletion(removing))return;button.disabled=true;button.textContent='…';try{const saved=await deleteResourceSheetConcurrent(key,removing.id,row.activeSheetId);renderInternalResourceDialog(dialog,key,saved,false)}catch(error){button.disabled=false;button.textContent='×';alert('删除子表失败：'+error.message)}}));
  const search=dialog.querySelector('#resourceSearch'),tableView=dialog.querySelector('#resourceTableView'),searchCount=dialog.querySelector('#resourceSearchCount'),clearFilters=dialog.querySelector('#clearResourceFilters'),filters={};
- const refreshResourceTable=()=>{const query=search?.value||'',keyword=query.trim(),active=Object.keys(filters).length;dialog._resourceImageObserver?.disconnect();if(keyword){const results=resourceAllSearch(row,query,key);tableView.innerHTML=results.html;searchCount.textContent=`全部子表找到 ${results.count} 条`;if(clearFilters)clearFilters.hidden=true;tableView.querySelectorAll('[data-resource-search-sheet]').forEach(section=>{const sheet=row.sheets.find(item=>item.id===section.dataset.resourceSearchSheet);if(sheet)loadResourceImages(section,resourceSheetView(row,sheet))});return}const matched=resourceFilteredEntries(row,'',filters).length;tableView.innerHTML=resourceTableHtml(row,'',filters,key);searchCount.textContent=active?`当前表找到 ${matched} 条`:`当前表 ${row.rows.length} 条`;if(clearFilters)clearFilters.hidden=!active;tableView.querySelectorAll('[data-resource-column-filter]').forEach(select=>select.addEventListener('change',()=>{const column=Number(select.dataset.resourceColumnFilter),option=select.selectedOptions[0];if(!select.value)delete filters[column];else filters[column]=option.dataset.filterValue??'';refreshResourceTable()}));loadResourceImages(dialog,row)};
- search?.addEventListener('input',refreshResourceTable);clearFilters?.addEventListener('click',()=>{Object.keys(filters).forEach(key=>delete filters[key]);refreshResourceTable()});if(!editing)refreshResourceTable();
+ let productKeyword='';
+ const refreshResourceTable=(rowsOnly=false)=>{
+  const query=search.value;
+  dialog._resourceImageObserver?.disconnect();
+  if(query.trim()){
+   const results=resourceAllSearch(row,query,key);
+   tableView.innerHTML=results.html;
+   searchCount.textContent=`全部子表找到 ${results.count} 条`;
+   clearFilters.hidden=true;
+   tableView.querySelectorAll('[data-resource-search-sheet]').forEach(section=>{
+    const sheet=row.sheets.find(item=>item.id===section.dataset.resourceSearchSheet);
+    if(sheet)loadResourceImages(section,resourceSheetView(row,sheet));
+   });
+   return;
+  }
+  const entries=resourceFilteredEntries(row,'',filters,productKeyword);
+  const active=Boolean(productKeyword.trim()||Object.keys(filters).length);
+  const body=rowsOnly&&tableView.querySelector('tbody');
+  if(body)body.innerHTML=resourceTableRowsHtml(row,entries,key);
+  else tableView.innerHTML=resourceTableHtml(row,'',filters,key,true,productKeyword);
+  searchCount.textContent=active?`当前表找到 ${entries.length} 条`:`当前表 ${row.rows.length} 条`;
+  clearFilters.hidden=!active;
+  loadResourceImages(dialog,row);
+ };
+ tableView?.addEventListener('change',event=>{
+  const select=event.target.closest('[data-resource-column-filter]');
+  if(!select)return;
+  const column=select.dataset.resourceColumnFilter;
+  if(select.value){
+   filters[column]=select.selectedOptions[0].dataset.filterValue??'';
+   const input=select.parentElement.querySelector('[data-resource-product-keyword]');
+   if(input){productKeyword='';input.value='';input.classList.remove('active')}
+  }else delete filters[column];
+  select.classList.toggle('active',Boolean(select.value));
+  refreshResourceTable(true);
+ });
+ const filterProduct=event=>{
+  const input=event.target.closest('[data-resource-product-keyword]');
+  if(!input||event.isComposing||input.value===productKeyword)return;
+  productKeyword=input.value;
+  const active=Boolean(productKeyword.trim());
+  if(active){
+   delete filters[input.dataset.resourceProductKeyword];
+   const select=input.parentElement.querySelector('[data-resource-column-filter]');
+   select.value='';
+   select.classList.remove('active');
+  }
+  input.classList.toggle('active',active);
+  refreshResourceTable(true);
+ };
+ tableView?.addEventListener('input',filterProduct);
+ tableView?.addEventListener('compositionend',filterProduct);
+ search?.addEventListener('input',()=>refreshResourceTable());
+ clearFilters?.addEventListener('click',()=>{
+  Object.keys(filters).forEach(column=>delete filters[column]);
+  productKeyword='';
+  refreshResourceTable();
+ });
+ if(!editing)refreshResourceTable();
 }
 async function saveResourceSheetConcurrent(key,row,state,currentSheet,keptImages,uploaded){for(let attempt=0;attempt<5;attempt++){const latestRows=await api('/rest/v1/internal_resource_tables?resource_key=eq.'+key+'&select=*'),latestRaw=latestRows[0];if(!latestRaw){if(row.resource_key)throw Error('Unable to reload the existing workbook. Reopen it before saving.');const sheets=state.replaceWorkbook?state.pendingSheets.map(sheet=>sheet.id===state.sheetId?currentSheet:sheet):[currentSheet],nextRow={...row,...currentSheet,sheets,allImages:[...keptImages,...uploaded],activeSheetId:currentSheet.id},first=sheets[0],payload={resource_key:key,headers:first.headers,rows:storedResourceRows(nextRow),updated_at:new Date().toISOString(),updated_by:session.user.id},saved=await api('/rest/v1/internal_resource_tables',{method:'POST',body:JSON.stringify(payload)});return {...(saved[0]||payload),activeSheetId:currentSheet.id}}const latest=normalizeResourceRow({...latestRaw,activeSheetId:state.sheetId});let sheets,allImages;if(state.replaceWorkbook){sheets=state.pendingSheets.map(sheet=>sheet.id===state.sheetId?currentSheet:sheet);allImages=[...keptImages,...uploaded]}else{const latestSheet=latest.sheets.find(sheet=>sheet.id===state.sheetId);if(!latestSheet)throw Error('当前页面已被其他人删除，请返回后重新打开');sheets=latest.sheets.map(sheet=>sheet.id===state.sheetId?currentSheet:sheet);const activeIds=new Set(latestSheet.rowIds);allImages=[...latest.allImages.filter(image=>!activeIds.has(image.row_id)),...keptImages,...uploaded]}const nextRow={...latest,...currentSheet,sheets,allImages,activeSheetId:currentSheet.id},first=sheets[0],payload={resource_key:key,headers:first.headers,rows:storedResourceRows(nextRow),updated_at:new Date().toISOString(),updated_by:session.user.id},saved=await api('/rest/v1/internal_resource_tables?resource_key=eq.'+key+'&updated_at=eq.'+encodeURIComponent(latestRaw.updated_at),{method:'PATCH',body:JSON.stringify(payload)});if(saved[0])return {...saved[0],activeSheetId:currentSheet.id}}throw Error('多人同时保存次数过多，请再次点击保存')}
 function renderResourceExcelEditor(dialog,key,inputRow){

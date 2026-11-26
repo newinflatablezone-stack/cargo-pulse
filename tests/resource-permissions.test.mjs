@@ -26,3 +26,24 @@ test('旧后端兼容通过查询本人的资料授予跟单权限',async()=>{
  const ctx=context(async path=>{if(path.includes('/rpc/'))throw Object.assign(Error('missing'),{status:404});return [{id:'follower',role:'follower',email:'follower@example.com'}];});
  await ctx.loadInternalResourcePermissions();assert.equal(ctx.canEditInternalResources(),true);
 });
+
+test('物流参数产品名称关键词只匹配本列，并可与工厂下拉同时使用',()=>{
+ const start=source.indexOf('function imagesForResourceRow(');
+ const end=source.indexOf('function resourceSheetView(',start);
+ const row={
+  headers:['产品名称','尺寸','工厂'],
+  rows:[['充气滑梯 2号','4米','新点'],['水上滑梯','6米','特凡'],['城堡','滑梯旁','新点'],['Air Slide','8米','新点']],
+  rowIds:['1','2','3','4'],images:[]
+ };
+ const ctx={row,esc:value=>String(value)};
+ runInNewContext(source.slice(start,end),ctx);
+ const ids=(filters,keyword)=>Array.from(ctx.resourceFilteredEntries(row,'',filters,keyword),entry=>entry.rowId);
+ assert.deepEqual(ids({},' 滑梯 '),['1','2']);
+ assert.deepEqual(ids({2:'新点'},'滑梯'),['1']);
+ assert.deepEqual(ids({},'SLIDE'),['4']);
+ assert.deepEqual(ids({0:'水上滑梯'},''),['2']);
+ assert.deepEqual(ids({},''),['1','2','3','4']);
+ assert.match(ctx.resourceTableHtml(row,'',{},'logistics'),/data-resource-product-keyword="0"/);
+ assert.doesNotMatch(ctx.resourceTableHtml(row,'',{},'inventory'),/data-resource-product-keyword/);
+ assert.doesNotMatch(ctx.resourceTableHtml(row,'滑梯',{},'logistics',false),/data-resource-product-keyword/);
+});

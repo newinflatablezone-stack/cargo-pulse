@@ -12,6 +12,30 @@ const IMAGE_A = 'https://cdn.shopify.com/a.jpg';
 const IMAGE_B = 'https://cdn.shopify.com/b.jpg';
 const IMAGE_C = 'https://cdn.shopify.com/c.jpg';
 
+test('legacy order details show uploaded product photos without counting them as delivery proof', async () => {
+  const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
+  const start = app.indexOf('function mountLegacyOrderProductImages(');
+  const end = app.indexOf('\n}', app.indexOf('async function loadOrderImages(', start)) + 2;
+  const order = { id: 'manual-order' };
+  const rows = [{ object_path: 'manual-order/product-image-slide.png' }];
+  const count = {};
+  const box = {
+    isConnected: true,
+    parentElement: { querySelector: selector => selector === '#imageCount' ? count : null },
+    before(gallery) { this.gallery = gallery; }
+  };
+  const calls = [];
+  await runInNewContext(app.slice(start, end) + '\nloadOrderImages(order.id)', {
+    order, orders: [order], $: () => box, api: async () => rows,
+    document: { createElement: () => ({ append() {} }) },
+    appendShopifyImages() {},
+    showUploadedProductImages: (...args) => calls.push(args)
+  });
+  assert.deepEqual(calls, [[box.gallery, order.id, rows]]);
+  assert.equal(count.textContent, '0 张');
+  assert.match(box.innerHTML, /暂无签收证明/);
+});
+
 function fixture(t) {
   const dir = mkdtempSync(join(tmpdir(), 'cargo-product-images-'));
   const store = new TencentDataStore(join(dir, 'db.sqlite'));

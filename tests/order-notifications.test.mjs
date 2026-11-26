@@ -231,7 +231,7 @@ test('the bell, supplement entry, and reusable write API stay in the existing pa
   const core = readFileSync(new URL('../server/tencent-data-core.mjs', import.meta.url), 'utf8');
   assert.match(app, /if\(o&&!o\.deleted_at&&o\.current_step==='sales_supplement'&&profile\?\.role==='business'&&!isSupervisor\(\)\)\{openShopifyPlace\(o\);return\}/);
   assert.match(app, /current_step==='follower_create'&&profile\?\.role==='business'&&isOrderSalesperson\(o\)\)\{openSalespersonSupplement\(o\);return\}/);
-  assert.match(app, /current_step!=='sales_supplement'&&o\.current_step!=='follower_create'&&isOrderSalesperson\(o\)&&!isSupervisor\(\)\)\{openSalespersonSupplement\(o\);return\}return\}if\(openFollowerCreate\(o\)\)return;let d=\$\('#detail'\);d\.innerHTML=detailHtml\(o\);d\.showModal\(\)/);
+  assert.match(app, /current_step!=='sales_supplement'&&o\.current_step!=='follower_create'&&isOrderSalesperson\(o\)&&!isSupervisor\(\)\)\{openSalespersonSupplement\(o\);return\}return\}if\(orderAction\?\.dataset\.orderView!=='detail'\)\{if\(openFollowerCreate\(o\)\)return\}let d=\$\('#detail'\);d\.innerHTML=detailHtml\(o\);d\.showModal\(\)/);
   assert.match(app, /o\.current_step==='follower_create'&&follower\?`<div class="actions"><button class="primary" id="shopifyCreate">创建订单<\/button><\/div>`/);
   assert.match(app, /#shopifyCreate'\)\?\.addEventListener\('click',\(\)=>openFollowerCreate\(o,d\)\)/);
   assert.match(app, /id="supplementOrder">修改\/补充信息<\/button>/);
@@ -241,7 +241,7 @@ test('the bell, supplement entry, and reusable write API stay in the existing pa
   assert.match(app, /class="order-notify-dot"/);
   assert.match(app, /function openSalespersonSupplement/);
   const form = app.slice(app.indexOf('function openSalespersonSupplement'), app.indexOf('async function openSalespersonOrder'));
-  assert.match(form, /issued=o\.current_step!=='follower_create',heading=issued\?'修改\/补充信息':'待业务员认领下单'/);
+  assert.match(form, /issued=o\.current_step!=='follower_create',heading=issued\?'修改\/补充信息':'下单详情'/);
   assert.match(form, /textarea name="customer_info" required>\$\{esc\(o\.customer_info\|\|''\)\}/);
   assert.match(form, /name="product_name" required value="\$\{esc\(o\.product_name\|\|''\)\}"/);
   assert.match(form, /name="abnormal_note" required>\$\{esc\(o\.abnormal_note\|\|o\.requirements\|\|''\)\}/);

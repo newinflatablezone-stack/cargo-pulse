@@ -21,7 +21,7 @@ function cardHtml(order, person) {
     session: { user: { email: person.email, id: person.id } },
     order
   };
-  run(supervisor + '\n' + sales + '\nhtml=salespersonCardActions(order);', sandbox);
+  run(supervisor + '\n' + follow + '\n' + sales + '\nhtml=salespersonCardActions(order);', sandbox);
   return sandbox.html;
 }
 
@@ -104,6 +104,8 @@ test('salesperson cards on or after 2026-11-23 show 查看详情 and 下单详�
   assert.equal(html.includes(LEGACY), false);
   assert.match(app, /\$\{esc\(o\.forwarder_name\|\|'未选择'\)\}<\/span>\$\{salespersonCardActions\(o\)\}<\/footer>/);
   assert.equal(app.split(LEGACY).length, 2);
+  assert.deepEqual(buttonLabels(cardHtml(order({ business_id: null, business_name: ' demi ' }), owner)), ['查看详情', '下单详情']);
+  assert.equal(cardHtml(order({ business_name: 'Demi', business_user_id: 'other-owner' }), owner), LEGACY);
 });
 
 test('salesperson cards before 2026-11-23 show only 查看详情', () => {
@@ -160,6 +162,9 @@ test('pending orders open the place form directly; other cards keep their existi
   }
   assert.deepEqual(clickCard(waiting, owner).opened, ['read:wait-1', 'detail:wait-1']);
   assert.deepEqual(clickCard(waiting, owner, 'place').opened, ['read:wait-1', 'supplement:follower_create:wait-1']);
+  const customWaiting = { ...waiting, order_date: null, step_started_at: '2026-11-24T04:00:00Z' };
+  assert.deepEqual(buttonLabels(cardHtml(customWaiting, owner)), ['查看详情', '下单详情']);
+  assert.deepEqual(clickCard(customWaiting, owner, 'place').opened, ['read:wait-1', 'supplement:follower_create:wait-1']);
   assert.deepEqual(clickCard(order({ id: 'done-1', current_step: 'completed' }), owner, 'place').opened, ['read:done-1', 'supplement:completed:done-1']);
 });
 
@@ -172,15 +177,19 @@ test('merchandiser and supervisor cards keep 查看详情 and their existing cli
   assert.equal(cardHtml(waiting, follower), LEGACY);
   assert.equal(cardHtml(current, supervisorUser), LEGACY);
   assert.equal(cardHtml(waiting, supervisorUser), LEGACY);
+  assert.deepEqual(buttonLabels(cardHtml(ready, follower)), ['查看详情']);
+  assert.deepEqual(buttonLabels(cardHtml(ready, supervisorUser)), ['查看详情']);
   assert.equal(cardHtml(current, other), LEGACY);
   assert.equal(cardHtml(order({ deleted_at: '2026-11-23' }), owner), LEGACY);
 
   assert.deepEqual(clickCard(waiting, follower).opened, ['read:wait-1', 'detail:wait-1']);
   assert.deepEqual(clickCard(ready, follower).opened, ['read:wait-ready', 'create:wait-ready']);
+  assert.deepEqual(clickCard(ready, follower, 'detail').opened, ['read:wait-ready', 'detail:wait-ready']);
   assert.deepEqual(clickCard(current, follower).opened, ['read:order-1', 'detail:order-1']);
   assert.deepEqual(clickCard(waiting, supervisorUser).opened, ['read:wait-1', 'detail:wait-1']);
   assert.equal(clickCard(waiting, supervisorUser).opened.includes('create:wait-1'), false);
   assert.deepEqual(clickCard(ready, supervisorUser).opened, ['read:wait-ready', 'create:wait-ready']);
+  assert.deepEqual(clickCard(ready, supervisorUser, 'detail').opened, ['read:wait-ready', 'detail:wait-ready']);
   assert.deepEqual(clickCard(current, supervisorUser).opened, ['read:order-1', 'detail:order-1']);
   assert.deepEqual(clickCard(current, other).opened, ['read:order-1', 'detail:order-1']);
 

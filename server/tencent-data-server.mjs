@@ -485,7 +485,7 @@ const server = http.createServer((req, res) => {
 // General sync stays at Beijing time 2026-11-21 00:00 (SHOPIFY_IMPORT_START).
 // Order 9050 is five minutes earlier and is requested by name, not by moving
 // that window backward.
-const period = 30 * 60 * 1000;
+const period = 5 * 60 * 1000;
 const orderQuery = `query ImportOrders($query: String!, $after: String) {
   orders(first: 25, after: $after, query: $query, sortKey: CREATED_AT) {
     pageInfo { hasNextPage endCursor }

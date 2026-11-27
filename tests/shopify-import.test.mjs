@@ -144,7 +144,7 @@ test('the sync skips full refunds, archives existing Shopify orders, and keeps p
   runInNewContext(worker + "\nstartShopifySync(store,{SHOPIFY_ORDER_SHOP:'example.myshopify.com',SHOPIFY_ORDER_TOKEN:'test-only'});", {
     store, AbortSignal, SHOPIFY_IMPORT_START, SHOPIFY_EXPLICIT_ORDER_NUMBERS, shopifySyncEligible, shopifyLineSummary, shopifyVariantChoices,
     shopifyGraphqlErrorDetail, shopifyCustomerInfo, console: { log() {}, warn(...args) { throw Error(args.join(' ')); } },
-    setInterval(callback, interval) { assert.equal(interval, 30 * 60 * 1000); tick = callback; return { unref() {} }; },
+    setInterval(callback, interval) { assert.equal(interval, 5 * 60 * 1000); tick = callback; return { unref() {} }; },
     async fetch(_url, request) {
       const { query, variables } = JSON.parse(request.body);
       calls.push({ query, variables });

@@ -29,7 +29,7 @@ function roleHelpers() {
 
 function statusTabs(statusFilter, follower, activeOrders, deletedOrders) {
   const start = app.indexOf('<div class="status-tabs">');
-  const end = app.indexOf('</div><div class="result-count">') + '</div>'.length;
+  const end = app.indexOf('</div><div class="order-results">') + '</div>'.length;
   const raw = app.slice(start, end);
   return runInNewContext(
     lineFunction('followerFactorySaved') + '\n' + lineFunction('orderMatchesStatusTab') + '\n' +
@@ -309,7 +309,7 @@ test('a merchandiser click on 待跟单创建订单 opens the create-order form 
 });
 
 test('按当前流程 adds the early statuses without a new tab, and 待选择工厂 does not count as 待跟单创建订单', () => {
-  const tabs = app.slice(app.indexOf('<div class="status-tabs">'), app.indexOf('</div><div class="result-count">'));
+  const tabs = app.slice(app.indexOf('<div class="status-tabs">'), app.indexOf('</div><div class="order-results">'));
   assert.equal(tabs.includes('待选择工厂'), false);
   assert.equal(tabs.includes('awaiting_factory'), false);
   assert.equal(app.includes('按当前流程<select id="workflowStepFilter">'), true);

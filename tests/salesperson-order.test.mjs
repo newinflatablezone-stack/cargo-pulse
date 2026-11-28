@@ -137,7 +137,7 @@ test('manual multi-product orders preserve line quantities, requirements and ind
   for(const object_path of [photoA,photoB])store.put('order_images',{order_id:id,object_path});
   const products=[
     {product_name:'城堡',quantity:2,size:'3 米',blower:'包风机',requirements:'红色',image_paths:[photoA]},
-    {product_name:'拱门',quantity:3,size:'5 米',blower:'不包气泵',requirements:'蓝色',image_paths:[photoB]}
+    {product_name:'拱门 Arch',quantity:3,size:'5 米',blower:'不包气泵',requirements:'蓝色',image_paths:[photoB]}
   ];
   const {abnormal_note: _note, ...common}=fields({order_no:'MULTI-1'});
   assert.throws(()=>store.salespersonOrder(business.id,{...common,action:'place',id,products:[{...products[0],image_paths:['other/product-image.jpg']}]}),/图片无效/);
@@ -146,6 +146,7 @@ test('manual multi-product orders preserve line quantities, requirements and ind
   store.salespersonOrder(business.id,{...common,action:'place',id,products});
   const saved=store.all('orders').find(order=>order.id===id);
   assert.equal(saved.quantity,5);
+  assert.equal(saved.products[1].product_name,'拱门 Arch');
   assert.deepEqual(saved.products.map(row=>[row.requirements,row.image_paths[0]]),[['红色',photoA],['蓝色',photoB]]);
   store.shopifyHandoff(supervisor.id,{action:'assign_factory',id,factory_name:'库存'});
   store.shopifyHandoff(follower.id,{...common,action:'create',id,factory_name:'库存',destination_country:'美国',current_step:'production'});

@@ -47,9 +47,9 @@ function saveFactory(store, orderId) {
   store.shopifyHandoff(supervisor.id, { action: 'assign_factory', id: orderId, factory_name: 'Factory A' });
 }
 
-test('产品名称 allows punctuation and digits alongside Chinese, with the same message in the browser and the API', () => {
+test('产品名称 allows English, punctuation and digits alongside Chinese in the browser and the API', () => {
   assert.equal(browserRule, PRODUCT_NAME_RULE);
-  assert.equal(PRODUCT_NAME_RULE, '产品名称须含中文，可加数字和标点，请勿填写英文字母');
+  assert.equal(PRODUCT_NAME_RULE, '产品名称须含中文，可搭配英文、数字和标点');
   const browser = readFileSync(new URL('../product-name.mjs', import.meta.url), 'utf8');
   const core = readFileSync(new URL('../server/tencent-data-core.mjs', import.meta.url), 'utf8');
   const ruleText = source => {
@@ -81,7 +81,7 @@ test('产品名称 allows punctuation and digits alongside Chinese, with the sam
     assert.equal(browserReminder(value), productNameReminder(value));
     assert.equal(browserReminder(value, original), productNameReminder(value, original));
   }
-  for (const value of [IMPORTED, '   ', '', 'Another English Title', '气垫 Air Floor', '气垫Pro', '12345', '（123）', '。！？', '气垫🙂']) {
+  for (const value of [IMPORTED, '   ', '', 'Another English Title', 'Air Floor 2 (XL)', '12345', '（123）', '。！？', '气垫🙂']) {
     assert.equal(productNameReminder(value), PRODUCT_NAME_RULE);
   }
   assert.equal(productNameReminder(IMPORTED, IMPORTED), PRODUCT_NAME_RULE);
@@ -89,13 +89,13 @@ test('产品名称 allows punctuation and digits alongside Chinese, with the sam
   assert.equal(productNameReminder('气垫', '气垫'), '');
   assert.equal(productNameReminder('  气垫 城堡  ', '气垫'), '');
   assert.equal(productNameReminder('气垫　城堡'), '');
-  for (const value of ['气垫123', '12气垫', '气垫。', '气垫-城堡', '气垫，城堡', '充气式天文馆（圆顶帐篷）2号', '气垫＋风机（２.５×３）']) {
+  for (const value of ['气垫 Air Floor', '气垫Pro', 'Air Floor 悠波球 2 (XL)', '气垫123', '12气垫', '气垫。', '气垫-城堡', '气垫，城堡', '充气式天文馆（圆顶帐篷）2号', '气垫＋风机（２.５×３）']) {
     assert.equal(browserReminder(value), '');
     assert.equal(productNameReminder(value), '');
   }
 });
 
-test('下单 accepts digits and punctuation with Chinese and still rejects English names', t => {
+test('下单 accepts mixed Chinese and English and rejects English-only names', t => {
   const { store, business, follower } = fixture(t);
   const imported = importOrder(store);
   assert.equal(imported.shopify_product_name, IMPORTED);
@@ -108,7 +108,6 @@ test('下单 accepts digits and punctuation with Chinese and still rejects Engli
   reject(`  ${IMPORTED}  `);
   reject('   ');
   reject('Another English Title');
-  reject('气垫 Air Floor');
   assert.equal(store.all('orders').find(row => row.id === imported.id).current_step, 'sales_supplement');
   assert.equal(store.all('orders').find(row => row.id === imported.id).product_name, IMPORTED);
   assert.throws(
@@ -119,7 +118,7 @@ test('下单 accepts digits and punctuation with Chinese and still rejects Engli
     () => store.shopifyHandoff(business.id, placeBody(imported.id, IMPORTED, { customer_info: 'Ada\nada@example.com\n+1 5551234567' })),
     error => error.status === 400 && error.message === '客户信息还缺少：地址'
   );
-  for (const product_name of ['气垫', '充气城堡', '气垫 城堡', '充气式天文馆（圆顶帐篷）2号']) {
+  for (const product_name of ['气垫', '充气城堡', '气垫 城堡', '充气式天文馆（圆顶帐篷）2号', '气垫 Air Floor']) {
     const fresh = importOrder(store, IMPORTED, { id: 'gid://shopify/Order/' + product_name, order_no: '#' + product_name.length });
     const placed = store.shopifyHandoff(business.id, placeBody(fresh.id, product_name, { order_no: fresh.order_no }));
     const order = store.all('orders').find(row => row.id === placed.id);
@@ -155,9 +154,8 @@ test('保存 uses the same Chinese name rule for edits and manual orders', t => 
   reject(` ${IMPORTED} `);
   reject('   ');
   reject('Castle XL');
-  reject('气垫 XL');
-  const revised = store.updateSalespersonSupplement(business.id, supplementBody(placed.id, '大气垫', { shopify_product_name: 'Castle' }));
-  assert.equal(store.all('orders').find(row => row.id === revised.id).product_name, '大气垫');
+  const revised = store.updateSalespersonSupplement(business.id, supplementBody(placed.id, '大气垫 XL', { shopify_product_name: 'Castle' }));
+  assert.equal(store.all('orders').find(row => row.id === revised.id).product_name, '大气垫 XL');
   assert.equal(store.all('orders').find(row => row.id === revised.id).shopify_product_name, IMPORTED);
   saveFactory(store, placed.id);
   const created = store.shopifyHandoff(follower.id, {
@@ -175,19 +173,14 @@ test('保存 uses the same Chinese name rule for edits and manual orders', t => 
     () => store.updateSalespersonSupplement(business.id, supplementBody(created.id, 'Floor Pro')),
     error => error.status === 400 && error.message === PRODUCT_NAME_RULE
   );
-  assert.throws(
-    () => store.updateSalespersonSupplement(business.id, supplementBody(created.id, '气垫 Floor Pro')),
-    error => error.status === 400 && error.message === PRODUCT_NAME_RULE
-  );
-  const saved = store.updateSalespersonSupplement(business.id, supplementBody(created.id, '气垫地板'));
-  assert.equal(store.all('orders').find(row => row.id === saved.id).product_name, '气垫地板');
+  const saved = store.updateSalespersonSupplement(business.id, supplementBody(created.id, '气垫 Floor Pro'));
+  assert.equal(store.all('orders').find(row => row.id === saved.id).product_name, '气垫 Floor Pro');
   assert.equal(store.all('orders').find(row => row.id === saved.id).current_step, 'business_placed');
   const draft = store.salespersonOrder(business.id, { action: 'draft' });
   store.put('order_images', { order_id: draft.id, object_path: `${draft.id}/product-image-photo.jpg`, file_name: '产品图片' });
   const placeCustom = product_name => store.salespersonOrder(business.id, { action: 'place', id: draft.id, ...supplementBody(draft.id, product_name, { order_no: 'IZ-200' }) });
   assert.throws(() => placeCustom('Castle'), error => error.status === 400 && error.message === PRODUCT_NAME_RULE);
   assert.throws(() => placeCustom('   '), error => error.status === 400 && error.message === PRODUCT_NAME_RULE);
-  assert.throws(() => placeCustom('气垫 Castle'), error => error.status === 400 && error.message === PRODUCT_NAME_RULE);
   assert.throws(() => placeCustom('2'), error => error.status === 400 && error.message === PRODUCT_NAME_RULE);
   assert.throws(() => placeCustom('！'), error => error.status === 400 && error.message === PRODUCT_NAME_RULE);
   assert.throws(
@@ -195,9 +188,9 @@ test('保存 uses the same Chinese name rule for edits and manual orders', t => 
     error => error.status === 400 && error.message === '客户信息还缺少：地址'
   );
   assert.equal(store.all('orders').find(row => row.id === draft.id).current_step, 'salesperson_draft');
-  const custom = placeCustom('充气式天文馆（圆顶帐篷）2号');
+  const custom = placeCustom('充气式天文馆 Planetarium（圆顶帐篷）2号');
   assert.equal(store.all('orders').find(row => row.id === custom.id).current_step, 'follower_create');
-  assert.equal(store.all('orders').find(row => row.id === custom.id).product_name, '充气式天文馆（圆顶帐篷）2号');
+  assert.equal(store.all('orders').find(row => row.id === custom.id).product_name, '充气式天文馆 Planetarium（圆顶帐篷）2号');
   assert.throws(
     () => store.updateSalespersonSupplement(business.id, supplementBody(custom.id, 'Castle XL', { order_no: 'IZ-201' })),
     error => error.status === 400 && error.message === PRODUCT_NAME_RULE
@@ -260,7 +253,7 @@ test('the salesperson forms show one product name error and 创建订单 does no
   assert.equal(app.includes('product-name-hint'), false);
   assert.equal(/import\s[^;]*product-name\.mjs/.test(core), false);
   assert.match(core, /Browser copy lives in product-name\.mjs/);
-  assert.match(core, /export const PRODUCT_NAME_RULE = '产品名称须含中文，可加数字和标点，请勿填写英文字母'/);
+  assert.match(core, /export const PRODUCT_NAME_RULE = '产品名称须含中文，可搭配英文、数字和标点'/);
   assert.equal(core.includes('英文可以写在中文旁边'), false);
   assert.match(page, /product-name-rule\.css/);
   const ruleCss = readFileSync(new URL('../product-name-rule.css', import.meta.url), 'utf8');
@@ -291,8 +284,8 @@ test('the salesperson forms show one product name error and 创建订单 does no
   assert.equal(reminder.hidden, true);
   assert.equal(reminder.textContent, '');
   input.value = '气垫 Air Floor';
-  assert.equal(listeners.input(), PRODUCT_NAME_RULE);
-  assert.equal(reminder.hidden, false);
+  assert.equal(listeners.input(), '');
+  assert.equal(reminder.hidden, true);
   input.value = '气垫123';
   assert.equal(listeners.input(), '');
   input.value = '气垫。';

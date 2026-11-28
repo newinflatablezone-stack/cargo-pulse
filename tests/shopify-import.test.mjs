@@ -454,9 +454,10 @@ test('Shopify product lines require complete Chinese product details and retain 
     assert.throws(()=>place([filled,{...filled,[key]:''}]),/第 2 行/);
   }
   assert.throws(()=>place([filled,{...filled,product_name:'Inflatable Arch'}]),/产品名称须含中文/);
-  place([filled,{...filled,product_name:'拱门',quantity:1,image_urls:[second]}]);
+  place([filled,{...filled,product_name:'拱门 Inflatable Arch',quantity:1,image_urls:[second]}]);
   let order=store.all('orders').find(row=>row.id===imported.id);
   assert.equal(order.products[1].quantity,1);
+  assert.equal(order.products[1].product_name,'拱门 Inflatable Arch');
   assert.deepEqual(order.shopify_image_urls,[second]);
   store.updateSalespersonSupplement(business.id,{id:order.id,business_name:'Demi',products:[
     {...order.products[0],image_urls:[first]}, {...order.products[1],image_urls:[]}

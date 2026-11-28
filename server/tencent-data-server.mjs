@@ -137,6 +137,13 @@ const safeUploadPath = (raw, root = UPLOAD_DIR) => {
 };
 const objectSigningKey = IMPORT_SECRET || randomUUID();
 const objectSignature = (raw, expires, userId) => createHmac('sha256', objectSigningKey).update(`${raw}\n${expires}\n${userId}`).digest('base64url');
+const FACTORY_IMAGE_LINK_TTL = 7 * 24 * 60 * 60;
+const FACTORY_IMAGE_PREFIX = '/storage/v1/factory-export-image/';
+const factoryImageSignature = (raw, expires) => createHmac('sha256', objectSigningKey).update(`factory-export-image\n${raw}\n${expires}`).digest('base64url');
+
+function validImageSignature(token, expected) {
+  return Buffer.byteLength(token) === expected.length && timingSafeEqual(Buffer.from(token), Buffer.from(expected));
+}
 const storageUser = req => {
   const cookie = String(req.headers.cookie || '').split(';').map(part => part.trim()).find(part => part.startsWith('cp_order_images='));
   return store.session(bearer(req) || (cookie ? cookie.slice('cp_order_images='.length) : ''));
@@ -351,6 +358,18 @@ async function rpc(req, res, name, body, user) {
 
 async function storageRoute(req, res, url, user) {
   if (!user) throw Object.assign(Error('请先登录'), { status: 401 });
+  if (url.pathname === '/storage/v1/factory-export-links' && req.method === 'POST') {
+    if (!store.isFollower(user.id)) throw Object.assign(Error('仅跟单和主管可以导出产品图片'), { status: 403 });
+    const body = await readBody(req, 4096);
+    const orderId = typeof body?.order_id === 'string' ? body.order_id : '';
+    if (!orderId) throw Object.assign(Error('请选择订单'), { status: 400 });
+    const expires = Math.floor(Date.now() / 1000) + FACTORY_IMAGE_LINK_TTL;
+    const paths = [...new Set(store.factoryExportImagePaths(orderId))];
+    return send(res, 200, { images: paths.map(path => {
+      const raw = path.split('/').map(encodeURIComponent).join('/');
+      return { object_path: path, url: `${FACTORY_IMAGE_PREFIX}${raw}?expires=${expires}&token=${factoryImageSignature(raw, expires)}` };
+    }) });
+  }
   const signPrefix = '/storage/v1/object/sign/order-images/';
   const objectPrefix = '/storage/v1/object/order-images/';
   if (url.pathname.startsWith(signPrefix)) {
@@ -382,16 +401,34 @@ async function serveObject(req, res, url) {
   const ownerId = url.searchParams.get('uid');
   if (!user || user.id !== ownerId || !store.canReadObject(user.id, decodeURIComponent(raw))) throw Object.assign(Error('图片不存在或无权访问'), { status: 404 });
   const expected = objectSignature(raw, expires, ownerId);
-  const valid = expires > Math.floor(Date.now() / 1000) && Buffer.byteLength(supplied) === expected.length && timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
+  const valid = expires > Math.floor(Date.now() / 1000) && validImageSignature(supplied, expected);
   if (!valid) throw Object.assign(Error('图片链接已失效'), { status: 403 });
-  const file = safeUploadPath(raw);
+  return sendOrderImage(res, safeUploadPath(raw));
+}
+
+async function serveFactoryExportImage(res, url) {
+  const raw = url.pathname.slice(FACTORY_IMAGE_PREFIX.length);
+  const expires = Number(url.searchParams.get('expires'));
+  const token = url.searchParams.get('token') || '';
+  const fail = () => { throw Object.assign(Error('图片链接无效或已失效'), { status: 404 }); };
+  if (!Number.isSafeInteger(expires) || expires <= Math.floor(Date.now() / 1000) || !validImageSignature(token, factoryImageSignature(raw, expires))) fail();
+  const objectPath = decodeURIComponent(raw);
+  const orderId = objectPath.split('/')[0];
+  if (!store.factoryExportImagePaths(orderId).includes(objectPath)) fail();
+  return sendOrderImage(res, safeUploadPath(raw), { 'X-Robots-Tag': 'noindex, nofollow, noarchive', 'Referrer-Policy': 'no-referrer' });
+}
+
+async function sendOrderImage(res, file, headers = {}) {
   const types = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.avif': 'image/avif', '.svg': 'image/svg+xml', '.bmp': 'image/bmp', '.heic': 'image/heic', '.heif': 'image/heif', '.tif': 'image/tiff', '.tiff': 'image/tiff', '.ico': 'image/x-icon' };
   const type = types[extname(file).toLowerCase()];
-  const content = await readFile(file);
+  const content = await readFile(file).catch(error => {
+    if (error.code === 'ENOENT') throw Object.assign(Error('图片不存在'), { status: 404 });
+    throw error;
+  });
   res.writeHead(200, {
     ...securityHeaders, 'Content-Length': content.length, 'Content-Type': type || 'application/octet-stream',
     ...(!type ? { 'Content-Disposition': 'attachment' } : {}),
-    'Content-Security-Policy': "sandbox; default-src 'none'", 'Cache-Control': 'private, no-store'
+    'Content-Security-Policy': "sandbox; default-src 'none'", 'Cache-Control': 'private, no-store', ...headers
   });
   res.end(content);
 }
@@ -455,6 +492,7 @@ async function handleRequest(req, res) {
       await writeFile(file, body);
       return send(res, 200, { ok: true, size: body.length });
     }
+    if (url.pathname.startsWith(FACTORY_IMAGE_PREFIX) && req.method === 'GET') return await serveFactoryExportImage(res, url);
     if (url.pathname.startsWith('/storage/v1/object/order-images/') && req.method === 'GET') return await serveObject(req, res, url);
     const user = isPublicRequest(url.pathname) ? store.session(bearer(req)) : requireUser(req);
     if (url.pathname.startsWith('/storage/v1/')) return await storageRoute(req, res, url, user);

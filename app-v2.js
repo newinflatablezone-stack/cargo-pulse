@@ -12,7 +12,7 @@ import {STEP_LABELS,RED_OVERDUE_AFTER_DAYS,firstStep,nextStep,nextShipping,ocean
 import {classifyDestination,MAINSTREAM_DESTINATIONS,normalizeDestination} from "./server/destination-risk.mjs?v=20261013-1";
 import {extractCustomerContacts,customerInfoReminder} from "./server/customer-info.mjs?v=20261122-8";
 import {productNameReminder} from "./product-name.mjs?v=20261123-3";
-import {FACTORY_EXPORT_EMPTY_MESSAGE,FACTORY_EXPORT_IMAGE_LIMIT,buildFactoryOrderWorkbook,canUseFactoryExport,factoryExportFilename,factoryImageExtension,factoryImageSources,isFactoryExportable} from "./factory-order-export.js?v=20261122-10";
+import {FACTORY_EXPORT_EMPTY_MESSAGE,buildFactoryOrderWorkbook,canUseFactoryExport,factoryExportFilename,factoryImageExtension,factoryImageSources,isFactoryExportable} from "./factory-order-export.js?v=20261122-10";
 import {canOpenWeeklyReport,mountWeeklyReport,weeklyReportNavVisible} from "./weekly-report.js?v=20261123-1";
 
 let cfg=readStoredConfig(),session=readStoredSession(),profile=null,orders=[],profiles=[],partners=[],imageRecords=[],eventRecords=[],activeEventRecords=[],factoryRecords=[],factoryFeatureReady=false,shipmentRecords=[],shipmentFeatureReady=false,alertFilter="all",statusFilter="active",partnerFilter="all",factoryFilter="all",businessFilter="all",orderSort="desc",searchQuery="",currentPage=1;
@@ -32,10 +32,57 @@ function followerFactorySaved(order){return Boolean(String(order?.factory_name||
 function openFollowerCreate(o,detailDialog){if(!o||o.deleted_at||o.current_step!=='follower_create'||!canFollowOrders()||!followerFactorySaved(o))return false;openShopifyCreate(o,detailDialog);return true}
 const factoryExportSelection=new Set();
 function factoryExportCount(){let count=0;for(const id of factoryExportSelection){if(isFactoryExportable(orders.find(order=>String(order.id)===id)))count++}return count}
-async function fetchFactoryImage(url){try{const response=await fetch(url,{credentials:'include',signal:AbortSignal.timeout(20000)});if(!response.ok)return null;const type=response.headers.get('content-type')||'';if(/text\/|json|html/i.test(type))return null;const buffer=await response.arrayBuffer();if(!buffer.byteLength||buffer.byteLength>4*1024*1024)return null;const extension=factoryImageExtension(new Uint8Array(buffer),type);return extension?{buffer,extension}:null}catch{return null}}
-async function loadFactoryExportImages(order){const uploads=[];try{const rows=await api('/rest/v1/order_images?order_id=eq.'+encodeURIComponent(order.source_order_id||order.id)+'&select=object_path,file_name');for(const row of rows||[]){if(!String(row.object_path||'').includes('/product-image-')||(order.image_paths&&!order.image_paths.includes(row.object_path)))continue;try{const encoded=String(row.object_path).split('/').map(encodeURIComponent).join('/');const signed=await api('/storage/v1/object/sign/order-images/'+encoded,{method:'POST',body:JSON.stringify({expiresIn:3600})});uploads.push({object_path:row.object_path,url:cfg.url+'/storage/v1'+signed.signedURL})}catch(error){console.warn('产品图片签名失败',error)}}}catch(error){console.warn('产品图片读取失败',error)}const sources=factoryImageSources(order,uploads),images=[];let embedded=0;for(const source of sources){if(embedded>=FACTORY_EXPORT_IMAGE_LIMIT){if(source.publicUrl)images.push({url:source.publicUrl});continue}const file=await fetchFactoryImage(source.fetchUrl);if(file){images.push(file);embedded++}else if(source.publicUrl)images.push({url:source.publicUrl})}if(sources.length&&!images.length)images.push({text:'产品图片未能嵌入'});return images}
+async function decodeFactoryPhoto(blob){
+ try{return await resourceImageSource(blob)}catch{
+  const url=URL.createObjectURL(blob),image=new Image();
+  try{image.src=url;await image.decode();return image}finally{URL.revokeObjectURL(url)}
+ }
+}
+async function fetchFactoryImage(url){
+ try{
+  const response=await fetch(url,{credentials:'omit',signal:AbortSignal.timeout(20000)});
+  if(!response.ok)return null;
+  const blob=await response.blob();
+  if(!blob.size||/text\/|json|html/i.test(blob.type))return null;
+  const extension=factoryImageExtension(new Uint8Array(await blob.slice(0,16).arrayBuffer()),blob.type);
+  const image=await decodeFactoryPhoto(blob);
+  try{
+   const width=image.width||image.naturalWidth,height=image.height||image.naturalHeight;
+   if(!width||!height)return null;
+   if(extension&&blob.size<=512*1024)return {buffer:await blob.arrayBuffer(),extension,width,height};
+   const scale=Math.min(1,768/Math.max(width,height)),canvas=document.createElement('canvas');
+   canvas.width=Math.max(1,Math.round(width*scale));canvas.height=Math.max(1,Math.round(height*scale));
+   const context=canvas.getContext('2d',{alpha:false});
+   context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);
+   context.drawImage(image,0,0,canvas.width,canvas.height);
+   const jpeg=await resourceCanvasBlob(canvas,'image/jpeg',.86);
+   return jpeg?{buffer:await jpeg.arrayBuffer(),extension:'jpeg',width:canvas.width,height:canvas.height}:null;
+  }finally{image.close?.()}
+ }catch{return null}
+}
+async function loadFactoryUploadLinks(order){
+ const result=await api('/storage/v1/factory-export-links',{method:'POST',body:JSON.stringify({order_id:order.id})});
+ return result.images.map(image=>({...image,url:new URL(image.url,location.origin).href}));
+}
+async function loadFactoryExportImages(order,uploads,downloads){
+ const assigned=Array.isArray(order.image_paths)?new Set(order.image_paths):null;
+ const sources=factoryImageSources(order,uploads.filter(row=>!assigned||assigned.has(row.object_path)));
+ const images=[];
+ for(let offset=0;offset<sources.length;offset+=4){
+  images.push(...await Promise.all(sources.slice(offset,offset+4).map(async source=>{
+   if(!downloads.has(source.fetchUrl))downloads.set(source.fetchUrl,fetchFactoryImage(source.fetchUrl));
+   const photo=await downloads.get(source.fetchUrl);
+   return {...photo,url:source.publicUrl,text:photo?'':'图片暂无法嵌入'};
+  })));
+ }
+ if(assigned){
+  const available=new Set(uploads.map(row=>row.object_path));
+  for(const path of assigned)if(!available.has(path))images.push({text:'原上传图片已不可用'});
+ }
+ return images;
+}
 function downloadFactoryWorkbook(buffer,filename){const blob=new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=filename;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1500)}
-async function exportSelectedFactoryOrders(){if(!canFollowOrders()||!canUseFactoryExport(profile))return;const chosen=orders.filter(order=>factoryExportSelection.has(String(order.id))&&isFactoryExportable(order));if(!chosen.length){alert(FACTORY_EXPORT_EMPTY_MESSAGE);return}const button=$('#exportFactoryOrders');if(button){button.disabled=true;button.textContent='正在导出…'}try{const exportOrders=chosen.flatMap(order=>order.products?.length?order.products.map((product,index)=>({...order,...product,source_order_id:order.id,id:order.id+':'+index,shopify_image_urls:product.image_urls,requirements:[product.requirements,product.blower].filter(Boolean).join(' / ')})):[order]);const images=new Map();for(const order of exportOrders)images.set(String(order.id),await loadFactoryExportImages(order));downloadFactoryWorkbook(await buildFactoryOrderWorkbook(exportOrders,images),factoryExportFilename())}catch(error){alert(error?.code==='empty-factory-export'?FACTORY_EXPORT_EMPTY_MESSAGE:(error.message||'导出失败'))}finally{if(button){button.disabled=false;button.textContent='导出工厂下单文件'+(factoryExportCount()?`（${factoryExportCount()}）`:'')}}}
+async function exportSelectedFactoryOrders(){if(!canFollowOrders()||!canUseFactoryExport(profile))return;const chosen=orders.filter(order=>factoryExportSelection.has(String(order.id))&&isFactoryExportable(order));if(!chosen.length){alert(FACTORY_EXPORT_EMPTY_MESSAGE);return}const button=$('#exportFactoryOrders');if(button){button.disabled=true;button.textContent='正在导出…'}try{const exportOrders=[],images=new Map(),downloads=new Map();for(const order of chosen){const products=order.products?.length?order.products:null;const uploads=!products||products.some(product=>product.image_paths?.length)?await loadFactoryUploadLinks(order):[];const lines=products?products.map((product,index)=>({...order,...product,id:order.id+':'+index,shopify_image_urls:product.image_urls,image_urls:[],image_paths:product.image_paths||[],requirements:[product.requirements,product.blower].filter(Boolean).join(' / ')})):[order];for(const line of lines){exportOrders.push(line);images.set(String(line.id),await loadFactoryExportImages(line,uploads,downloads))}}downloadFactoryWorkbook(await buildFactoryOrderWorkbook(exportOrders,images),factoryExportFilename())}catch(error){alert(error?.code==='empty-factory-export'?FACTORY_EXPORT_EMPTY_MESSAGE:(error.message||'导出失败'))}finally{if(button){button.disabled=false;button.textContent='导出工厂下单文件'+(factoryExportCount()?`（${factoryExportCount()}）`:'')}}}
 function normalizeForwarderName(value){const name=String(value??'').trim();return name==='嘉城'?'嘉诚':name}
 function normalizeForwarderApiData(value,context=''){if(Array.isArray(value)){const rows=value.map(item=>normalizeForwarderApiData(item,context));if(context==='forwarder_scores'){const unique=new Map();rows.forEach(item=>{if(item?.name)unique.set(normalizeForwarderName(item.name),{...item,name:normalizeForwarderName(item.name)})});return [...unique.values()]}return rows}if(!value||typeof value!=='object')return value;for(const [key,child] of Object.entries(value))value[key]=normalizeForwarderApiData(child,key);if(Object.prototype.hasOwnProperty.call(value,'forwarder_name'))value.forwarder_name=normalizeForwarderName(value.forwarder_name);if(value.kind==='forwarder'&&Object.prototype.hasOwnProperty.call(value,'name'))value.name=normalizeForwarderName(value.name);if(context==='forwarder_scores'&&Object.prototype.hasOwnProperty.call(value,'name'))value.name=normalizeForwarderName(value.name);return value}
 function normalizeForwarderApiOptions(options){if(typeof options?.body!=='string')return options;try{return {...options,body:JSON.stringify(normalizeForwarderApiData(JSON.parse(options.body)))}}catch{return options}}

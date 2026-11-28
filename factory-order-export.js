@@ -1,12 +1,5 @@
-// Factory 下单文件 for merchandisers. Orders persist one product
-// (product_name, size, quantity, requirements). Shopify line items are
-// summarized into those fields at import — names joined with " / ",
-// quantities summed, sizes joined — and are not stored as separate lines.
-// Exporting therefore writes one row per order. Splitting the joined name
-// would invent per-item quantities and sizes the order does not have.
-
 export const FACTORY_EXPORT_COLUMNS = Object.freeze([
-  '下单日期', '产品名称', '产品图片', '尺寸', '数量', '下单要求', '交货日期'
+  '下单日期', '产品名称', '产品图片', '尺寸', '数量', '下单要求', '交货日期', '图片URL'
 ]);
 
 export const FACTORY_EXPORT_EXCLUDED_STEPS = Object.freeze([
@@ -16,6 +9,7 @@ export const FACTORY_EXPORT_EXCLUDED_STEPS = Object.freeze([
 export const FACTORY_EXPORT_EMPTY_MESSAGE = '请先勾选要导出的订单';
 export const FACTORY_EXPORT_IMAGE_LIMIT = 6;
 export const FACTORY_EXPORT_SHEET = '工厂下单';
+export const FACTORY_IMAGE_SHEET = '图片明细';
 
 const EXCLUDED = new Set(FACTORY_EXPORT_EXCLUDED_STEPS);
 
@@ -84,10 +78,7 @@ function httpsUrl(value) {
   }
 }
 
-// Product photos already on the order: Shopify https URLs, plus uploaded
-// files whose path contains /product-image-. Delivery proofs are not included.
-// publicUrl is set only for Shopify CDN links a factory can open. Signed
-// upload URLs stay empty because they require the merchandiser session.
+// Keep one entry per saved product photo and omit delivery-proof attachments.
 export function factoryImageSources(order, uploads = []) {
   const sources = [];
   const seen = new Set();
@@ -102,10 +93,10 @@ export function factoryImageSources(order, uploads = []) {
   for (const row of uploads || []) {
     const path = String(row?.object_path || '');
     if (!path.includes('/product-image-') || seen.has(path)) continue;
-    const fetchUrl = httpsUrl(row?.url) || String(row?.url || '').trim();
+    const fetchUrl = httpsUrl(row?.url);
     if (!fetchUrl) continue;
     seen.add(path);
-    sources.push({ fetchUrl, publicUrl: '' });
+    sources.push({ fetchUrl, publicUrl: fetchUrl });
   }
   return sources;
 }
@@ -127,85 +118,52 @@ function imageExtensionName(value) {
   return '';
 }
 
-function imageCellValue(images) {
-  const links = [];
-  const notes = [];
-  for (const image of images || []) {
-    const url = httpsUrl(image?.url);
-    if (url) links.push(url);
-    else if (image?.text) notes.push(String(image.text));
-  }
-  if (links.length === 1 && !notes.length) return { text: links[0], hyperlink: links[0] };
-  return [...links, ...notes].join('\n');
-}
-
-// Excel column width is in units of the default font's digit (Calibri 11 ≈ 7px).
-function columnWidthPx(width) {
-  const maxDigitWidth = 7;
-  return Math.floor(((256 * width + Math.floor(128 / maxDigitWidth)) / 256) * maxDigitWidth);
-}
-
-const IMAGE_MAX_PX = 112;
-const IMAGE_PAD_PX = 6;
-const IMAGE_GAP_PX = 8;
+const PREVIEWS_PER_ROW = 3;
+const PREVIEW_LIMIT = 12;
+const EMBED_PADDING = 6;
+const EMBED_GAP = 8;
+const PX_PER_EXCEL_WIDTH = 7;
+const PX_TO_PT = .75;
 const EMU_PER_PX = 9525;
-const TEXT_LINE_PT = 18;
 
-function textUnits(text) {
-  let units = 0;
-  for (const char of String(text)) units += char.charCodeAt(0) > 255 ? 2 : 1;
-  return units;
-}
-
-function wrappedLineCount(text, columnWidth) {
-  const capacity = Math.max(8, Math.floor(Number(columnWidth) * 0.9));
-  const source = String(text || '');
-  if (!source) return 0;
-  return source.split('\n').reduce((sum, line) => {
-    return sum + Math.max(1, Math.ceil(Math.max(1, textUnits(line)) / capacity));
+function lineHeight(value, width) {
+  const text = typeof value === 'object' ? value?.text : value;
+  const capacity = Math.max(8, Math.floor(width * .88));
+  const lines = String(text ?? '').split('\n').reduce((total, line) => {
+    const units = [...line].reduce((count, char) => count + (char.charCodeAt(0) > 255 ? 2 : 1), 0);
+    return total + Math.max(1, Math.ceil(units / capacity));
   }, 0);
+  return lines * 17 + 10;
 }
 
-function cellText(value) {
-  if (!value) return '';
-  if (typeof value === 'object') return String(value.text || '');
-  return String(value);
+function addPhoto(sheet, row, column, image, x, y, limit) {
+  const width = image.width > 0 ? image.width : limit;
+  const height = image.height > 0 ? image.height : limit;
+  const scale = Math.min(limit / width, limit / height);
+  sheet.addImage(image.mediaId, {
+    tl: { nativeCol: column - 1, nativeColOff: Math.round((x + (limit - width * scale) / 2) * EMU_PER_PX),
+      nativeRow: row.number - 1, nativeRowOff: Math.round((y + (limit - height * scale) / 2) * EMU_PER_PX) },
+    ext: { width: width * scale, height: height * scale }, editAs: 'oneCell'
+  });
 }
 
-// One band of photos across the top of 产品图片. Several photos sit side by
-// side and shrink to stay inside the column; the URL uses the rows below.
-function placeProductImages(count, columnWidth) {
-  const columnPx = columnWidthPx(columnWidth);
-  const gaps = Math.max(0, count - 1) * IMAGE_GAP_PX;
-  const available = Math.max(count, columnPx - IMAGE_PAD_PX * 2 - gaps);
-  const size = Math.max(1, Math.min(IMAGE_MAX_PX, Math.floor(available / count)));
-  const slots = [];
-  for (let index = 0; index < count; index += 1) {
-    const leftPx = IMAGE_PAD_PX + index * (size + IMAGE_GAP_PX);
-    slots.push({
-      size,
-      colOff: Math.round(leftPx * EMU_PER_PX),
-      rowOff: Math.round(IMAGE_PAD_PX * EMU_PER_PX)
-    });
-  }
-  return {
-    slots,
-    bottomPt: ((IMAGE_PAD_PX + size) * EMU_PER_PX) / 12700
-  };
+function setHeader(sheet, labels, widths) {
+  const header = sheet.addRow(labels);
+  header.font = { name: 'Microsoft YaHei', bold: true, size: 11, color: { argb: 'FF174438' } };
+  header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF2EE' } };
+  header.alignment = { vertical: 'middle', wrapText: true };
+  header.height = 24;
+  widths.forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
+  sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: labels.length } };
 }
 
-function productImageRowHeight(row, cellValue, placement, columnWidths) {
-  const urlLines = wrappedLineCount(cellText(cellValue), columnWidths['产品图片']);
-  const picturePt = placement.bottomPt + 10 + urlLines * TEXT_LINE_PT + 8;
-  const textColumns = [
-    ['产品名称', columnWidths['产品名称']],
-    ['尺寸', columnWidths['尺寸']],
-    ['下单要求', columnWidths['下单要求']]
-  ];
-  const textPt = textColumns.reduce((tallest, [name, width]) => {
-    return Math.max(tallest, wrappedLineCount(row[name], width) * TEXT_LINE_PT + 8);
-  }, 22);
-  return Math.min(409, Math.ceil(Math.max(picturePt, textPt)));
+function formatRow(row) {
+  row.font = { name: 'Microsoft YaHei', size: 11 };
+  row.alignment = { vertical: 'top', wrapText: true };
+}
+
+function imageLink(url) {
+  return url ? { text: url, hyperlink: url } : '';
 }
 
 function imagesFor(order, imagesByOrderId) {
@@ -230,54 +188,58 @@ export async function buildFactoryOrderWorkbook(orders, imagesByOrderId = new Ma
   const excelModule = await import('exceljs');
   const ExcelJS = excelModule.default || excelModule;
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet(FACTORY_EXPORT_SHEET, { views: [{ state: 'frozen', ySplit: 1 }] });
-  const header = sheet.addRow([...FACTORY_EXPORT_COLUMNS]);
-  header.font = { name: 'Microsoft YaHei', bold: true, size: 11, color: { argb: 'FF174438' } };
-  header.alignment = { vertical: 'middle' };
-  header.height = 22;
-  const imageColumn = FACTORY_EXPORT_COLUMNS.indexOf('产品图片') + 1;
-  const columnWidths = {
-    下单日期: 14, 产品名称: 28, 产品图片: 46, 尺寸: 16, 数量: 10, 下单要求: 36, 交货日期: 14
-  };
-  FACTORY_EXPORT_COLUMNS.forEach((name, index) => { sheet.getColumn(index + 1).width = columnWidths[name]; });
-  for (const name of ['产品名称', '产品图片', '下单要求']) sheet.getColumn(FACTORY_EXPORT_COLUMNS.indexOf(name) + 1).alignment = { wrapText: true, vertical: 'top' };
+  const views = [{ state: 'frozen', ySplit: 1 }];
+  const sheet = workbook.addWorksheet(FACTORY_EXPORT_SHEET, { views });
+  const detail = workbook.addWorksheet(FACTORY_IMAGE_SHEET, { views });
+  const columnWidths = [14, 28, 46, 16, 10, 36, 14, 48];
+  const detailWidths = [16, 28, 10, 20, 70, 23];
+  setHeader(sheet, [...FACTORY_EXPORT_COLUMNS], columnWidths);
+  setHeader(detail, ['下单表行号', '产品名称', '图片序号', '产品图片', '图片URL', '说明'], detailWidths);
+  const media = new Map();
+  const photos = images => images.map(image => {
+    const extension = imageExtensionName(image?.extension);
+    if (!extension || image?.buffer == null) return image;
+    if (!media.has(image.buffer)) {
+      media.set(image.buffer, workbook.addImage({ base64: bytesToBase64(image.buffer), extension }));
+    }
+    return { ...image, mediaId: media.get(image.buffer) };
+  });
 
   for (const line of lines) {
-    const values = FACTORY_EXPORT_COLUMNS.map(column => line.row[column] ?? '');
-    const added = sheet.addRow(values);
-    added.font = { name: 'Microsoft YaHei', size: 11 };
-    added.alignment = { vertical: 'top', wrapText: true };
-    const cell = added.getCell(imageColumn);
-    const text = imageCellValue(line.images);
-    cell.value = text || '';
-    if (text && typeof text === 'object') cell.font = { name: 'Microsoft YaHei', size: 10, color: { argb: 'FF174438' }, underline: true };
-    const embedded = [];
-    for (const image of line.images || []) {
-      const extension = imageExtensionName(image?.extension);
-      if (!extension || image.buffer == null || embedded.length >= FACTORY_EXPORT_IMAGE_LIMIT) continue;
-      embedded.push({ buffer: image.buffer, extension });
-    }
-    if (!embedded.length) continue;
-    // Pictures float above the cell text. Keep each photo in a top band and
-    // bottom-align the https URL so wrap stays in the space under the photo.
-    const placement = placeProductImages(embedded.length, columnWidths['产品图片']);
-    cell.alignment = { horizontal: 'left', vertical: 'bottom', wrapText: true };
-    added.height = productImageRowHeight(line.row, text, placement, columnWidths);
-    embedded.forEach((image, index) => {
-      const slot = placement.slots[index];
-      const imageId = workbook.addImage({ base64: bytesToBase64(image.buffer), extension: image.extension });
-      sheet.addImage(imageId, {
-        tl: {
-          nativeCol: imageColumn - 1,
-          nativeColOff: slot.colOff,
-          nativeRow: added.number - 1,
-          nativeRowOff: slot.rowOff
-        },
-        ext: { width: slot.size, height: slot.size },
-        editAs: 'oneCell'
-      });
+    const row = sheet.addRow(FACTORY_EXPORT_COLUMNS.map(column => line.row[column] ?? ''));
+    formatRow(row);
+    const images = photos(line.images);
+    const firstDetail = detail.rowCount + 1;
+    images.forEach((image, index) => {
+      const url = httpsUrl(image?.url);
+      const photoRow = detail.addRow([row.number, line.row['产品名称'], index + 1, '', imageLink(url), image?.text || '']);
+      formatRow(photoRow);
+      const previewSize = 104;
+      if (image?.mediaId != null) addPhoto(detail, photoRow, 4, image, EMBED_PADDING, EMBED_PADDING, previewSize);
+      photoRow.height = Math.min(409, Math.ceil(Math.max(
+        lineHeight(line.row['产品名称'], detailWidths[1]), lineHeight(url, detailWidths[4]),
+        lineHeight(image?.text, detailWidths[5]), image?.mediaId == null ? 24 : (previewSize + EMBED_PADDING * 2) * PX_TO_PT
+      )));
     });
+    if (images.length === 1) row.getCell(8).value = imageLink(httpsUrl(images[0]?.url));
+    if (images.length > 1) row.getCell(8).value = '见「图片明细」第 ' + firstDetail + '–' + detail.rowCount + ' 行（' + images.length + ' 张）';
+
+    const embedded = images.filter(image => image?.mediaId != null);
+    const previews = embedded.slice(0, PREVIEW_LIMIT);
+    const size = Math.floor((columnWidths[2] * PX_PER_EXCEL_WIDTH - EMBED_PADDING * 2 - EMBED_GAP * (PREVIEWS_PER_ROW - 1)) / PREVIEWS_PER_ROW);
+    const bands = Math.ceil(previews.length / PREVIEWS_PER_ROW);
+    previews.forEach((image, index) => addPhoto(sheet, row, 3, image,
+      EMBED_PADDING + (index % PREVIEWS_PER_ROW) * (size + EMBED_GAP),
+      EMBED_PADDING + Math.floor(index / PREVIEWS_PER_ROW) * (size + EMBED_GAP), size));
+    if (embedded.length > previews.length) row.getCell(3).value = '其余图片见「图片明细」';
+    if (!previews.length && images.length) row.getCell(3).value = images.length === 1 && images[0]?.text ? images[0].text : '图片见「图片明细」';
+    const previewHeight = bands ? (bands * size + (bands - 1) * EMBED_GAP + EMBED_PADDING * 2) * PX_TO_PT : 0;
+    const imageNoteHeight = embedded.length > previews.length ? lineHeight(row.getCell(3).value, columnWidths[2]) : 0;
+    if (imageNoteHeight) row.getCell(3).alignment = { vertical: 'bottom', wrapText: true };
+    row.height = Math.min(409, Math.ceil(Math.max(
+      previewHeight + imageNoteHeight,
+      ...columnWidths.map((width, index) => lineHeight(row.getCell(index + 1).value, width))
+    )));
   }
-  sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: FACTORY_EXPORT_COLUMNS.length } };
   return workbook.xlsx.writeBuffer();
 }

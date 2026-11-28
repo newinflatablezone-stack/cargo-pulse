@@ -634,6 +634,17 @@ export class TencentDataStore {
     return this.all('internal_resource_tables').some(referencesPath);
   }
 
+  factoryExportImagePaths(orderId) {
+    const order = this.all('orders').find(row => row.id === orderId);
+    if (!order || order.deleted_at || !order.current_step || [SALES_SUPPLEMENT, FOLLOWER_CREATE, SALESPERSON_DRAFT].includes(order.current_step)) return [];
+    const products = Array.isArray(order.products) ? order.products : [];
+    const selected = products.length ? new Set(products.flatMap(product => product.image_paths || [])) : null;
+    return this.all('order_images').filter(row => row.order_id === orderId &&
+      typeof row.object_path === 'string' && row.object_path.startsWith(orderId + '/product-image-') &&
+      !row.object_path.slice(orderId.length + 1).includes('/') && (!selected || selected.has(row.object_path)))
+      .map(row => row.object_path);
+  }
+
   issueCanCreate(userId, order) {
     return Boolean(order && !order.deleted_at && this.ownsOrder(userId, order));
   }

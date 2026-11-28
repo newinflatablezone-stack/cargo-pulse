@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import ExcelJS from 'exceljs';
 import {
   FACTORY_EXPORT_COLUMNS, FACTORY_EXPORT_EMPTY_MESSAGE, FACTORY_EXPORT_EXCLUDED_STEPS, FACTORY_EXPORT_SHEET, FACTORY_IMAGE_SHEET,
-  buildFactoryOrderWorkbook, canUseFactoryExport, factoryExportFilename, factoryExportRows,
+  buildFactoryOrderWorkbook, canUseFactoryExport, createFactoryExportQueue, factoryExportFilename, factoryExportRows,
   factoryImageExtension, factoryImageSources, isFactoryExportable, officialOrderDate
 } from '../factory-order-export.js';
 
@@ -24,6 +24,24 @@ async function readWorkbook(buffer) {
   await workbook.xlsx.load(buffer);
   return workbook.getWorksheet(FACTORY_EXPORT_SHEET);
 }
+
+test('a slow image occupies only one slot and does not block the next order', async () => {
+  const enqueue = createFactoryExportQueue(2);
+  let releaseSlow, releaseSecond;
+  const first = new Promise(resolve => { releaseSlow = resolve; });
+  const second = new Promise(resolve => { releaseSecond = resolve; });
+  const started = [];
+  const slow = enqueue(() => { started.push('slow'); return first; });
+  const fast = enqueue(() => { started.push('fast'); return second; });
+  const next = enqueue(() => { started.push('next order'); return 'ready'; });
+  await Promise.resolve();
+  assert.deepEqual(started, ['slow', 'fast']);
+  releaseSecond();
+  assert.equal(await next, 'ready');
+  assert.deepEqual(started, ['slow', 'fast', 'next order']);
+  releaseSlow();
+  await Promise.all([slow, fast]);
+});
 
 test('only a merchandiser role can use the factory export', () => {
   assert.equal(canUseFactoryExport({ role: 'follower' }), true);

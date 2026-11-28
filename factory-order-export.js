@@ -13,6 +13,25 @@ export const FACTORY_IMAGE_SHEET = '图片明细';
 
 const EXCLUDED = new Set(FACTORY_EXPORT_EXCLUDED_STEPS);
 
+export function createFactoryExportQueue(limit) {
+  const pending = [];
+  let active = 0;
+  function startNext() {
+    while (active < limit && pending.length) {
+      const { task, resolve, reject } = pending.shift();
+      active++;
+      Promise.resolve().then(task).then(resolve, reject).finally(() => {
+        active--;
+        startNext();
+      });
+    }
+  }
+  return task => new Promise((resolve, reject) => {
+    pending.push({ task, resolve, reject });
+    startNext();
+  });
+}
+
 export function canUseFactoryExport(profile) {
   return profile?.role === 'follower';
 }

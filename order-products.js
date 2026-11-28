@@ -126,17 +126,19 @@ export function mountOrderProductEditor(form, order, {upload, listUploads, sign}
     if(rows.includes(legacyRow)) for(const path of paths)legacyRow.addImage({path});
   }).then(()=>null,error=>error) : Promise.resolve(null);
 
-  form.readOrderProducts=async orderId=>{
+  form.readOrderProducts=async (orderId,{draft=false}={})=>{
     const loadError=await ready;
     if(loadError)throw loadError;
     const products=rows.map(({fields,images},index)=>{
       const values=Object.fromEntries(fields.map(field=>[field.dataset.field,field.value.trim()]));
-      const nameError=productNameReminder(values.product_name);
-      if(nameError)throw Error('第 '+(index+1)+' 行：'+nameError);
-      if(!values.size || !values.requirements || !values.blower || !Number.isSafeInteger(Number(values.quantity)) || Number(values.quantity)<1) {
-        throw Error('请补齐第 '+(index+1)+' 行的尺寸、数量、下单要求和风机／气泵');
+      if(!draft){
+        const nameError=productNameReminder(values.product_name);
+        if(nameError)throw Error('第 '+(index+1)+' 行：'+nameError);
+        if(!values.size || !values.requirements || !values.blower || !Number.isSafeInteger(Number(values.quantity)) || Number(values.quantity)<1) {
+          throw Error('请补齐第 '+(index+1)+' 行的尺寸、数量、下单要求和风机／气泵');
+        }
+        if(!optional && !images.length)throw Error('请为第 '+(index+1)+' 行添加产品图片');
       }
-      if(!optional && !images.length)throw Error('请为第 '+(index+1)+' 行添加产品图片');
       return {values,images:[...images]};
     });
     const result=[];

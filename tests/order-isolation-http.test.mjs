@@ -102,6 +102,26 @@ test('真实 HTTP：业务员互相不可见，图片链接绑定登录人，转
   assert.equal((await fetch(shared)).status,404);
   const loginB=await fetch(base+'/auth/v1/token?grant_type=password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:b.email,password:'password-b'})});assert.equal(loginB.status,200);
   const cookieB=loginB.headers.get('set-cookie').split(';')[0];assert.equal((await fetch(signed,{headers:{Cookie:cookieB}})).status,404);
+  const businessSession=await loginB.json();
+  const draftRequest=(action,values={})=>rpc('salesperson_order',businessSession,{action,...values});
+  const draftOrder=await (await draftRequest('draft')).json();
+  const draftPath=`${draftOrder.id}/product-image-draft-${b.id}--sample.png`;
+  const objectUrl=base+'/storage/v1/object/order-images/'+draftPath;
+  const otherWrite=await fetch(objectUrl,{method:'POST',headers:{...headers(sessionA),'Content-Type':'image/png'},body:'wrong owner'});
+  assert.equal(otherWrite.status,403);
+  const ownWrite=await fetch(objectUrl,{method:'POST',headers:{...headers(businessSession),'Content-Type':'image/png'},body:await makePreview('png','#287653')});
+  assert.equal(ownWrite.status,200);
+  const registered=await fetch(base+'/rest/v1/order_images',{method:'POST',headers:headers(businessSession),body:JSON.stringify({order_id:draftOrder.id,object_path:draftPath})});
+  assert.equal(registered.status,200);
+  assert.equal((await draftRequest('save_draft',{id:draftOrder.id,products:[{image_paths:[draftPath]}]})).status,200);
+  const restored=await (await draftRequest('get_draft',{id:draftOrder.id})).json();
+  assert.deepEqual(restored.draft.products[0].image_paths,[draftPath]);
+  const signDraft=session=>fetch(base+'/storage/v1/object/sign/order-images/'+draftPath,{method:'POST',headers:headers(session),body:'{}'});
+  assert.equal((await signDraft(sessionA)).status,404);
+  const signedDraft=await (await signDraft(businessSession)).json();
+  const draftImage=await fetch(base+'/storage/v1'+signedDraft.signedURL,{headers:{Cookie:cookieB}});
+  assert.equal(draftImage.status,200);
+  assert.equal(draftImage.headers.get('content-type'),'image/png');
   // A signed link is re-authorized against the live ownership record on every read.
   store.put('orders',{...store.all('orders').find(row=>row.id==='a'),business_id:b.id});
   assert.equal((await fetch(signed,{headers:{Cookie:cookie}})).status,404);

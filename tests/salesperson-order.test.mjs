@@ -30,6 +30,61 @@ function attachImage(store, id) {
   store.put('order_images', { order_id: id, object_path: `${id}/product-image-photo.jpg`, file_name: '产品图片' });
 }
 
+test('saved manual drafts keep incomplete lines and images private until formal placement', t => {
+  const {store,business,other,follower}=fixture(t);
+  const request=(action, data={})=>store.salespersonOrder(business.id,{action,...data});
+  const {id}=request('draft');
+  const path=`${id}/product-image-draft-${business.id}--sample.png`;
+  store.put('order_images',{order_id:id,object_path:path});
+  const partial={id,order_no:'DRAFT-1',business_name:'Demi',products:[
+    {product_name:'Incomplete Title',quantity:'2',image_paths:[path]}, {size:'3 米'}
+  ]};
+  const first=request('save_draft',partial);
+  assert.deepEqual(request('save_draft',partial),first);
+  assert.equal(request('list_drafts')[0].id,id);
+  assert.equal(request('get_draft',{id}).draft.products[1].size,'3 米');
+  assert.deepEqual(request('get_draft',{id}).draft.products[0].image_paths,[path]);
+  assert.equal(store.all('order_events').some(row=>row.order_id===id),false);
+  assert.equal(store.canReadObject(business.id,path),true);
+  assert.equal(store.canReadObject(other.id,path),false);
+  assert.equal(store.canReadObject(follower.id,path),false);
+  assert.deepEqual(store.salespersonOrder(other.id,{action:'list_drafts'}),[]);
+  assert.throws(()=>store.salespersonOrder(other.id,{action:'get_draft',id}),{status:409});
+  assert.throws(()=>request('place',{...partial,draft_updated_at:first.updated_at}),/产品名称须含中文/);
+  assert.throws(()=>request('discard',{id}),{status:409});
+  const revised=request('save_draft',{...partial,draft_updated_at:first.updated_at,shipping_mode:'domestic_sea'});
+  assert.notEqual(revised.updated_at,first.updated_at);
+  assert.throws(()=>request('save_draft',{...partial,draft_updated_at:first.updated_at,order_no:'STALE'}),{status:409});
+  const ready={id,...fields({order_no:'DRAFT-1'}),products:[{...fields(),requirements:'加急',image_paths:[path]}]};
+  assert.throws(()=>request('place',{...ready,draft_updated_at:first.updated_at}),{status:409});
+  assert.equal(request('place',{...ready,draft_updated_at:revised.updated_at}).current_step,'follower_create');
+  assert.equal(store.canReadObject(follower.id,path),true);
+  assert.deepEqual(request('list_drafts'),[]);
+});
+
+test('Shopify drafts are per salesperson and do not claim or change the shared order', t => {
+  const {store,business,other,follower}=fixture(t);
+  const {id}=store.importShopifyOrder({id:'gid://shopify/Order/9000',order_no:'#9000',products:[{product_name:'Imported Title'}]});
+  const path=`${id}/product-image-draft-${business.id}--sample.png`;
+  const otherPhoto=`${id}/product-image-draft-${other.id}--second.png`;
+  store.put('order_images',{order_id:id,object_path:path});
+  store.put('order_images',{order_id:id,object_path:otherPhoto});
+  const partial={id,action:'save_draft',order_no:'#9000',business_name:'Demi',products:[{product_name:'未完成',image_paths:[path]}]};
+  const draft=store.salespersonOrder(business.id,partial);
+  assert.equal(store.salespersonOrder(other.id,{action:'get_draft',id}).draft,null);
+  assert.equal(store.salespersonOrder(business.id,{action:'get_draft',id}).order.products[0].product_name,'Imported Title');
+  assert.equal(store.visibleRows('orders',follower.id).find(row=>row.id===id).current_step,'sales_supplement');
+  assert.equal(store.visibleRows('order_images',other.id).some(row=>row.object_path===path),false);
+  assert.equal(store.canUploadShopifyProductImage(other.id,path),false);
+  assert.throws(()=>store.salespersonOrder(other.id,partial),/图片无效/);
+  store.salespersonOrder(other.id,{...partial,products:[{product_name:'另一份草稿',image_paths:[otherPhoto]}]});
+  const product={...fields(),requirements:'加急',image_paths:[path]};
+  assert.equal(store.shopifyHandoff(business.id,{action:'place',id,business_name:'Demi',products:[product],draft_updated_at:draft.updated_at}).current_step,'follower_create');
+  assert.deepEqual(store.salespersonOrder(other.id,{action:'list_drafts'}),[]);
+  assert.equal(store.canReadObject(follower.id,path),true);
+  assert.equal(store.canReadObject(follower.id,otherPhoto),false);
+});
+
 test('custom order numbers reject digits only, including a leading hash', () => {
   assert.equal(isPurelyNumericOrderNumber('9052'), true);
   assert.equal(isPurelyNumericOrderNumber('#9052'), true);
@@ -108,12 +163,12 @@ test('a salesperson 新建下单 lands in 待跟单创建订单 for everyone, wi
 
 test('the salesperson button and custom-number label stay separate from Shopify and merchandiser forms', () => {
   const app = readFileSync(new URL('../app-v2.js', import.meta.url), 'utf8');
-  assert.match(app, /profile\?\.role==='business'\?`<button class="primary compact-new-order" id="newSalesOrder">＋ 新建下单<\/button>`/);
+  assert.match(app, /profile\?\.role==='business'\?`<button class="primary compact-new-order" id="newSalesOrder">＋ 新建下单<\/button><button[^>]*id="salespersonDrafts">我的草稿<\/button>/);
   assert.match(app, /id="newOrder">＋ 创建订单/);
   assert.match(app, /<label>自定义订单号 \*<input name="order_no" required><small class="order-no-hint">不能是纯数字，也不能是纯 # 加数字<\/small><span class="order-no-reminder" hidden><\/span><\/label>/);
   assert.match(app, /<label>后台订单号 \*<input name="order_no" required value="/);
   assert.match(app, /<button class="primary" type="submit" disabled>下单<\/button>/);
-  assert.match(app, /salespersonOrderForm[\s\S]*submit=form\.querySelector\('button\.primary'\)/);
+  assert.match(app, /salespersonOrderForm[\s\S]*bindSalespersonDraftForm\(form/);
   assert.match(app, /<h2>待业务员认领下单<\/h2>/);
   assert.match(app, /自定义订单号不能是纯数字，也不能是纯 # 加数字/);
   const shopifyForm = app.slice(app.indexOf('function openShopifyPlace'), app.indexOf('function openShopifyCreate'));

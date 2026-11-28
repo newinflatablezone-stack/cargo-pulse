@@ -325,10 +325,10 @@ test('the salesperson forms keep add and gain a delete control without changing 
   assert.match(supplement, /添加图片（已有图片时可选）<input name="extra_images" type="file" accept="image\/\*" multiple>/);
   assert.match(supplement, /await form\.salespersonImageEdits\?\.\(\)/);
   assert.match(supplement, /for\(const file of form\.querySelector\('input\[type=file\]'\)\.files\)await uploadShopifyProductImage/);
-  assert.match(place, /mountSalespersonProductImages\(d\.querySelector\('form'\),o\)/);
+  assert.match(place, /mountSalesOrderLines\(form,[^\n]+draftUploads:true/);
   assert.match(place, /<h2>待业务员认领下单<\/h2>/);
   assert.match(place, /添加图片（已有图片时可选）<input name="extra_images" type="file" accept="image\/\*" multiple>/);
-  assert.match(place, /payload\.shopify_image_urls=/);
+  assert.match(place, /products=await form\.readOrderProducts\(o\.id\)/);
   assert.match(place, /action:'place'/);
   assert.equal(place.includes('name="image_urls"'), false);
   assert.match(create, /appendShopifyImages\(images,o\.shopify_image_urls\)/);

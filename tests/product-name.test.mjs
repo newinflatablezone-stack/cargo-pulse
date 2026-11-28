@@ -220,8 +220,8 @@ test('the salesperson forms show one product name error and 创建订单 does no
   assert.match(field(place), reminderMarkup);
   assert.equal(field(place).includes('product-name-hint'), false);
   assert.equal((field(place).match(/<(?:small|span)\b/g) || []).length, 1);
-  assert.match(place, /bindProductNameRule\(form\)/);
-  assert.match(place, blocked);
+  assert.match(place, /mountSalesOrderLines\(form,/);
+  assert.match(place, /await form\.readOrderProducts\(o\.id\)/);
   assert.match(place, /action:'place'/);
   assert.match(supplement, /name="product_name" required value="\$\{esc\(o\.product_name\|\|''\)\}"/);
   assert.match(field(supplement), reminderMarkup);
@@ -234,9 +234,11 @@ test('the salesperson forms show one product name error and 创建订单 does no
   assert.match(field(salesOrder), reminderMarkup);
   assert.equal(field(salesOrder).includes('product-name-hint'), false);
   assert.equal((field(salesOrder).match(/<(?:small|span)\b/g) || []).length, 1);
-  assert.match(salesOrder, /bindProductNameRule\(form\)/);
-  assert.match(salesOrder, blocked);
-  assert.match(salesOrder, /action:'place'/);
+  assert.match(salesOrder, /mountSalesOrderLines\(form,/);
+  assert.match(salesOrder, /await form\.readOrderProducts\(id\)/);
+  assert.match(salesOrder, /salespersonDraftRequest\('place'/);
+  const productEditor = readFileSync(new URL('../order-products.js', import.meta.url), 'utf8');
+  assert.match(productEditor, /if\(!draft\)\{\s*const nameError=productNameReminder\(values\.product_name\)/);
   assert.equal(create.includes('productNameReminder'), false);
   assert.equal(create.includes('product-name-hint'), false);
   assert.equal(create.includes('product-name-reminder'), false);

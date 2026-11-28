@@ -91,6 +91,7 @@ const SALES_SUPPLEMENT = 'sales_supplement';
 const FOLLOWER_CREATE = 'follower_create';
 const BUILTIN_FOLLOWER_FACTORIES = new Set(['库存', '海外仓']);
 const SALESPERSON_DRAFT = 'salesperson_draft';
+const draftImageOwner = path => /\/product-image-draft-([A-Za-z0-9-]+?)--/.exec(String(path || ''))?.[1];
 const SALESPERSON_NAMES = ['Ella', 'Sherry', 'Demi', 'Rayna'];
 const SALES_SHIPPING = new Set(['domestic_sea', 'domestic_express', 'other']);
 const ORDER_SHIPPING_MODES = new Set(['domestic_sea', 'domestic_express', 'domestic_sea_port', 'air_freight', 'overseas_warehouse']);
@@ -368,6 +369,14 @@ export class TencentDataStore {
       );
       create index if not exists sessions_user_idx on sessions(user_id);
       create table if not exists meta (key text primary key, value text not null);
+      create table if not exists salesperson_order_drafts (
+        user_id text not null,
+        order_id text not null,
+        data text not null,
+        updated_at text not null,
+        primary key (user_id, order_id)
+      );
+      create index if not exists salesperson_drafts_order on salesperson_order_drafts(order_id);
     `);
   }
 
@@ -554,7 +563,8 @@ export class TencentDataStore {
   canUploadShopifyProductImage(userId, objectPath) {
     const path = String(objectPath || '');
     const orderId = /^([^/]+)\/product-image-[A-Za-z0-9._-]+$/.exec(path)?.[1];
-    if (!orderId) return false;
+    const owner = draftImageOwner(path);
+    if (!orderId || (owner && owner !== userId)) return false;
     return this.canEditSalespersonProductImages(userId, this.all('orders').find(row => row.id === orderId));
   }
 
@@ -612,10 +622,30 @@ export class TencentDataStore {
       const shipmentIds = new Set(this.all('order_shipments').filter(row => orderIds.has(row.order_id)).map(row => row.id));
       return this.all(table).filter(row => shipmentIds.has(row.shipment_id));
     }
+    if (table === 'order_images') {
+      const orders = new Map(this.all('orders').map(order => [order.id, order]));
+      return this.all(table).filter(row => orderIds.has(row.order_id) && this.canReadDraftImage(userId, row.object_path, orders.get(row.order_id)));
+    }
     return this.all(table).filter(row => orderIds.has(row.order_id));
   }
 
+  canReadDraftImage(userId, path, order) {
+    const owner = draftImageOwner(path);
+    if (!owner) return true;
+    if (!order || order.deleted_at) return false;
+    if ([SALESPERSON_DRAFT, SALES_SUPPLEMENT].includes(order.current_step)) return owner === userId;
+    return Array.isArray(order.products) && order.products.some(product => product.image_paths?.includes(path));
+  }
+
   canReadObject(userId, objectPath) {
+    if (draftImageOwner(objectPath)) {
+      const actor = this.profile(userId);
+      if (!actor || actor.disabled_at) return false;
+      const order = this.all('orders').find(row => row.id === objectPath.split('/')[0]);
+      const recorded = this.all('order_images').some(row => row.order_id === order?.id && row.object_path === objectPath);
+      return recorded && this.canReadDraftImage(userId, objectPath, order) &&
+        (order.current_step === SALESPERSON_DRAFT ? order.created_by === userId : this.canReadOrder(userId, order));
+    }
     if (this.canReadAllOrders(userId)) return true;
     const references = this.all('order_images').filter(row => row.object_path === objectPath);
     if (references.length) {
@@ -731,7 +761,7 @@ export class TencentDataStore {
     }
   }
 
-  readOrderProducts(order, input, fail) {
+  readOrderProducts(order, input, fail, { userId, draft = false } = {}) {
     if (input.products == null) {
       if (order.products?.length) fail('请提交每一行产品明细');
       return null;
@@ -739,7 +769,8 @@ export class TencentDataStore {
     if (!Array.isArray(input.products) || !input.products.length || input.products.length > 100) fail('请添加 1 至 100 个产品');
     const imported = Boolean(order.shopify_order_id);
     const uploads = new Set(this.all('order_images').filter(image => image.order_id === order.id &&
-      String(image.object_path || '').includes('/product-image-')).map(image => image.object_path));
+      String(image.object_path || '').includes('/product-image-') &&
+      this.canReadDraftImage(userId, image.object_path, order)).map(image => image.object_path));
     return input.products.map((item, index) => {
       if (!item || typeof item !== 'object') fail('产品资料无效');
       const value = key => typeof item[key] === 'string' ? item[key].trim() : '';
@@ -749,6 +780,10 @@ export class TencentDataStore {
       const imageUrls = httpsUrls(item.image_urls || []);
       const paths = item.image_paths || [];
       if (!imageUrls || !Array.isArray(paths) || paths.length > 100 || paths.some(path => !uploads.has(path))) fail('第 '+(index+1)+' 行图片无效');
+      if (draft) {
+        return { product_name:name, size, quantity:String(item.quantity ?? ''), requirements, blower,
+          image_urls:imageUrls, image_paths:[...new Set(paths)] };
+      }
       if (productNameReminder(name)) fail('第 '+(index+1)+' 行：'+PRODUCT_NAME_RULE);
       if (!size || !requirements || !blower || !Number.isSafeInteger(quantity) || quantity < 1) {
         fail('请补齐第 '+(index+1)+' 行的尺寸、数量、下单要求和风机／气泵');
@@ -939,9 +974,73 @@ export class TencentDataStore {
     if (!profile || profile.disabled_at) fail('请先登录', 401);
     if (profile.role !== 'business') fail('仅业务员可以新建下单', 403);
     if (input.action === 'draft') return this.draftSalespersonOrder(profile);
+    if (input.action === 'list_drafts') return this.listSalespersonDrafts(userId);
+    if (input.action === 'get_draft') {
+      const order = this.salespersonDraftOrder(userId, input.id, fail);
+      return { order, draft: this.savedSalespersonDraft(userId, order.id) };
+    }
+    if (input.action === 'save_draft') return this.saveSalespersonDraft(userId, input, fail);
     if (input.action === 'discard') return this.discardSalespersonOrder(profile, input, fail);
     if (input.action === 'place') return this.placeSalespersonOrder(profile, input, fail);
     fail('不支持的操作');
+  }
+
+  salespersonDraftOrder(userId, orderId, fail) {
+    const order = this.all('orders').find(row => row.id === orderId && !row.deleted_at);
+    if (!order || !(
+      (order.current_step === SALESPERSON_DRAFT && order.salesperson_draft === true && order.created_by === userId) ||
+      (order.current_step === SALES_SUPPLEMENT && order.shopify_order_id)
+    )) fail('订单已提交或草稿不可用', 409);
+    return order;
+  }
+
+  savedSalespersonDraft(userId, orderId) {
+    const row = this.db.prepare('select data, updated_at from salesperson_order_drafts where user_id=? and order_id=?').get(userId, orderId);
+    return row ? { ...JSON.parse(row.data), updated_at: row.updated_at } : null;
+  }
+
+  listSalespersonDrafts(userId) {
+    const orders = new Map(this.all('orders').filter(order => !order.deleted_at &&
+      ((order.current_step === SALESPERSON_DRAFT && order.created_by === userId) ||
+       (order.current_step === SALES_SUPPLEMENT && order.shopify_order_id))).map(order => [order.id, order]));
+    const rows = this.db.prepare('select order_id, data, updated_at from salesperson_order_drafts where user_id=? order by updated_at desc').all(userId);
+    return rows.flatMap(row => {
+      const order = orders.get(row.order_id);
+      if (!order) return [];
+      const draft = JSON.parse(row.data);
+      return [{ id:order.id, order_no:draft.order_no || order.order_no, product_name:draft.products.find(product => product.product_name)?.product_name || '',
+        shopify:Boolean(order.shopify_order_id), updated_at:row.updated_at }];
+    });
+  }
+
+  saveSalespersonDraft(userId, input, fail) {
+    const order = this.salespersonDraftOrder(userId, input.id, fail);
+    if (!Array.isArray(input.products)) fail('产品资料无效');
+    const draft = {};
+    for (const field of ['order_no', 'business_name', 'shipping_mode', 'customer_info']) {
+      draft[field] = typeof input[field] === 'string' ? input[field] : '';
+    }
+    draft.products = this.readOrderProducts(order, input, fail, { userId, draft:true });
+    const data = json(draft);
+    if (Buffer.byteLength(data) > 512 * 1024) fail('草稿内容过长', 413);
+    const current = this.savedSalespersonDraft(userId, order.id);
+    const { updated_at:previous, ...previousFields } = current || {};
+    if (current && data === json(previousFields)) return { id:order.id, updated_at:previous };
+    if ((input.draft_updated_at || '') !== (previous || '')) {
+      fail('草稿已在其他窗口更新，请从「我的草稿」重新打开', 409);
+    }
+    const timestamp = new Date(Math.max(Date.now(), previous ? Date.parse(previous) + 1 : 0)).toISOString();
+    this.db.prepare('insert into salesperson_order_drafts values (?,?,?,?) on conflict(user_id,order_id) do update set data=excluded.data, updated_at=excluded.updated_at')
+      .run(userId, order.id, data, timestamp);
+    return { id: order.id, updated_at: timestamp };
+  }
+
+  assertCurrentSalespersonDraft(userId, input, fail) {
+    if (!Object.hasOwn(input, 'draft_updated_at')) return;
+    const current = this.savedSalespersonDraft(userId, input.id);
+    if ((input.draft_updated_at || '') !== (current?.updated_at || '')) {
+      fail('草稿已在其他窗口更新，请从「我的草稿」重新打开', 409);
+    }
   }
 
   draftSalespersonOrder(profile) {
@@ -966,6 +1065,7 @@ export class TencentDataStore {
   discardSalespersonOrder(profile, input, fail) {
     const order = this.all('orders').find(row => row.id === input.id);
     if (!order || order.deleted_at || order.current_step !== SALESPERSON_DRAFT || order.created_by !== profile.id) fail('草稿不存在', 404);
+    if (this.savedSalespersonDraft(profile.id, order.id)) fail('草稿已保存', 409);
     this.remove('order_images', this.all('order_images').filter(row => row.order_id === order.id).map(row => row.id));
     this.remove('order_events', this.all('order_events').filter(row => row.order_id === order.id).map(row => row.id));
     this.remove('orders', [order.id]);
@@ -975,7 +1075,8 @@ export class TencentDataStore {
   placeSalespersonOrder(profile, input, fail) {
     const order = this.all('orders').find(row => row.id === input.id);
     if (!order || order.deleted_at || order.current_step !== SALESPERSON_DRAFT || order.salesperson_draft !== true || order.created_by !== profile.id) fail('请重新打开新建下单', 409);
-    const products = this.readOrderProducts(order,input,fail);
+    this.assertCurrentSalespersonDraft(profile.id, input, fail);
+    const products = this.readOrderProducts(order,input,fail,{ userId:profile.id });
     const value = key => typeof input[key] === 'string' ? input[key].trim() : '';
     const orderNo = value('order_no');
     const product = value('product_name');
@@ -1033,6 +1134,7 @@ export class TencentDataStore {
         this.put('order_events', { ...event, completed_at: timestamp, completed_by: profile.id });
       }
       this.put('order_events', { order_id: saved.id, step_key: FOLLOWER_CREATE, started_at: timestamp, created_at: timestamp });
+      this.db.prepare('delete from salesperson_order_drafts where order_id=?').run(order.id);
       this.db.exec('commit');
       return { id: saved.id, current_step: saved.current_step };
     } catch (error) {
@@ -1068,7 +1170,8 @@ export class TencentDataStore {
   placeShopifyOrder(profile, order, input, fail) {
     if (profile.role !== 'business') fail('仅业务员可以下单', 403);
     if (order.current_step !== SALES_SUPPLEMENT) fail('订单已不在待业务员认领下单', 409);
-    const products = this.readOrderProducts(order,input,fail);
+    this.assertCurrentSalespersonDraft(profile.id, input, fail);
+    const products = this.readOrderProducts(order,input,fail,{ userId:profile.id });
     const value = key => typeof input[key] === 'string' ? input[key].trim() : '';
     const orderNo = value('order_no') || String(order.order_no || '').trim();
     const product = value('product_name');
@@ -1120,6 +1223,7 @@ export class TencentDataStore {
         this.put('order_events', { ...event, completed_at: timestamp, completed_by: profile.id });
       }
       this.put('order_events', { order_id: saved.id, step_key: FOLLOWER_CREATE, started_at: timestamp, created_at: timestamp });
+      this.db.prepare('delete from salesperson_order_drafts where order_id=?').run(order.id);
       this.db.exec('commit');
       return { id: saved.id, current_step: saved.current_step };
     } catch (error) {
@@ -1275,7 +1379,7 @@ export class TencentDataStore {
     if (!order || order.deleted_at) fail('订单不存在', 404);
     if (!this.salespersonCanRevise(order)) fail('请先完成下单', 409);
     if (profile.role !== 'business' || !this.ownsOrder(userId, order)) fail('仅订单业务员可以修改补充信息', 403);
-    const products = this.readOrderProducts(order,input,fail);
+    const products = this.readOrderProducts(order,input,fail,{ userId });
     const value = key => typeof input[key] === 'string' ? input[key].trim() : '';
     const orderNo = value('order_no') || String(order.order_no || '').trim();
     const product = value('product_name');

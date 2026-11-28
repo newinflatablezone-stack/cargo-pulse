@@ -6,6 +6,8 @@ import {join,resolve} from 'node:path';
 import {spawn} from 'node:child_process';
 import {createServer} from 'node:net';
 import {once} from 'node:events';
+import ExcelJS from 'exceljs';
+import sharp from 'sharp';
 import {TencentDataStore} from '../server/tencent-data-core.mjs';
 
 test('真实 HTTP：业务员互相不可见，图片链接绑定登录人，转交及退出后立即拒绝旧访问',async()=>{
@@ -61,6 +63,35 @@ test('真实 HTTP：业务员互相不可见，图片链接绑定登录人，转
   assert.equal(publicImage.headers.get('content-type'),'image/webp');
   assert.equal(publicImage.headers.get('x-robots-tag'),'noindex, nofollow, noarchive');
   assert.equal(await publicImage.text(),'product-preview');
+  const makePreview=async (format,background)=>sharp({create:{width:200,height:100,channels:3,background}}).toFormat(format).toBuffer();
+  const paths=['a/product-image-wide.png','a/product-image-second.webp','a/product-image-missing.png'];
+  for(const [index,object_path] of paths.entries())store.put('order_images',{id:'factory-workbook-'+index,order_id:'a',object_path});
+  writeFileSync(join(uploads,paths[0]),await makePreview('png','#287653'));
+  writeFileSync(join(uploads,paths[1]),await makePreview('webp','#346dae'));
+  const order=store.all('orders').find(row=>row.id==='a');
+  store.put('orders',{...order,order_date:'2026-11-28',products:[
+    {product_name:'双图产品',quantity:1,image_paths:paths.slice(0,2)},
+    {product_name:'缺图产品',quantity:2,image_paths:[paths[2],productPath]}
+  ]});
+  const workbookRequest=session=>fetch(base+'/storage/v1/factory-workbook',{method:'POST',headers:headers(session),body:JSON.stringify({order_ids:['a']})});
+  assert.equal((await workbookRequest(sessionA)).status,403);
+  const exportResponse=await workbookRequest(follower);
+  assert.equal(exportResponse.status,200);
+  assert.equal(exportResponse.headers.get('x-factory-image-failures'),'2');
+  const workbook=new ExcelJS.Workbook();
+  await workbook.xlsx.load(await exportResponse.arrayBuffer());
+  const orderSheet=workbook.getWorksheet('工厂下单'),imageSheet=workbook.getWorksheet('图片明细');
+  assert.equal(orderSheet.getImages().length,2);
+  assert.equal(imageSheet.getImages().length,2);
+  assert.equal(orderSheet.getCell('C3').value,'2 张图片未嵌入，原因见「图片明细」');
+  assert.equal(imageSheet.getCell('F4').value,'原上传图片已不可用');
+  assert.equal(imageSheet.getCell('F5').value,'图片无法读取或转换');
+  for(const cell of ['E2','E3']){
+    const link=new URL(imageSheet.getCell(cell).value.hyperlink);
+    assert.ok(Number(link.searchParams.get('expires'))-Math.floor(Date.now()/1000)>=30*86400-5);
+    const imageResponse=await fetch(new URL(link.pathname+link.search,base));
+    assert.equal(imageResponse.status,200);
+  }
   const proofAttempt=new URL(shared);
   proofAttempt.pathname=proofAttempt.pathname.replace('product-image-export.webp','delivery-proof-test.png');
   assert.equal((await fetch(proofAttempt)).status,404);

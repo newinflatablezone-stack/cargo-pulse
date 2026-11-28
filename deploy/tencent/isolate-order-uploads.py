@@ -107,3 +107,9 @@ def main():
 
 if __name__ == '__main__':
     main()
+    # Existing deployments invoke this release hook before copying their data
+    # service files. Keep the workbook runtime in place before that restart.
+    release = Path(__file__).resolve().parents[2]
+    installer = release / 'deploy/tencent/install-factory-export-runtime.sh'
+    if installer.is_file() and (release / 'dist/index.html').is_file():
+        subprocess.run(['bash', str(installer), str(release)], check=True)

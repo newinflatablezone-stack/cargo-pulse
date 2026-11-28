@@ -12,7 +12,7 @@ import {STEP_LABELS,RED_OVERDUE_AFTER_DAYS,firstStep,nextStep,nextShipping,ocean
 import {classifyDestination,MAINSTREAM_DESTINATIONS,normalizeDestination} from "./server/destination-risk.mjs?v=20261013-1";
 import {extractCustomerContacts,customerInfoReminder} from "./server/customer-info.mjs?v=20261122-8";
 import {productNameReminder} from "./product-name.mjs?v=20261123-3";
-import {FACTORY_EXPORT_EMPTY_MESSAGE,buildFactoryOrderWorkbook,canUseFactoryExport,createFactoryExportQueue,factoryExportFilename,factoryImageExtension,factoryImageSources,isFactoryExportable} from "./factory-order-export.js?v=20261122-10";
+import {FACTORY_EXPORT_EMPTY_MESSAGE,canUseFactoryExport,factoryExportFilename,isFactoryExportable} from "./factory-order-export.js?v=20261122-10";
 import {canOpenWeeklyReport,mountWeeklyReport,weeklyReportNavVisible} from "./weekly-report.js?v=20261123-1";
 
 let cfg=readStoredConfig(),session=readStoredSession(),profile=null,orders=[],profiles=[],partners=[],imageRecords=[],eventRecords=[],activeEventRecords=[],factoryRecords=[],factoryFeatureReady=false,shipmentRecords=[],shipmentFeatureReady=false,alertFilter="all",statusFilter="active",partnerFilter="all",factoryFilter="all",businessFilter="all",orderSort="desc",searchQuery="",currentPage=1;
@@ -33,51 +33,6 @@ function openFollowerCreate(o,detailDialog){if(!o||o.deleted_at||o.current_step!
 const factoryExportSelection=new Set();
 let factoryExportProgress='';
 function factoryExportCount(){let count=0;for(const id of factoryExportSelection){if(isFactoryExportable(orders.find(order=>String(order.id)===id)))count++}return count}
-async function decodeFactoryPhoto(blob){
- try{return await resourceImageSource(blob)}catch{
-  const url=URL.createObjectURL(blob),image=new Image();
-  try{image.src=url;await image.decode();return image}finally{URL.revokeObjectURL(url)}
- }
-}
-async function fetchFactoryImage(url){
- try{
-  const response=await fetch(url,{credentials:'omit',signal:AbortSignal.timeout(20000)});
-  if(!response.ok)return null;
-  const blob=await response.blob();
-  if(!blob.size||/text\/|json|html/i.test(blob.type))return null;
-  const extension=factoryImageExtension(new Uint8Array(await blob.slice(0,16).arrayBuffer()),blob.type);
-  const image=await decodeFactoryPhoto(blob);
-  try{
-   const width=image.width||image.naturalWidth,height=image.height||image.naturalHeight;
-   if(!width||!height)return null;
-   if(extension&&blob.size<=512*1024)return {buffer:await blob.arrayBuffer(),extension,width,height};
-   const scale=Math.min(1,768/Math.max(width,height)),canvas=document.createElement('canvas');
-   canvas.width=Math.max(1,Math.round(width*scale));canvas.height=Math.max(1,Math.round(height*scale));
-   const context=canvas.getContext('2d',{alpha:false});
-   context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);
-   context.drawImage(image,0,0,canvas.width,canvas.height);
-   const jpeg=await resourceCanvasBlob(canvas,'image/jpeg',.86);
-   return jpeg?{buffer:await jpeg.arrayBuffer(),extension:'jpeg',width:canvas.width,height:canvas.height}:null;
-  }finally{image.close?.()}
- }catch{return null}
-}
-async function loadFactoryUploadLinks(order){
- const result=await api('/storage/v1/factory-export-links',{method:'POST',body:JSON.stringify({order_id:order.id})});
- return result.images.map(image=>({...image,url:new URL(image.url,location.origin).href}));
-}
-async function loadFactoryExportImages(order,uploads,download){
- const assigned=Array.isArray(order.image_paths)?new Set(order.image_paths):null;
- const sources=factoryImageSources(order,uploads.filter(row=>!assigned||assigned.has(row.object_path)));
- const images=await Promise.all(sources.map(async source=>{
-  const photo=await download(source.fetchUrl);
-  return {...photo,url:source.publicUrl,text:photo?'':'图片暂无法嵌入'};
- }));
- if(assigned){
-  const available=new Set(uploads.map(row=>row.object_path));
-  for(const path of assigned)if(!available.has(path))images.push({text:'原上传图片已不可用'});
- }
- return images;
-}
 function downloadFactoryWorkbook(buffer,filename){const blob=new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=filename;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1500)}
 function showFactoryExportProgress(message=''){
  factoryExportProgress=message;
@@ -86,34 +41,42 @@ function showFactoryExportProgress(message=''){
  button.disabled=Boolean(message);
  button.textContent=message||'导出工厂下单文件'+(factoryExportCount()?`（${factoryExportCount()}）`:'');
 }
+async function requestFactoryWorkbook(orderIds,signal,retried=false){
+ const response=await fetch(cfg.url+'/storage/v1/factory-workbook',{
+  method:'POST',signal,
+  headers:{apikey:cfg.key,Authorization:'Bearer '+session?.access_token,'Content-Type':'application/json'},
+  body:JSON.stringify({order_ids:orderIds})
+ });
+ if(response.status===401&&!retried&&session?.refresh_token){
+  const refreshed=await new Promise((resolve,reject)=>{
+   const cancel=()=>reject(signal.reason);
+   if(signal.aborted){cancel();return}
+   signal.addEventListener('abort',cancel,{once:true});
+   renewSession().then(resolve,reject).finally(()=>signal.removeEventListener('abort',cancel));
+  });
+  if(refreshed)return requestFactoryWorkbook(orderIds,signal,true);
+ }
+ if(!response.ok){
+  const body=await response.json().catch(()=>null);
+  throw Error(body?.message||'导出失败，请稍后重试');
+ }
+ if(!response.headers.get('Content-Type')?.startsWith('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')){
+  throw Error('服务器未返回工厂下单文件，请稍后重试');
+ }
+ return response;
+}
 async function exportSelectedFactoryOrders(){
  if(!canFollowOrders()||!canUseFactoryExport(profile))return;
  if(factoryExportProgress)return;
- const chosen=orders.filter(order=>factoryExportSelection.has(String(order.id))&&isFactoryExportable(order));
- if(!chosen.length){alert(FACTORY_EXPORT_EMPTY_MESSAGE);return}
- let complete=0;
- showFactoryExportProgress('下载图片 0/'+chosen.length+' 单…');
+ const ids=orders.filter(order=>factoryExportSelection.has(String(order.id))&&isFactoryExportable(order)).map(order=>order.id);
+ if(!ids.length){alert(FACTORY_EXPORT_EMPTY_MESSAGE);return}
+ showFactoryExportProgress('正在生成工厂下单文件…');
  try{
-  const queueLinks=createFactoryExportQueue(4),queueImages=createFactoryExportQueue(10),downloads=new Map();
-  const download=url=>{
-   if(!downloads.has(url))downloads.set(url,queueImages(()=>fetchFactoryImage(url)));
-   return downloads.get(url);
-  };
-  const results=await Promise.allSettled(chosen.map(async order=>{
-   const products=order.products?.length?order.products:null;
-   const uploads=!products||products.some(product=>product.image_paths?.length)?await queueLinks(()=>loadFactoryUploadLinks(order)):[];
-   const lines=products?products.map((product,index)=>({...order,...product,id:order.id+':'+index,shopify_image_urls:product.image_urls,image_urls:[],image_paths:product.image_paths||[],requirements:[product.requirements,product.blower].filter(Boolean).join(' / ')})):[order];
-   const entries=await Promise.all(lines.map(async line=>({line,photos:await loadFactoryExportImages(line,uploads,download)})));
-   showFactoryExportProgress('下载图片 '+(++complete)+'/'+chosen.length+' 单…');
-   return entries;
-  }));
-  const failed=results.find(result=>result.status==='rejected');
-  if(failed)throw failed.reason;
-  const entries=results.flatMap(result=>result.value);
-  showFactoryExportProgress('正在生成 Excel…');
-  const buffer=await buildFactoryOrderWorkbook(entries.map(entry=>entry.line),new Map(entries.map(entry=>[String(entry.line.id),entry.photos])));
-  downloadFactoryWorkbook(buffer,factoryExportFilename());
- }catch(error){alert(error?.code==='empty-factory-export'?FACTORY_EXPORT_EMPTY_MESSAGE:(error.message||'导出失败'))}
+  const response=await requestFactoryWorkbook(ids,AbortSignal.timeout(28_000));
+  const failures=Number(response.headers.get('X-Factory-Image-Failures')||0);
+  downloadFactoryWorkbook(await response.arrayBuffer(),factoryExportFilename());
+  if(failures)alert('有 '+failures+' 张图片未能嵌入，请查看「图片明细」中的原因和可用链接。');
+ }catch(error){alert(error.name==='TimeoutError'?'导出响应超时，请稍后重试。':error.message||'导出失败')}
  finally{showFactoryExportProgress()}
 }
 function normalizeForwarderName(value){const name=String(value??'').trim();return name==='嘉城'?'嘉诚':name}

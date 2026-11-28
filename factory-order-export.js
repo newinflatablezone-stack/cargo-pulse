@@ -244,17 +244,20 @@ export async function buildFactoryOrderWorkbook(orders, imagesByOrderId = new Ma
     if (images.length > 1) row.getCell(8).value = '见「图片明细」第 ' + firstDetail + '–' + detail.rowCount + ' 行（' + images.length + ' 张）';
 
     const embedded = images.filter(image => image?.mediaId != null);
+    const missing = images.length - embedded.length;
     const previews = embedded.slice(0, PREVIEW_LIMIT);
     const size = Math.floor((columnWidths[2] * PX_PER_EXCEL_WIDTH - EMBED_PADDING * 2 - EMBED_GAP * (PREVIEWS_PER_ROW - 1)) / PREVIEWS_PER_ROW);
     const bands = Math.ceil(previews.length / PREVIEWS_PER_ROW);
     previews.forEach((image, index) => addPhoto(sheet, row, 3, image,
       EMBED_PADDING + (index % PREVIEWS_PER_ROW) * (size + EMBED_GAP),
       EMBED_PADDING + Math.floor(index / PREVIEWS_PER_ROW) * (size + EMBED_GAP), size));
-    if (embedded.length > previews.length) row.getCell(3).value = '其余图片见「图片明细」';
-    if (!previews.length && images.length) row.getCell(3).value = images.length === 1 && images[0]?.text ? images[0].text : '图片见「图片明细」';
+    const notes = [];
+    if (embedded.length > previews.length) notes.push('其余图片见「图片明细」');
+    if (missing) notes.push(images.length === 1 && images[0]?.text ? images[0].text : `${missing} 张图片未嵌入，原因见「图片明细」`);
+    if (notes.length) row.getCell(3).value = notes.join('\n');
     const previewHeight = bands ? (bands * size + (bands - 1) * EMBED_GAP + EMBED_PADDING * 2) * PX_TO_PT : 0;
-    const imageNoteHeight = embedded.length > previews.length ? lineHeight(row.getCell(3).value, columnWidths[2]) : 0;
-    if (imageNoteHeight) row.getCell(3).alignment = { vertical: 'bottom', wrapText: true };
+    const imageNoteHeight = notes.length ? lineHeight(row.getCell(3).value, columnWidths[2]) : 0;
+    if (previews.length && imageNoteHeight) row.getCell(3).alignment = { vertical: 'bottom', wrapText: true };
     row.height = Math.min(409, Math.ceil(Math.max(
       previewHeight + imageNoteHeight,
       ...columnWidths.map((width, index) => lineHeight(row.getCell(index + 1).value, width))

@@ -140,6 +140,55 @@ const objectSignature = (raw, expires, userId) => createHmac('sha256', objectSig
 const FACTORY_IMAGE_LINK_TTL = 30 * 24 * 60 * 60;
 const FACTORY_IMAGE_PREFIX = '/storage/v1/factory-export-image/';
 const factoryImageSignature = (raw, expires) => createHmac('sha256', objectSigningKey).update(`factory-export-image\n${raw}\n${expires}`).digest('base64url');
+const factoryLink = (path, expires) => {
+  const raw = path.split('/').map(encodeURIComponent).join('/');
+  return `${FACTORY_IMAGE_PREFIX}${raw}?expires=${expires}&token=${factoryImageSignature(raw, expires)}`;
+};
+let activeFactoryExports = 0;
+
+async function serveFactoryWorkbook(req, res, user) {
+  if (!store.isFollower(user.id)) throw Object.assign(Error('仅跟单和主管可以导出工厂下单文件'), { status: 403 });
+  const body = await readBody(req, 24 * 1024);
+  if (!Array.isArray(body.order_ids) || !body.order_ids.length || body.order_ids.some(id => typeof id !== 'string' || !id || id.length > 128)) {
+    throw Object.assign(Error('请先勾选要导出的订单'), { status: 400 });
+  }
+  const ids = new Set(body.order_ids);
+  if (ids.size > 200) throw Object.assign(Error('一次最多导出 200 笔订单，请分批导出'), { status: 400 });
+  if (activeFactoryExports >= 2) throw Object.assign(Error('当前有其他导出正在处理，请稍后重试'), { status: 429, retryAfter: 3 });
+  const orders = store.all('orders').filter(order => ids.has(order.id));
+  const expires = Math.floor(Date.now() / 1000) + FACTORY_IMAGE_LINK_TTL;
+  const publicOrigin = req.headers.host === 'kis.net' ? 'https://kis.net' : 'https://www.kis.net';
+  const disconnect = new AbortController();
+  const cancel = () => disconnect.abort();
+  res.once('close', cancel);
+  activeFactoryExports++;
+  try {
+    // The packaged runtime lives beside this service in production. Source runs use the same module in the repository.
+    const modulePath = import.meta.url.includes('/cargo-pulse-runtime/')
+      ? './factory-export-runtime/server/factory-export.mjs' : './factory-export.mjs';
+    const { exportFactoryWorkbook } = await import(modulePath);
+    const { buffer, failures } = await exportFactoryWorkbook(orders, {
+      pathsFor: id => store.factoryExportImagePaths(id),
+      imageLink: path => publicOrigin + factoryLink(path, expires),
+      uploadPath: path => safeUploadPath(path.split('/').map(encodeURIComponent).join('/')),
+      signal: AbortSignal.any([disconnect.signal, AbortSignal.timeout(22_000)])
+    });
+    if (res.destroyed) return;
+    res.writeHead(200, {
+      ...securityHeaders, 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename="factory-orders.xlsx"', 'Content-Length': buffer.byteLength,
+      'Cache-Control': 'no-store', 'X-Factory-Image-Failures': String(failures)
+    });
+    res.end(buffer);
+  } catch (caught) {
+    if (res.destroyed) return;
+    if (caught.name === 'TimeoutError') throw Object.assign(Error('导出处理超时，请缩小所选订单范围后重试'), { status: 503 });
+    throw caught;
+  } finally {
+    res.removeListener('close', cancel);
+    activeFactoryExports--;
+  }
+}
 
 function validImageSignature(token, expected) {
   return Buffer.byteLength(token) === expected.length && timingSafeEqual(Buffer.from(token), Buffer.from(expected));
@@ -358,6 +407,7 @@ async function rpc(req, res, name, body, user) {
 
 async function storageRoute(req, res, url, user) {
   if (!user) throw Object.assign(Error('请先登录'), { status: 401 });
+  if (url.pathname === '/storage/v1/factory-workbook' && req.method === 'POST') return serveFactoryWorkbook(req, res, user);
   if (url.pathname === '/storage/v1/factory-export-links' && req.method === 'POST') {
     if (!store.isFollower(user.id)) throw Object.assign(Error('仅跟单和主管可以导出产品图片'), { status: 403 });
     const body = await readBody(req, 4096);
@@ -365,10 +415,7 @@ async function storageRoute(req, res, url, user) {
     if (!orderId) throw Object.assign(Error('请选择订单'), { status: 400 });
     const expires = Math.floor(Date.now() / 1000) + FACTORY_IMAGE_LINK_TTL;
     const paths = [...new Set(store.factoryExportImagePaths(orderId))];
-    return send(res, 200, { images: paths.map(path => {
-      const raw = path.split('/').map(encodeURIComponent).join('/');
-      return { object_path: path, url: `${FACTORY_IMAGE_PREFIX}${raw}?expires=${expires}&token=${factoryImageSignature(raw, expires)}` };
-    }) });
+    return send(res, 200, { images: paths.map(path => ({ object_path: path, url: factoryLink(path, expires) })) });
   }
   const signPrefix = '/storage/v1/object/sign/order-images/';
   const objectPrefix = '/storage/v1/object/order-images/';

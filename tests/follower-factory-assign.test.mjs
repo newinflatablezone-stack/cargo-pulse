@@ -339,6 +339,13 @@ test('the supervisor review shows every salesperson product image and keeps ä¿å
     showUploadedProductImages(node, id) { node.images.push('upload:' + id); return Promise.resolve(); }
   });
   assert.deepEqual(gallery.images, ['https://cdn.example/arch.jpg', 'http://insecure.example/skip.jpg', 'upload:wait-1']);
+  const calls = [];
+  const normal = { querySelector: () => null };
+  runInNewContext(mount + '\nmountSupervisorSalesImages(normal, multi); mountSupervisorSalesImages(root, multi);', {
+    normal, root, multi: { ...order, products: [{ image_paths: ['wait-1/product-image-one.png'] }] },
+    paintOrderProductImages(node) { calls.push(node); }
+  });
+  assert.deepEqual(calls, [root]);
 
   const form = { id: 'followerFactoryForm' };
   const panel = { id: 'issues' };

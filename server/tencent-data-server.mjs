@@ -137,7 +137,7 @@ const safeUploadPath = (raw, root = UPLOAD_DIR) => {
 };
 const objectSigningKey = IMPORT_SECRET || randomUUID();
 const objectSignature = (raw, expires, userId) => createHmac('sha256', objectSigningKey).update(`${raw}\n${expires}\n${userId}`).digest('base64url');
-const FACTORY_IMAGE_LINK_TTL = 7 * 24 * 60 * 60;
+const FACTORY_IMAGE_LINK_TTL = 30 * 24 * 60 * 60;
 const FACTORY_IMAGE_PREFIX = '/storage/v1/factory-export-image/';
 const factoryImageSignature = (raw, expires) => createHmac('sha256', objectSigningKey).update(`factory-export-image\n${raw}\n${expires}`).digest('base64url');
 

@@ -55,7 +55,7 @@ test('真实 HTTP：业务员互相不可见，图片链接绑定登录人，转
   assert.deepEqual(images.map(row=>row.object_path),[productPath]);
   const shared=new URL(images[0].url,base);
   const remaining=Number(shared.searchParams.get('expires'))-Math.floor(Date.now()/1000);
-  assert.ok(remaining>6*86400&&remaining<=7*86400);
+  assert.ok(remaining>=30*86400-5&&remaining<=30*86400);
   const publicImage=await fetch(shared);
   assert.equal(publicImage.status,200);
   assert.equal(publicImage.headers.get('content-type'),'image/webp');

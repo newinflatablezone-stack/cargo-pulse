@@ -100,7 +100,7 @@ test('the tab is visible to 跟单 and 主管, and hidden from 业务员', () =>
   assert.equal(canFollowOrders(supervisor), true);
   assert.equal(supervisor.role, 'follower');
   assert.equal(canFollowOrders(salesperson), false);
-  assert.match(app, /const follower=canFollowOrders\(\),supervisor=isSupervisor\(\);if\(statusFilter==='follower_create'&&!follower\)statusFilter='active'/);
+  assert.match(app, /if\(statusFilter==='follower_create'&&!follower\)statusFilter='active'/);
 
   const activeOrders = [
     { current_step: 'follower_create', factory_name: 'Factory A' },
@@ -426,18 +426,31 @@ test('按当前流程 adds the early statuses without a new tab, and 待选择�
   assert.equal(ctx.workflowStepFilter, 'completed');
 });
 
-test('supervisor home puts pending factory assignments first until a factory is saved', () => {
-  const compare = runInNewContext(
-    ['followerFactorySaved','orderAwaitingFactory','compareHomeOrders'].map(lineFunction).join('\n') + '\ncompareHomeOrders',
+test('home prioritizes pending factory assignments for the supervisor and unclaimed orders for Ella', () => {
+  const { compare, isElla } = runInNewContext(
+    ['followerFactorySaved','orderAwaitingFactory','orderAwaitingSalesperson','isEllaAccount'].map(lineFunction).join('\n') +
+    '\n' + app.slice(app.indexOf('function compareHomeOrders'), app.indexOf('function salespersonOrderNoLabel')) +
+    '\n({compare:compareHomeOrders,isElla:isEllaAccount})',
     {orderMoment: order => order.order_date}
   );
   const normal = {id:'normal', current_step:'production', order_date:'2026-11-23'};
   const pending = {id:'pending', current_step:'follower_create', order_date:'2026-11-21'};
   const newerPending = {...pending,id:'newer-pending',order_date:'2026-11-22',factory_name:' '};
-  const sorted = (orders, direction, supervisor) => [...orders].sort((a,b)=>compare(a,b,direction,supervisor)).map(order=>order.id);
+  const sorted = (orders, direction, supervisor, ella) => [...orders].sort((a,b)=>compare(a,b,direction,supervisor,ella)).map(order=>order.id);
   assert.deepEqual(sorted([normal,pending,newerPending],'desc',true),['newer-pending','pending','normal']);
   assert.deepEqual(sorted([normal,pending,newerPending],'asc',true),['pending','newer-pending','normal']);
   assert.deepEqual(sorted([normal,pending,newerPending],'desc',false),['normal','newer-pending','pending']);
   assert.deepEqual(sorted([normal,{...pending,factory_name:'工厂 A'},newerPending],'desc',true),['newer-pending','normal','pending']);
   assert.deepEqual(sorted([normal,{...pending,deleted_at:'2026-11-23'}],'desc',true),['normal','pending']);
+  const ella = isElla(' Sales@inflatable-zone.com ');
+  assert.equal(ella,true);
+  assert.equal(isElla('ella@example.com'),false);
+  const first = { id:'first', current_step:'sales_supplement', order_date:'2026-11-19', business_name:'' };
+  const second = { ...first, id:'second', business_name:'Sherry', order_date:'2026-11-20' };
+  const sortForElla = (rows,direction) => sorted(rows,direction,false,ella);
+  assert.deepEqual(sortForElla([normal,first,second],'desc'),['second','first','normal']);
+  assert.deepEqual(sortForElla([normal,first,second],'asc'),['first','second','normal']);
+  assert.deepEqual(sortForElla([normal,{...first,deleted_at:'2026-11-23'},second],'desc'),['second','normal','first']);
+  assert.deepEqual(sortForElla([normal,{...first,current_step:'follower_create'},second],'desc'),['second','normal','first']);
+  assert.deepEqual(sorted([normal,first,second],'desc',false,false),['normal','second','first']);
 });
